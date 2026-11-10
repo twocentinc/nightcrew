@@ -317,3 +317,64 @@ export async function executeExternalTool(
     child.stdin!.end(JSON.stringify(validated) + "\n");
   });
 }
+
+// Model mistakes and executable failures are conversation results, not run failures.
+// Keep process/storage cancellation outside this boundary and never replay a call.
+export async function executeModelTool(
+  tool: ToolDefinition | undefined,
+  args: string,
+  signal: AbortSignal,
+  context?: Parameters<typeof executeExternalTool>[3],
+) {
+  signal.throwIfAborted();
+  const failure = (
+    code: string,
+    message: string,
+    outcome: "not_started" | "unknown",
+  ) => ({
+    ok: false,
+    error: { code, message, outcome },
+  });
+  if (!tool)
+    return failure(
+      "tool_unavailable",
+      "This tool is unavailable or not allowed. Choose an advertised tool.",
+      "not_started",
+    );
+  let input: unknown;
+  try {
+    input = JSON.parse(args);
+    input = z.fromJSONSchema(tool.parameters).parse(input);
+    resolveToolArgv(tool.argv, input);
+  } catch {
+    return failure(
+      "invalid_tool_arguments",
+      "Arguments must be valid JSON matching the tool schema, including required argv parameters. Correct the arguments before trying again.",
+      "not_started",
+    );
+  }
+  try {
+    const result = await executeExternalTool(tool, input, signal, context);
+    signal.throwIfAborted();
+    return result;
+  } catch (error) {
+    signal.throwIfAborted();
+    const reason = error instanceof Error ? error.message : "";
+    const code =
+      reason === "Tool timed out"
+        ? "tool_timeout"
+        : reason === "Tool output limit"
+          ? "tool_output_limit"
+          : reason === "Tool must return JSON"
+            ? "invalid_tool_output"
+            : "tool_execution_failed";
+    return failure(
+      code,
+      "The tool did not return a successful JSON result. Continue with other available evidence or report the limitation. The action may have taken effect; verify before repeating any side effect." +
+        (tool.toolID === "load_skills"
+          ? ' To read instructions, use {"skillIDs":["ID"]}; only request resource paths listed in the returned manifest.'
+          : ""),
+      "unknown",
+    );
+  }
+}

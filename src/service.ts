@@ -21,7 +21,7 @@ import {
   loadRegistry,
   validateRegistry,
   normalizeStoredTool,
-  executeExternalTool,
+  executeModelTool,
   type ToolDefinition,
 } from "./registry.js";
 import { spawn } from "node:child_process";
@@ -1752,9 +1752,9 @@ export class Service {
         if (skillCalls.length && turn === 15)
           throw Error("Skill tool turn limit");
         for (const call of skillCalls) {
-          const output = await executeExternalTool(
+          const output = await executeModelTool(
             tool,
-            JSON.parse(call.arguments),
+            call.arguments,
             controller.signal,
             { home: this.storage.home, skills: c.skills },
           );
@@ -2422,12 +2422,11 @@ export class Service {
     args: string,
     signal: AbortSignal,
   ) {
-    if (!this.agentToolIDs(r.agent).includes(name)) throw Error("Tool denied");
-    const definition = this.runTools(r).find((t) => t.toolID === name);
-    if (!definition || !this.tools.has(name))
-      throw Error("Tool no longer available");
-    const input: unknown = JSON.parse(args);
-    return executeExternalTool(definition, input, signal, {
+    const definition =
+      this.agentToolIDs(r.agent).includes(name) && this.tools.has(name)
+        ? this.runTools(r).find((t) => t.toolID === name)
+        : undefined;
+    return executeModelTool(definition, args, signal, {
       home: this.storage.home,
       agentID: r.agent.agentID,
       runID: r.runID,

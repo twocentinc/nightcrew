@@ -262,3 +262,19 @@ storage growth, preemption latency, residency/concurrency memory use, and summar
 quality. No UI, automatic transcript pruning, distributed scheduling or per-client
 authorization is promised by this contract.
 
+## Recoverable tool-call errors
+
+Agent-loop tool calls and Nightcrew-owned instant skill calls return failures as
+structured tool messages: `{ "ok": false, "error": { "code": "...",
+"message": "...", "outcome": "not_started" } }`. Malformed JSON, schema/argv
+validation errors and unavailable tools do not terminate the run. Executable
+failure, timeout, excessive output and invalid JSON output also return tool
+errors, with `outcome: "unknown"` because a side effect may already have happened.
+The agent can correct its request or continue with other evidence. Nightcrew does
+not automatically replay failed calls. Each result retains the original tool-call
+ID and is stored/streamed through the normal transcript path. Raw exception text,
+stderr and invalid stdout are not included in these error messages.
+
+Cancellation, preemption, active-work deadlines, storage failures and global
+context/turn limits still stop or pause execution. They are not recoverable tool
+errors. Client-owned instant tools remain the client's responsibility.

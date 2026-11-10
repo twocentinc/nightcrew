@@ -129,3 +129,59 @@ test("skill folders enforce aggregate size and preserve existing folder on rejec
     false,
   );
 });
+
+test("model tool boundary returns bounded errors without replaying failures or swallowing cancellation", async () => {
+  const { executeModelTool } = await import("../dist/registry.js");
+  const definition = {
+    toolID: "test",
+    description: "test",
+    executablePath: process.execPath,
+    argv: ["-e", "process.exit(2)"],
+    timeoutMs: 1000,
+    parameters: { type: "object", properties: {}, additionalProperties: false },
+  };
+  const signal = new AbortController().signal;
+  assert.equal(
+    (await executeModelTool(undefined, "{}", signal)).error.code,
+    "tool_unavailable",
+  );
+  assert.equal(
+    (await executeModelTool(definition, "{", signal)).error.outcome,
+    "not_started",
+  );
+  assert.equal(
+    (await executeModelTool(definition, '{"extra":true}', signal)).error.code,
+    "invalid_tool_arguments",
+  );
+  for (const [argv, timeoutMs, code] of [
+    [["-e", "process.exit(2)"], 1000, "tool_execution_failed"],
+    [["-e", "console.log('not json')"], 1000, "invalid_tool_output"],
+    [
+      ["-e", "process.stdout.write('x'.repeat(1048577))"],
+      1000,
+      "tool_output_limit",
+    ],
+    [["-e", "setInterval(()=>{},1000)"], 100, "tool_timeout"],
+  ]) {
+    const output = await executeModelTool(
+      { ...definition, argv, timeoutMs },
+      "{}",
+      signal,
+    );
+    assert.equal(output.ok, false);
+    assert.equal(output.error.code, code);
+    assert.equal(output.error.outcome, "unknown");
+  }
+  const controller = new AbortController();
+  const pending = executeModelTool(
+    { ...definition, argv: ["-e", "setInterval(()=>{},1000)"] },
+    "{}",
+    controller.signal,
+  );
+  setTimeout(() => controller.abort(new Error("cancelled by user")), 50);
+  await assert.rejects(pending, /cancelled by user/);
+  await assert.rejects(
+    executeModelTool(definition, "bad json", controller.signal),
+    /cancelled by user/,
+  );
+});

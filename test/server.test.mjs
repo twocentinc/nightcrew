@@ -1455,3 +1455,89 @@ test("instant chats execute selected skills automatically and return client-owne
     400,
   );
 });
+
+for (const instant of [false, true]) {
+  test(`${instant ? "instant" : "background"} skill errors are paired results and the model can correct them`, async (t) => {
+    let turn = 0;
+    const f = await fixture(t, async (input) => {
+      const previous = input.messages.at(-1);
+      if (turn > 0 && turn < 3) {
+        assert.equal(previous.role, "tool");
+        assert.equal(previous.toolCallID, `call-${turn - 1}`);
+        assert.equal(JSON.parse(previous.content).ok, false);
+      }
+      const args = [
+        '{"skillIDs":["review"],"files":[{"skillID":"review","path":"instructions"}]}',
+        '{"files":[{"skillID":"review","path":"references/missing.md"}]}',
+        '{"skillIDs":["review"]}',
+      ];
+      if (turn < args.length)
+        return {
+          text: "",
+          toolCalls: [
+            {
+              callID: `call-${turn}`,
+              name: "load_skills",
+              arguments: args[turn++],
+            },
+          ],
+          usage: { inputTokens: 1, outputTokens: 1 },
+        };
+      assert.equal(
+        JSON.parse(previous.content).skills[0].instructions,
+        "Recovered instructions",
+      );
+      turn++;
+      return {
+        text: "Recovered",
+        toolCalls: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      };
+    });
+    const { managementClient } = await import("../dist/operations.js");
+    await managementClient(f.app.service)["skills create"]({
+      request: {
+        skill: {
+          skillID: "review",
+          name: "Review",
+          description: "Review",
+          instructions: "Recovered instructions",
+          toolIDs: [],
+        },
+      },
+    });
+    let completed;
+    if (instant) {
+      const submitted = await f.request("POST", "/v1/chat/requests", {
+        ...chat(),
+        skillIDs: ["review"],
+      });
+      completed = await until(() => {
+        const c = f.app.service.chat(submitted.body.requestID);
+        return ["completed", "failed"].includes(c.state) && c;
+      });
+    } else {
+      await f.request("PATCH", "/v1/agents/researcher", {
+        expectedRevision: 1,
+        changes: { mode: "agent-loop", skillIDs: ["review"] },
+      });
+      f.state.away = true;
+      await f.app.service.tick();
+      const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
+        message: message(),
+      });
+      completed = await until(async () => {
+        const r = await f.app.service.storage.read(submitted.body.runID);
+        return ["completed", "failed"].includes(r.state) && r;
+      });
+      const { verifyRun } = await import("../dist/runArtifacts.js");
+      assert.equal(
+        (await verifyRun(f.app.service, completed.runID)).valid,
+        true,
+      );
+    }
+    assert.equal(completed.state, "completed", JSON.stringify(completed.error));
+    assert.equal(turn, 4);
+    assert.equal(completed.messages.filter((m) => m.role === "tool").length, 3);
+  });
+}
