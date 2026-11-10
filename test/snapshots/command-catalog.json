@@ -299,6 +299,28 @@
     },
     {
       "confirmation": false,
+      "description": "Sample this desktop's presence without requiring a daemon or runtime home",
+      "mutates": false,
+      "name": "presence sample",
+      "operand": "none",
+      "options": [],
+      "requestSchema": "presence.sample.request",
+      "resultSchema": "presence.sample.result",
+      "scope": "local"
+    },
+    {
+      "confirmation": false,
+      "description": "Inspect the daemon's latest presence sample and interaction cooldown",
+      "mutates": false,
+      "name": "presence status",
+      "operand": "none",
+      "options": [],
+      "requestSchema": "presence.status.request",
+      "resultSchema": "presence.status.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
       "description": "Cancel managed work",
       "mutates": true,
       "name": "runs cancel",
@@ -309,6 +331,20 @@
       "requestSchema": "runs.cancel.request",
       "resultSchema": "runs.cancel.result",
       "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "Export a committed run snapshot and checksum manifest to a new directory",
+      "mutates": true,
+      "name": "runs export",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "runs.export.request",
+      "resultSchema": "runs.export.result",
+      "scope": "management"
     },
     {
       "confirmation": false,
@@ -327,7 +363,13 @@
       "mutates": false,
       "name": "runs list",
       "operand": "none",
-      "options": [],
+      "options": [
+        "request",
+        "limit",
+        "cursor",
+        "agent",
+        "state"
+      ],
       "requestSchema": "runs.list.request",
       "resultSchema": "runs.list.result",
       "scope": "daemon"
@@ -348,14 +390,48 @@
     },
     {
       "confirmation": false,
+      "description": "Search saved messages, attachments and results with bounded excerpts",
+      "mutates": false,
+      "name": "runs search",
+      "operand": "required",
+      "options": [
+        "request",
+        "limit",
+        "cursor",
+        "agent",
+        "state"
+      ],
+      "requestSchema": "runs.search.request",
+      "resultSchema": "runs.search.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
       "description": "Read committed run evidence",
       "mutates": false,
       "name": "runs transcript",
       "operand": "required",
-      "options": [],
+      "options": [
+        "request",
+        "limit",
+        "cursor"
+      ],
       "requestSchema": "runs.transcript.request",
       "resultSchema": "runs.transcript.result",
       "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "Validate saved run integrity or an exported bundle without modifying it",
+      "mutates": false,
+      "name": "runs verify",
+      "operand": "required",
+      "options": [
+        "request"
+      ],
+      "requestSchema": "runs.verify.request",
+      "resultSchema": "runs.verify.result",
+      "scope": "management"
     },
     {
       "confirmation": false,
@@ -544,7 +620,9 @@
       "name": "startup logs",
       "operand": "none",
       "options": [
-        "lines"
+        "lines",
+        "limit",
+        "cursor"
       ],
       "requestSchema": "startup.logs.request",
       "resultSchema": "startup.logs.result",
@@ -716,5 +794,5 @@
     "version": false
   },
   "protocolVersion": 1,
-  "schemaVersion": 7
+  "schemaVersion": 9
 }

@@ -184,6 +184,27 @@ freshness and reports agent eligibility blockers. Diagnostics never provision a
 model or start the daemon. Inspect `healthy` and individual checks in the result;
 a completed diagnostic may successfully report an unhealthy system.
 
+Presence has two read-only commands:
+
+```sh
+nightcrew presence status
+nightcrew presence sample
+```
+
+`presence status` reads the running daemon's latest sample and `cooldownUntil`;
+it fails if the daemon is unavailable. `presence sample` takes a fresh reading
+of the local desktop without requiring an initialized home or running daemon.
+It does not update the daemon's sample or change scheduling. Both expose
+`state`, `reason`, `samplingHealthy`, `observedAt`, and `diagnostic` (nested under
+`presence` for status). An unhealthy sample conservatively reports `present`;
+check `samplingHealthy`, not just the command's success envelope.
+
+On macOS, a locked session, switched-out user, or ten minutes without input
+counts as away. The daemon normally samples every five seconds. Desktop
+presence and the interaction cooldown are separate gates for background work;
+being away does not bypass an active cooldown. Other platforms report unhealthy
+presence. These commands do not load models or override presence detection.
+
 Command and JSON Schema snapshots live under `test/snapshots`. `npm run
 contracts:check` rejects drift. When intentionally changing the contract,
 increment `SCHEMA_VERSION` in `src/protocol.ts`, then run `npm run
@@ -348,3 +369,55 @@ the latest user message's nonempty content as the transcription endpoint's
 The Granite example uses temperature 0 and a 200-token limit to match the chat client's
 transcription request settings. Matching the chat client also requires matching audio cuts,
 participant/vocabulary hints, and cleanup; this adapter does not infer them.
+
+## Reviewing and exporting runs
+
+```sh
+nightcrew runs list --agent reviewer --state completed --limit 20
+nightcrew runs transcript RUN_ID --limit 20
+nightcrew runs search "search phrase" --agent reviewer --state completed --limit 20
+# Repeat the same filters and limit with the returned cursor:
+nightcrew runs list --agent reviewer --state completed --limit 20 --cursor CURSOR
+nightcrew runs verify RUN_ID
+printf '%s\n' '{"destination":"/absolute/new-bundle"}' | nightcrew runs export RUN_ID --request -
+printf '%s\n' '{"bundle":"/absolute/new-bundle"}' | nightcrew runs verify RUN_ID --request -
+nightcrew startup logs --lines 1000 --limit 50
+nightcrew startup logs --lines 1000 --limit 50 --cursor CURSOR
+```
+
+Run list, transcript and search pages default to 50 entries, maximum 100. Their
+cursors retain an immutable snapshot for five minutes in the daemon, expire on
+restart, and require the same command, filters, query, run ID and limit. Replaying
+a cursor returns the same page. These commands require a running daemon. Filters
+and pagination can also be supplied through `--request`; specifying the same
+field both ways is rejected. Search is case-insensitive literal substring search
+of messages, text/JSON attachments, and results; it returns excerpts of at most
+1,000 characters with source run/event IDs, without decoding audio as text.
+
+Export and verify also work offline. Export creates a private directory that must
+not exist, with `run.json`, `transcript.json`, `configuration.json`, `result.json`
+and a SHA-256 `manifest.json`. The parent must exist. Destinations inside the
+runtime home must be below `exports/`. `--dry-run` validates without writing.
+Each document is bounded to 64 MB. A single committed state file supplies the
+entire snapshot, including its revision and last event sequence; active generation
+deltas are excluded. Attachments remain embedded in their messages. Export includes
+the run's snapshotted agent, skills and tools, not the current mutable daemon/model
+configuration, root token, model weights, slot caches or unrelated logs. Prompts,
+tool results and attachments may themselves contain private information.
+
+Verification returns `valid`, `checks` and `errors` without repairing files or
+running tools. It checks schema, identity, event ordering, message/tool references,
+selected skill/tool snapshots and attachment encoding. With `bundle`, it also
+checks all file and attachment hashes and consistency across exported documents;
+it verifies the bundle independently of the current run. Source runs have no
+stored checksum baseline, so source verification cannot detect arbitrary valid
+text edits. Checksums detect corruption, not authenticity. A successful command
+may return `valid: false`; inspect the result.
+
+Log pagination returns at most `--limit` lines total (default/maximum 100), grouped
+by file. `--lines` selects the tail per file (default 100, maximum 10,000); each
+file read is capped at 1 MB and partial leading lines are dropped. Order is
+`daemon.jsonl`, rotations 1–9, then launchd stdout/stderr, with lines in file order.
+Keep `--lines` and `--limit` identical when following a cursor. Any change to the
+selected contents, file inventory or query invalidates the cursor; restart without
+it. Log cursors work without a daemon and do not create snapshot files.

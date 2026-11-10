@@ -1,3 +1,4 @@
+import { exportRun, verifyRun } from "./runArtifacts.js";
 import { checkpoint } from "./execution.js";
 import {
   mkdir,
@@ -59,7 +60,10 @@ export async function manage(
 ): Promise<unknown> {
   const { command, resourceID, dryRun = false, yes = false } = input;
   const [resource, action] = command.split(" ");
-  const name = resourceID === undefined ? undefined : id.parse(resourceID);
+  const name =
+    resourceID === undefined || command === "runs search"
+      ? undefined
+      : id.parse(resourceID);
   const raw = input.request ?? {};
   if (command === "slots save" || command === "slots restore") {
     if (!name) fail("slot_required");
@@ -125,16 +129,56 @@ export async function manage(
     }
     if (action === "cancel")
       return service.cancelRun(name ?? fail("missing_id"), dryRun);
-    if (action === "list") return { items: await service.listRuns() };
+    if (action === "list" || action === "transcript" || action === "search") {
+      const input = requestSchemas[command]!.parse(raw) as {
+        limit: number;
+        cursor?: string;
+        agentID?: string;
+        state?: string;
+      };
+      const query =
+        action === "search"
+          ? z.string().min(1).max(1000).parse(resourceID)
+          : undefined;
+      const key =
+        "cli:" +
+        command +
+        ":" +
+        canonical([
+          resourceID ?? null,
+          input.agentID ?? null,
+          input.state ?? null,
+        ]);
+      return service.page(key, input, async () => {
+        if (action === "list")
+          return service.listRuns(input.agentID, input.state) as Promise<
+            unknown[]
+          >;
+        if (action === "search")
+          return service.search(query!, input.agentID, input.state);
+        return service.transcript(
+          await service.run(name ?? fail("missing_id")),
+        );
+      });
+    }
+    if (action === "export") {
+      const input = requestSchemas[command]!.parse(raw) as {
+        destination: string;
+      };
+      return exportRun(
+        service,
+        name ?? fail("missing_id"),
+        input.destination,
+        dryRun,
+      );
+    }
+    if (action === "verify") {
+      const input = requestSchemas[command]!.parse(raw) as { bundle?: string };
+      return verifyRun(service, name ?? fail("missing_id"), input.bundle);
+    }
     if (action === "get")
       return {
         run: service.detail(await service.run(name ?? fail("missing_id"))),
-      };
-    if (action === "transcript")
-      return {
-        items: service.transcript(
-          await service.run(name ?? fail("missing_id")),
-        ),
       };
   }
   return service.storage.exclusive(async () => {

@@ -1061,7 +1061,7 @@ write tool to file Proposals in the first slice.
 
 Nightcrew is maintained directly through this specification and owner
 instructions, without an application-specific planning system. The runtime command catalog and
-request validators in `src/management.ts` now own implemented CLI discovery;
+request validators in `src/commands.ts` and `src/protocol.ts` own implemented CLI discovery;
 `nightcrew help` and `nightcrew schema get` expose them. Earlier proposed-command
 tables describe future intent where a command is absent from that catalog.
 
@@ -1180,3 +1180,37 @@ Transcription parity controls (0.9.0): agents configure temperature (0–2, defa
 message content as the optional transcription prompt, alongside the agent's
 temperature and maxOutputTokens. Existing empty-content audio submissions remain
 unprompted. Agent updates that omit temperature preserve the existing setting.
+
+### Presence CLI inspection
+
+`nightcrew presence status` requires the daemon and returns its latest `presence`
+object and `cooldownUntil`. `nightcrew presence sample` samples the local desktop
+directly, returning the presence object without requiring configuration or a
+running daemon. Both are read-only; sampling does not update scheduler state.
+The presence object contains state, reason, samplingHealthy, observedAt and
+diagnostic. Failed sampling conservatively reports present with
+samplingHealthy=false. Automatic macOS detection uses session lock, switched-out
+user, or ten minutes of input inactivity; the daemon normally samples every five
+seconds. Interaction cooldown remains a separate background eligibility gate.
+
+### Run inspection and export CLI (implemented in 0.10.0)
+
+The earlier proposed run inspection commands are now implemented: `runs search`,
+`runs export`, `runs verify`, list filters, and list/transcript/search pagination.
+`startup logs` supports cursor pagination in addition to its bounded tail selector.
+The runtime command/schema catalog defines requests and results; README documents
+cursor lifetime, query binding, expiry, export contents and verification limits.
+
+Exports are private, create-only directories with four JSON documents and a
+version-1 SHA-256 manifest, derived from one committed run state. They include
+message attachments and snapshotted agent/skills/tools, not global configuration
+or model payloads. Each document is limited to 64 MB. Manifest hashes cover the
+exact document bytes and decoded attachment bytes. `runs verify --request` can
+verify an exported bundle independently of the live run; source verification has
+no historic checksum baseline. Neither command invokes tools or hooks. Export
+supports dry-run; verification reports findings without repairing state.
+
+Run page cursors are replayable five-minute daemon snapshots. Log cursors are
+stateless, bound to the selected bounded contents and query, and reject content
+changes rather than skipping or duplicating lines. Recurring dispatch, retention
+and a separate retry command remain deferred.

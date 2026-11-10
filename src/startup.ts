@@ -19,7 +19,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 export const label = "dev.nightcrew.daemon";
 export const projectRoot = fileURLToPath(new URL("../", import.meta.url));
@@ -242,7 +242,14 @@ export async function startup(
             : true;
   return { changed, ...(await startupStatus(runner)) };
 }
-export async function startupLogs(home: string, lines: number) {
+export async function startupLogs(
+  home: string,
+  lines: number,
+  limit = 100,
+  cursor?: string,
+) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100)
+    throw invalidInput("limit must be 1..100");
   if (!Number.isInteger(lines) || lines < 1 || lines > 10000)
     throw invalidInput("lines must be 1..10000");
   const files = [];
@@ -252,6 +259,7 @@ export async function startupLogs(home: string, lines: number) {
     "launchd.stdout.log",
     "launchd.stderr.log",
   ]) {
+    checkpoint();
     const file = path.join(home, "logs", name);
     let contents = "";
     let truncated = false;
@@ -275,9 +283,67 @@ export async function startupLogs(home: string, lines: number) {
     }
     files.push({
       path: file,
-      lines: contents.trimEnd().split(/\r?\n/).slice(-lines),
+      lines: contents
+        ? contents
+            .trimEnd()
+            .split(/\r?\n/)
+            .slice(truncated ? 1 : 0)
+            .slice(-lines)
+        : [],
       truncated,
     });
   }
-  return { files };
+  const fingerprint = createHash("sha256")
+    .update(JSON.stringify({ home, lines, limit, files }))
+    .digest("hex");
+  let offset = 0;
+  if (cursor) {
+    if (cursor.length > 512) throw invalidInput("Invalid log cursor");
+    let value: { fingerprint: string; offset: number };
+    try {
+      value = JSON.parse(Buffer.from(cursor, "base64url").toString());
+    } catch {
+      throw invalidInput("Invalid log cursor");
+    }
+    if (
+      !value ||
+      !Number.isSafeInteger(value.offset) ||
+      value.offset < 1 ||
+      typeof value.fingerprint !== "string"
+    )
+      throw invalidInput("Invalid log cursor");
+    if (value.fingerprint !== fingerprint)
+      throw new NightcrewError(
+        "resource.cursorExpired",
+        "Logs or query changed; restart pagination without a cursor",
+        9,
+        "safe",
+      );
+    offset = value.offset;
+  }
+  const entries = files.flatMap((file) =>
+    file.lines.map((line) => ({
+      path: file.path,
+      line,
+      truncated: file.truncated,
+    })),
+  );
+  if (offset > entries.length) throw invalidInput("Invalid log cursor offset");
+  const page = entries.slice(offset, offset + limit);
+  const grouped: typeof files = [];
+  for (const entry of page) {
+    let file = grouped.at(-1);
+    if (file?.path !== entry.path) {
+      file = { path: entry.path, lines: [], truncated: entry.truncated };
+      grouped.push(file);
+    }
+    file!.lines.push(entry.line);
+  }
+  const nextCursor =
+    offset + limit < entries.length
+      ? Buffer.from(
+          JSON.stringify({ fingerprint, offset: offset + limit }),
+        ).toString("base64url")
+      : null;
+  return { files: grouped, nextCursor };
 }

@@ -32,6 +32,10 @@ const optionTypes: Record<string, string | false> = {
   "dry-run": false,
   yes: false,
   lines: "count",
+  limit: "count",
+  cursor: "cursor",
+  agent: "agentID",
+  state: "state",
   live: false,
 };
 const aliases: Record<string, string> = {
@@ -206,9 +210,27 @@ export async function main(argv = process.argv.slice(2)) {
     }
     const result = await execution.run(async () => {
       diagnostic("verbose", "command.started", { command, requestID });
-      context.request = args.definition.request.parse(
-        await inputJSON(args.values.request as string | undefined, execution),
+      const raw = await inputJSON(
+        args.values.request as string | undefined,
+        execution,
       );
+      if (command.startsWith("runs ")) {
+        for (const [flag, field] of [
+          ["limit", "limit"],
+          ["cursor", "cursor"],
+          ["agent", "agentID"],
+          ["state", "state"],
+        ]) {
+          if (args.values[flag!] !== undefined) {
+            if (!raw || typeof raw !== "object" || Array.isArray(raw))
+              throw invalidInput("Request must be an object");
+            if (raw[field!] !== undefined)
+              throw invalidInput("Duplicate request field " + field);
+            raw[field!] = args.values[flag!];
+          }
+        }
+      }
+      context.request = args.definition.request.parse(raw);
       execution.check();
       if (args.definition.confirmation && !context.yes && !context.dryRun)
         throw new NightcrewError(

@@ -1,5 +1,5 @@
 import type { OperationalLog } from "./logging.js";
-import { withoutExecution } from "./execution.js";
+import { checkpoint, withoutExecution } from "./execution.js";
 import {
   builtinTools,
   loadRegistry,
@@ -456,8 +456,12 @@ export class Service {
   async search(query: string, agentID?: string, state?: string) {
     const matches = [];
     for (const s of await this.listRuns(agentID, state)) {
+      checkpoint();
       const r = await this.run(s.runID);
+      const seen = new Set<string>();
       for (const e of this.transcript(r)) {
+        if (e.message && seen.has(e.message.messageID)) continue;
+        if (e.message) seen.add(e.message.messageID);
         const text =
           (e.message?.content ?? "") +
           (e.message?.attachments
@@ -475,6 +479,22 @@ export class Service {
             eventSequence: e.sequence,
             segment: e.segment,
             excerpt: text.slice(start, start + 1000),
+            matchOffset: offset - start,
+          });
+        }
+      }
+      if (r.result && !r.messages.some((m) => m.content === r.result)) {
+        const offset = r.result.toLowerCase().indexOf(query.toLowerCase());
+        const event = [...r.events]
+          .reverse()
+          .find((e) => e.type === "completed");
+        if (offset >= 0 && event) {
+          const start = Math.max(0, offset - 200);
+          matches.push({
+            runID: r.runID,
+            eventSequence: event.sequence,
+            segment: event.segment,
+            excerpt: r.result.slice(start, start + 1000),
             matchOffset: offset - start,
           });
         }

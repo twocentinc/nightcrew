@@ -289,6 +289,53 @@ test("foreground daemon serves local CRUD and shuts down cleanly", async (t) => 
     await delay(50);
   }
   assert.equal(status.pid, child.pid);
+  const presence = await call(home, ["presence", "status"], undefined, env);
+  assert.equal(presence.ok, true);
+  assert.deepEqual(Object.keys(presence.result).sort(), [
+    "cooldownUntil",
+    "presence",
+  ]);
+  assert.ok(["present", "away"].includes(presence.result.presence.state));
+  assert.equal(typeof presence.result.presence.samplingHealthy, "boolean");
+  assert.equal(presence.result.cooldownUntil, status.cooldownUntil);
+  const listed = await call(
+    home,
+    [
+      "runs",
+      "list",
+      "--agent",
+      "missing",
+      "--state",
+      "completed",
+      "--limit",
+      "1",
+    ],
+    undefined,
+    env,
+  );
+  assert.equal(listed.ok, true);
+  assert.deepEqual(listed.result, { items: [], nextCursor: null });
+  const searched = await call(
+    home,
+    ["runs", "search", "hello world", "--limit", "1"],
+    undefined,
+    env,
+  );
+  assert.equal(searched.ok, true);
+  assert.deepEqual(searched.result, { items: [], nextCursor: null });
+  assert.equal(
+    (await call(home, ["runs", "list", "--state", "bogus"], undefined, env)).ok,
+    false,
+  );
+  assert.equal(
+    (await call(home, ["runs", "list", "--limit", "0"], undefined, env)).ok,
+    false,
+  );
+  assert.equal(
+    (await call(home, ["runs", "list", "--limit", "1"], { limit: 2 }, env)).ok,
+    false,
+  );
+
   assert.equal(
     (
       await call(
@@ -316,4 +363,28 @@ test("foreground daemon serves local CRUD and shuts down cleanly", async (t) => 
   assert.match(plist, /<key>PATH<\/key>/);
   assert.match(plist, /daemon/);
   assert.doesNotMatch(plist, /rootTokenHash|Bearer/);
+});
+
+test("presence sampling needs no home and status never silently falls back offline", async (t) => {
+  const parent = await mkdtemp(path.join(tmpdir(), "nc-presence-"));
+  t.after(() => rm(parent, { recursive: true, force: true }));
+  const home = path.join(parent, "absent");
+  const offline = await call(home, ["presence", "status"]);
+  assert.equal(offline.ok, false);
+  const sample = await call(home, ["presence", "sample"]);
+  assert.equal(sample.ok, true);
+  assert.ok(["present", "away"].includes(sample.result.state));
+  assert.equal(typeof sample.result.samplingHealthy, "boolean");
+  assert.ok(Number.isFinite(Date.parse(sample.result.observedAt)));
+  if (!sample.result.samplingHealthy) {
+    assert.equal(sample.result.state, "present");
+    assert.equal(sample.result.reason, "samplingFailure");
+    assert.equal(typeof sample.result.diagnostic, "string");
+  }
+  const { stat } = await import("node:fs/promises");
+  await assert.rejects(stat(home), { code: "ENOENT" });
+  assert.throws(
+    () => parseCLI(["presence", "sample", "--dry-run"]),
+    /not supported/,
+  );
 });

@@ -4673,6 +4673,116 @@
     ],
     "type": "object"
   },
+  "presence.sample.request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {},
+    "type": "object"
+  },
+  "presence.sample.result": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "diagnostic": {
+        "type": [
+          "string",
+          "null"
+        ]
+      },
+      "observedAt": {
+        "format": "date-time",
+        "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+        "type": "string"
+      },
+      "reason": {
+        "type": "string"
+      },
+      "samplingHealthy": {
+        "type": "boolean"
+      },
+      "state": {
+        "enum": [
+          "present",
+          "away"
+        ],
+        "type": "string"
+      }
+    },
+    "required": [
+      "state",
+      "reason",
+      "samplingHealthy",
+      "observedAt",
+      "diagnostic"
+    ],
+    "type": "object"
+  },
+  "presence.status.request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {},
+    "type": "object"
+  },
+  "presence.status.result": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "cooldownUntil": {
+        "anyOf": [
+          {
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "presence": {
+        "additionalProperties": false,
+        "properties": {
+          "diagnostic": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "observedAt": {
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "samplingHealthy": {
+            "type": "boolean"
+          },
+          "state": {
+            "enum": [
+              "present",
+              "away"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "reason",
+          "samplingHealthy",
+          "observedAt",
+          "diagnostic"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "presence",
+      "cooldownUntil"
+    ],
+    "type": "object"
+  },
   "runs.cancel.request": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
@@ -4697,6 +4807,50 @@
       "runID",
       "status",
       "changed"
+    ],
+    "type": "object"
+  },
+  "runs.export.request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "destination": {
+        "maxLength": 4096,
+        "minLength": 1,
+        "type": "string"
+      }
+    },
+    "required": [
+      "destination"
+    ],
+    "type": "object"
+  },
+  "runs.export.result": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "changed": {
+        "type": "boolean"
+      },
+      "destination": {
+        "type": "string"
+      },
+      "lastEventSequence": {
+        "type": "number"
+      },
+      "revision": {
+        "type": "number"
+      },
+      "runID": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "runID",
+      "destination",
+      "changed",
+      "revision",
+      "lastEventSequence"
     ],
     "type": "object"
   },
@@ -5031,7 +5185,34 @@
   "runs.list.request": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
-    "properties": {},
+    "properties": {
+      "agentID": {
+        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+        "type": "string"
+      },
+      "cursor": {
+        "maxLength": 512,
+        "type": "string"
+      },
+      "limit": {
+        "default": 50,
+        "maximum": 100,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "state": {
+        "enum": [
+          "queued",
+          "running",
+          "paused",
+          "completed",
+          "failed",
+          "cancelled",
+          "timedOut"
+        ],
+        "type": "string"
+      }
+    },
     "type": "object"
   },
   "runs.list.result": {
@@ -5124,10 +5305,17 @@
           "type": "object"
         },
         "type": "array"
+      },
+      "nextCursor": {
+        "type": [
+          "string",
+          "null"
+        ]
       }
     },
     "required": [
-      "items"
+      "items",
+      "nextCursor"
     ],
     "type": "object"
   },
@@ -5222,10 +5410,110 @@
     ],
     "type": "object"
   },
+  "runs.search.request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "agentID": {
+        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+        "type": "string"
+      },
+      "cursor": {
+        "maxLength": 512,
+        "type": "string"
+      },
+      "limit": {
+        "default": 50,
+        "maximum": 100,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "state": {
+        "enum": [
+          "queued",
+          "running",
+          "paused",
+          "completed",
+          "failed",
+          "cancelled",
+          "timedOut"
+        ],
+        "type": "string"
+      }
+    },
+    "type": "object"
+  },
+  "runs.search.result": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "items": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "eventSequence": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "excerpt": {
+              "maxLength": 1000,
+              "type": "string"
+            },
+            "matchOffset": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "runID": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+              "type": "string"
+            },
+            "segment": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "runID",
+            "eventSequence",
+            "segment",
+            "excerpt",
+            "matchOffset"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "nextCursor": {
+        "type": [
+          "string",
+          "null"
+        ]
+      }
+    },
+    "required": [
+      "items",
+      "nextCursor"
+    ],
+    "type": "object"
+  },
   "runs.transcript.request": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
-    "properties": {},
+    "properties": {
+      "cursor": {
+        "maxLength": 512,
+        "type": "string"
+      },
+      "limit": {
+        "default": 50,
+        "maximum": 100,
+        "minimum": 1,
+        "type": "integer"
+      }
+    },
     "type": "object"
   },
   "runs.transcript.result": {
@@ -5428,10 +5716,74 @@
           "type": "object"
         },
         "type": "array"
+      },
+      "nextCursor": {
+        "type": [
+          "string",
+          "null"
+        ]
       }
     },
     "required": [
-      "items"
+      "items",
+      "nextCursor"
+    ],
+    "type": "object"
+  },
+  "runs.verify.request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "bundle": {
+        "maxLength": 4096,
+        "minLength": 1,
+        "type": "string"
+      }
+    },
+    "type": "object"
+  },
+  "runs.verify.result": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "checks": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "errors": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "lastEventSequence": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "revision": {
+        "type": [
+          "number",
+          "null"
+        ]
+      },
+      "runID": {
+        "type": "string"
+      },
+      "valid": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "runID",
+      "valid",
+      "checks",
+      "errors",
+      "revision",
+      "lastEventSequence"
     ],
     "type": "object"
   },
@@ -7052,9 +7404,16 @@
           "type": "object"
         },
         "type": "array"
+      },
+      "nextCursor": {
+        "type": [
+          "string",
+          "null"
+        ]
       }
     },
     "required": [
+      "nextCursor",
       "files"
     ],
     "type": "object"

@@ -42,6 +42,7 @@ import {
   transcriptEntrySchema,
   acceptanceSchema,
   statusSchema,
+  searchMatchSchema,
 } from "./contracts.js";
 import { toolDefinitionSchema } from "./registry.js";
 export type CommandContext = {
@@ -195,6 +196,7 @@ const managed = (
   operand: Definition["operand"] = "none",
   confirmation = false,
   scope: Definition["scope"] = "management",
+  options: string[] = [],
 ) =>
   define(
     name,
@@ -204,7 +206,7 @@ const managed = (
     mutates,
     result,
     (c) => management(c, name, scope),
-    { confirmation },
+    { confirmation, options },
   );
 const helpDefinitionSchema = z.object({
   name: z.string(),
@@ -326,6 +328,46 @@ define(
   capabilitiesSchema,
   (c) => capabilities(c.home),
 );
+define(
+  "presence sample",
+  "Sample this desktop's presence without requiring a daemon or runtime home",
+  "local",
+  "none",
+  false,
+  statusSchema.shape.presence,
+  async () => {
+    try {
+      return await samplePresence();
+    } catch {
+      checkpoint();
+      return {
+        state: "present",
+        reason: "samplingFailure",
+        samplingHealthy: false,
+        observedAt: new Date().toISOString(),
+        diagnostic: "Presence sampling failed",
+      };
+    }
+  },
+);
+define(
+  "presence status",
+  "Inspect the daemon's latest presence sample and interaction cooldown",
+  "daemon",
+  "none",
+  false,
+  statusSchema.pick({ presence: true, cooldownUntil: true }),
+  async (c) => {
+    const status = statusSchema.parse(
+      await control(
+        c.home,
+        { command: "daemon status" },
+        remainingTimeout(90000),
+      ),
+    );
+    return { presence: status.presence, cooldownUntil: status.cooldownUntil };
+  },
+);
 managed(
   "auth rotate",
   "Replace the HTTP root token and return it once",
@@ -410,6 +452,7 @@ for (const action of [
       ? serviceStatus
       : action === "logs"
         ? z.object({
+            nextCursor: z.string().nullable(),
             files: z.array(
               z.object({
                 path: z.string(),
@@ -428,7 +471,12 @@ for (const action of [
     result,
     async (c) => {
       if (action === "logs")
-        return startupLogs(c.home, Number(c.values.lines ?? 100));
+        return startupLogs(
+          c.home,
+          Number(c.values.lines ?? 100),
+          Number(c.values.limit ?? 100),
+          c.values.cursor as string | undefined,
+        );
       if (["install", "start", "restart"].includes(action)) {
         const state = await readJSON(
           path.join(c.home, "config.json"),
@@ -464,7 +512,7 @@ for (const action of [
     },
     {
       confirmation: action === "uninstall",
-      options: action === "logs" ? ["lines"] : [],
+      options: action === "logs" ? ["lines", "limit", "cursor"] : [],
     },
   );
 }
@@ -543,11 +591,15 @@ managed(
 managed(
   "runs list",
   "List durable run summaries",
-  z.object({ items: z.array(runSummarySchema) }),
+  z.object({
+    items: z.array(runSummarySchema),
+    nextCursor: z.string().nullable(),
+  }),
   false,
   "none",
   false,
   "daemon",
+  ["limit", "cursor", "agent", "state"],
 );
 managed(
   "runs get",
@@ -561,11 +613,59 @@ managed(
 managed(
   "runs transcript",
   "Read committed run evidence",
-  z.object({ items: z.array(transcriptEntrySchema) }),
+  z.object({
+    items: z.array(transcriptEntrySchema),
+    nextCursor: z.string().nullable(),
+  }),
   false,
   "required",
   false,
   "daemon",
+  ["limit", "cursor"],
+);
+managed(
+  "runs search",
+  "Search saved messages, attachments and results with bounded excerpts",
+  z.object({
+    items: z.array(searchMatchSchema),
+    nextCursor: z.string().nullable(),
+  }),
+  false,
+  "required",
+  false,
+  "daemon",
+  ["limit", "cursor", "agent", "state"],
+);
+managed(
+  "runs export",
+  "Export a committed run snapshot and checksum manifest to a new directory",
+  z.object({
+    runID: z.string(),
+    destination: z.string(),
+    changed: z.boolean(),
+    revision: z.number(),
+    lastEventSequence: z.number(),
+  }),
+  true,
+  "required",
+  false,
+  "management",
+);
+managed(
+  "runs verify",
+  "Validate saved run integrity or an exported bundle without modifying it",
+  z.object({
+    runID: z.string(),
+    valid: z.boolean(),
+    checks: z.array(z.string()),
+    errors: z.array(z.string()),
+    revision: z.number().nullable(),
+    lastEventSequence: z.number().nullable(),
+  }),
+  false,
+  "required",
+  false,
+  "management",
 );
 managed(
   "runs reply",

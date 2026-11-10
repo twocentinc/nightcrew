@@ -10,6 +10,8 @@ Keep it independent of the client application and Guildscribe runtime imports.
 shared deadlines and diagnostics. `src/daemon.ts` owns the private control socket.
 `src/management.ts` implements configuration and run management operations.
 `src/diagnostics.ts` owns capability and readiness reporting.
+`src/runArtifacts.ts` owns create-only run bundles, checksum manifests and
+read-only run/bundle integrity verification.
 `src/logging.ts` owns the operational event/field allowlist, severity filtering,
 rate limiting and private bounded log rotation. Never log prompts, responses,
 tool data, run lifecycle, configuration dumps, or facts reconstructible from

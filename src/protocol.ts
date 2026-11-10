@@ -9,10 +9,13 @@ import {
   slotSchema,
   skillSchema,
   userMessageSchema,
+  pageSchema,
+  id,
+  runState,
 } from "./contracts.js";
 import { toolDefinitionSchema } from "./registry.js";
 export const PROTOCOL_VERSION = 1;
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 9;
 export const packageVersion = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ).version as string;
@@ -161,6 +164,13 @@ export function normalizeError(
       9,
       "never",
     );
+  if (e?.status === 410)
+    return new NightcrewError(
+      "resource.cursorExpired",
+      "Cursor expired; restart pagination",
+      9,
+      "safe",
+    );
   if (e?.status === 404 || e?.code === "not_found")
     return new NightcrewError("resource.notFound", "Resource not found", 7);
   if (e?.status === 400)
@@ -188,6 +198,19 @@ export function normalizeError(
 const revision = z.number().int().positive();
 const object = z.strictObject({});
 export const requestSchemas: Record<string, z.ZodType> = {
+  "runs list": pageSchema.extend({
+    agentID: id.optional(),
+    state: runState.optional(),
+  }),
+  "runs transcript": pageSchema,
+  "runs search": pageSchema.extend({
+    agentID: id.optional(),
+    state: runState.optional(),
+  }),
+  "runs export": z.strictObject({ destination: z.string().min(1).max(4096) }),
+  "runs verify": z.strictObject({
+    bundle: z.string().min(1).max(4096).optional(),
+  }),
   init: configSchema
     .omit({ rootTokenHash: true, revision: true })
     .partial()
