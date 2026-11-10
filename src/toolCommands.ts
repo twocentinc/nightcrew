@@ -77,7 +77,28 @@ async function main() {
       const request = z
         .strictObject({ limit: z.number().int().min(1).max(100).default(20) })
         .parse(input);
-      return (await cli(["runs", "list"], { ...request, agentID })).items;
+      const prior: any[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await cli(["runs", "list"], {
+          agentID,
+          limit: 100,
+          ...(cursor ? { cursor } : {}),
+        });
+        prior.push(
+          ...page.items.filter(
+            (r: any) =>
+              r.runID !== runID &&
+              ["completed", "failed", "timedOut", "cancelled"].includes(
+                r.state,
+              ),
+          ),
+        );
+        prior.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+        prior.splice(request.limit);
+        cursor = page.nextCursor ?? undefined;
+      } while (cursor);
+      return prior;
     }
     case "runs_transcript": {
       const request = z
@@ -90,6 +111,19 @@ async function main() {
       const { run } = await cli(["runs", "get", request.runID]);
       if (run.agent.agentID !== agentID)
         throw Error("History belongs to another agent");
+      if (
+        request.runID === runID &&
+        !["completed", "failed", "timedOut", "cancelled"].includes(run.state)
+      )
+        return {
+          ok: false,
+          error: {
+            code: "current_run_history",
+            message:
+              "This is your current conversation, already in context. Use runs_list for prior reports; do not reload this transcript.",
+          },
+        };
+      let characters = 0;
       let offset = 0,
         cursor: string | undefined;
       const items: unknown[] = [];
@@ -99,7 +133,41 @@ async function main() {
           ...(cursor ? { cursor } : {}),
         });
         for (const entry of page.items) {
-          if (offset++ >= request.offset) items.push(entry);
+          if (offset++ >= request.offset) {
+            // Bound nested tool results and thinking; full evidence remains in the CLI transcript.
+            const bounded = JSON.parse(
+              JSON.stringify(entry, (_key, value) =>
+                typeof value === "string" && value.length > 2000
+                  ? value.slice(0, 2000) +
+                    " [truncated; use CLI transcript for full evidence]"
+                  : value,
+              ),
+            );
+            const size = JSON.stringify(bounded).length;
+            if (!items.length && size > 12000) {
+              return [
+                {
+                  truncated: true,
+                  entryOffset: offset - 1,
+                  preview: JSON.stringify(bounded).slice(0, 10000),
+                  nextOffset: offset,
+                  message:
+                    "Entry exceeds the history budget; preview is partial. Use CLI transcript for full evidence.",
+                },
+              ];
+            }
+            if (characters + size > 12000) {
+              items.push({
+                truncated: true,
+                nextOffset: offset - 1,
+                message:
+                  "History page character budget reached; request nextOffset as offset if needed.",
+              });
+              return items;
+            }
+            items.push(bounded);
+            characters += size;
+          }
           if (items.length >= request.limit) return items;
         }
         cursor = page.nextCursor ?? undefined;

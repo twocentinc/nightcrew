@@ -1541,3 +1541,81 @@ for (const instant of [false, true]) {
     assert.equal(completed.messages.filter((m) => m.role === "tool").length, 3);
   });
 }
+
+test("history tools exclude the current nonterminal run", async (t) => {
+  const f = await fixture(t);
+  await f.request("PATCH", "/v1/agents/researcher", {
+    expectedRevision: 1,
+    changes: { mode: "agent-loop", toolIDs: ["runs_list", "runs_transcript"] },
+  });
+  const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
+    message: message(),
+  });
+  const run = await f.app.service.storage.read(submitted.body.runID);
+  const signal = new AbortController().signal;
+  const list = await f.app.service.invokeTool(run, "runs_list", "{}", signal);
+  assert.deepEqual(list, []);
+  const history = await f.app.service.invokeTool(
+    run,
+    "runs_transcript",
+    JSON.stringify({ runID: run.runID }),
+    signal,
+  );
+  assert.equal(history.ok, false);
+  assert.equal(history.error.code, "current_run_history");
+});
+
+test("worker history bounds long evidence while administrator transcripts remain complete", async (t) => {
+  const long = "evidence ".repeat(3000);
+  const f = await fixture(t, async () => ({
+    text: long,
+    toolCalls: [],
+    usage: { inputTokens: 1, outputTokens: 1 },
+  }));
+  await f.request("PATCH", "/v1/agents/researcher", {
+    expectedRevision: 1,
+    changes: { mode: "agent-loop", toolIDs: ["runs_transcript"] },
+  });
+  f.state.away = true;
+  await f.app.service.tick();
+  const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
+    message: message(),
+  });
+  const run = await until(async () => {
+    const r = await f.app.service.storage.read(submitted.body.runID);
+    return r.state === "completed" && r;
+  });
+  const output = await f.app.service.invokeTool(
+    run,
+    "runs_transcript",
+    JSON.stringify({ runID: run.runID, limit: 100 }),
+    new AbortController().signal,
+  );
+  assert(JSON.stringify(output).length < 12500);
+  assert(JSON.stringify(output).includes("truncated"));
+  assert.equal(run.result, long);
+  assert(
+    f.app.service.transcript(run).some((e) => e.message?.content === long),
+  );
+  // One large entry must advance the cursor instead of returning the same
+  // unpageable entry forever. The full administrator evidence stays intact.
+  run.messages.at(-1).toolCalls = Array.from({ length: 10 }, (_, index) => ({
+    callID: `large-${index}`,
+    name: "runs_transcript",
+    arguments: JSON.stringify({ evidence: long }),
+  }));
+  await f.app.service.storage.write(run);
+  const offset = f.app.service.transcript(run).findIndex(
+    (e) => e.message?.messageID === run.messages.at(-1).messageID,
+  );
+  assert(offset >= 0);
+  const oversized = await f.app.service.invokeTool(
+    run,
+    "runs_transcript",
+    JSON.stringify({ runID: run.runID, offset, limit: 100 }),
+    new AbortController().signal,
+  );
+  assert.equal(oversized[0].truncated, true);
+  assert.equal(oversized[0].nextOffset, offset + 1);
+  assert(JSON.stringify(oversized).length < 12500);
+});

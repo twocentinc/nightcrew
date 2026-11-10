@@ -278,3 +278,21 @@ stderr and invalid stdout are not included in these error messages.
 Cancellation, preemption, active-work deadlines, storage failures and global
 context/turn limits still stop or pause execution. They are not recoverable tool
 errors. Client-owned instant tools remain the client's responsibility.
+
+## Bounded worker history and compaction recovery
+
+The bundled runs_list tool returns prior terminal runs newest first, excluding
+its current run. runs_transcript rejects reads of the current nonterminal run,
+limits long string fields to 2000 characters with explicit truncation markers,
+and bounds each page to approximately 12000 characters. A budget-limited page
+includes nextOffset for continuation. Full transcripts remain available through
+the administrator CLI. These limits prevent recursive conversation duplication.
+
+Compaction accepts additional JSON metadata alongside a nonempty string summary;
+only the validated summary is used. Missing, empty, non-string or oversized
+summaries remain invalid. Skill guidance distinguishes the skillIDs instruction
+request from files requests, which must use actual manifest resource paths.
+
+Compaction also normalizes a JSON string or an exact fenced JSON value before
+validating the summary. Arbitrary prose is not extracted as JSON. Invalid tool arguments return bounded schema-validation details so
+the model can correct fields and enum values without guessing.

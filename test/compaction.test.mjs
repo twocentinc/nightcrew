@@ -344,3 +344,40 @@ test("compactor can switch models then restore the parent model", async (t) => {
     ["q", "other", "q"],
   );
 });
+
+test("compaction accepts harmless metadata but rejects unusable summaries", async () => {
+  const { summarySchema } = await import("../dist/compaction.js");
+  assert.deepEqual(
+    summarySchema.parse({ summary: " useful ", version: 1, extra: { a: 1 } }),
+    { summary: "useful" },
+  );
+  for (const value of [
+    { version: 1 },
+    { summary: "" },
+    { summary: "  " },
+    { summary: 12 },
+    { summary: null },
+    { summary: "x".repeat(262145) },
+  ])
+    assert.equal(summarySchema.safeParse(value).success, false);
+});
+
+test("compaction normalizes JSON strings and fenced JSON without accepting arbitrary prose", async () => {
+  const { parseCompactionSummary } = await import("../dist/compaction.js");
+  assert.equal(parseCompactionSummary('"summary text"'), "summary text");
+  assert.equal(
+    parseCompactionSummary(
+      '```json\n{"summary":"summary text","version":1}\n```',
+    ),
+    "summary text",
+  );
+  for (const value of [
+    "summary prose",
+    '""',
+    "null",
+    "[]",
+    '{"version":1}',
+    'prefix {"summary":"x"}',
+  ])
+    assert.throws(() => parseCompactionSummary(value));
+});

@@ -75,9 +75,11 @@ export const builtinTools: ToolDefinition[] = (
     argv: [fileURLToPath(new URL("./toolCommands.js", import.meta.url)), name],
     description: {
       load_skills:
-        "Discover selected skills, load their instructions, and read references or assets on demand.",
-      runs_list: "List recent runs of this agent.",
-      runs_transcript: "Read a page of a run belonging to this agent.",
+        'Read instructions with {"skillIDs":["ID"]}. Do not put instructions or SKILL.md in files. Read references/assets only using paths returned by the skill manifest.',
+      runs_list:
+        "List prior terminal runs of this agent, newest first; excludes the current run.",
+      runs_transcript:
+        "Read a bounded page of a prior run belonging to this agent. Do not reread the current active conversation.",
     }[name],
     parameters: parameters[name],
   }),
@@ -346,10 +348,22 @@ export async function executeModelTool(
     input = JSON.parse(args);
     input = z.fromJSONSchema(tool.parameters).parse(input);
     resolveToolArgv(tool.argv, input);
-  } catch {
+  } catch (error) {
     return failure(
       "invalid_tool_arguments",
-      "Arguments must be valid JSON matching the tool schema, including required argv parameters. Correct the arguments before trying again.",
+      "Arguments must be valid JSON matching the tool schema, including required argv parameters. Correct the arguments before trying again." +
+        (error instanceof z.ZodError
+          ? " Validation: " +
+            JSON.stringify(
+              error.issues.slice(0, 4).map(({ path, message }) => ({
+                path,
+                message,
+              })),
+            ).slice(0, 2000)
+          : "") +
+        (tool.toolID === "load_skills"
+          ? ' Read instructions with {"skillIDs":["ID"]}, not a file named instructions or SKILL.md.'
+          : ""),
       "not_started",
     );
   }

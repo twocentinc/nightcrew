@@ -19,9 +19,19 @@ export const compactionSchema = z.strictObject({
     }),
   ]),
 });
-export const summarySchema = z.strictObject({
+// Ignore harmless metadata while validating the required summary strictly.
+export const summarySchema = z.object({
   summary: z.string().trim().min(1).max(262144),
 });
+// Normalize JSON presentation only; do not infer a summary from arbitrary prose.
+export function parseCompactionSummary(output: string) {
+  const text = output.trim();
+  const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n```$/.exec(text);
+  const value: unknown = JSON.parse(fenced?.[1] ?? text);
+  return summarySchema.parse(
+    typeof value === "string" ? { summary: value } : value,
+  ).summary;
+}
 export const checkpointSchema = z.strictObject({
   checkpointID: z.uuid(),
   at: z.iso.datetime(),
@@ -159,7 +169,7 @@ export async function executeCompactionScript(
       try {
         if (failure) throw failure;
         if (code !== 0) throw Error("Compaction script failed");
-        resolve(summarySchema.parse(JSON.parse(output)).summary);
+        resolve(parseCompactionSummary(output));
       } catch (error) {
         reject(error);
       }

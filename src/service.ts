@@ -4,6 +4,7 @@ import {
   compactionRequest,
   executeCompactionScript,
   summarySchema,
+  parseCompactionSummary,
 } from "./compaction.js";
 import {
   executionSlots,
@@ -2081,9 +2082,7 @@ export class Service {
         if (this.activities.has(child.runID)) continue;
         if (child.state === "completed") {
           try {
-            pending.summary = summarySchema.parse(
-              JSON.parse(child.result ?? ""),
-            ).summary;
+            pending.summary = parseCompactionSummary(child.result ?? "");
             pending.status = "ready";
             parent.pauseReason = "compaction";
           } catch {

@@ -153,6 +153,21 @@ test("model tool boundary returns bounded errors without replaying failures or s
     (await executeModelTool(definition, '{"extra":true}', signal)).error.code,
     "invalid_tool_arguments",
   );
+  const invalidAction = await executeModelTool(
+    {
+      ...definition,
+      parameters: {
+        type: "object",
+        properties: { action: { type: "string", enum: ["tables", "schema"] } },
+        required: ["action"],
+      },
+    },
+    '{"action":"help"}',
+    signal,
+  );
+  assert.match(invalidAction.error.message, /tables/);
+  assert.match(invalidAction.error.message, /schema/);
+  assert.match(invalidAction.error.message, /action/);
   for (const [argv, timeoutMs, code] of [
     [["-e", "process.exit(2)"], 1000, "tool_execution_failed"],
     [["-e", "console.log('not json')"], 1000, "invalid_tool_output"],
