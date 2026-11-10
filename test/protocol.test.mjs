@@ -1,0 +1,170 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
+import { snapshots } from "../scripts/contracts.mjs";
+import { commandDefinitions, help, exportSchemas } from "../dist/commands.js";
+import { parseCLI } from "../dist/cli.js";
+import { Execution, withoutExecution, checkpoint } from "../dist/execution.js";
+import { Storage } from "../dist/storage.js";
+const cli = new URL("../dist/cli.js", import.meta.url).pathname;
+const call = (args, { keepStdin = false } = {}) =>
+  new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [cli, ...args], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "",
+      stderr = "";
+    child.stdout.on("data", (c) => (stdout += c));
+    child.stderr.on("data", (c) => (stderr += c));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      try {
+        resolve({ code, stdout, stderr, envelope: JSON.parse(stdout) });
+      } catch (e) {
+        reject(e);
+      }
+    });
+    if (!keepStdin) child.stdin.end();
+  });
+test("versioned command catalog and schemas stay aligned with parser and help", async () => {
+  await snapshots();
+  const schemas = exportSchemas();
+  for (const definition of commandDefinitions) {
+    assert.ok(help().commands.includes(definition.name));
+    assert.ok(schemas[definition.name.replaceAll(" ", ".") + ".request"]);
+    assert.ok(schemas[definition.name.replaceAll(" ", ".") + ".result"]);
+    const parsed = parseCLI([
+      ...definition.name.split(" "),
+      ...(definition.operand === "required" ? ["fixture"] : []),
+    ]);
+    assert.equal(parsed.definition, definition);
+  }
+  assert.ok(help("models").commands.every((c) => c.startsWith("models ")));
+  assert.equal(
+    parseCLI(["models", "create", "--help"]).helpScope,
+    "models create",
+  );
+  assert.throws(() => parseCLI(["version", "--yes"]), /not supported/);
+  assert.throws(
+    () => parseCLI(["version", "--quiet", "--verbose"]),
+    /cannot be combined/,
+  );
+});
+test("errors preserve correlation, classify retries and keep stdout machine readable", async () => {
+  const invalid = await call(["unknown", "--request-id=supervisor-turn"]);
+  assert.equal(invalid.code, 2);
+  assert.equal(invalid.envelope.requestID, "supervisor-turn");
+  assert.equal(invalid.envelope.error.retrySafety, "never");
+  const denied = await call(["auth", "rotate"]);
+  assert.equal(denied.code, 8);
+  const verbose = await call(["version", "--verbose"]);
+  assert.equal(verbose.stdout.trim().split("\n").length, 1);
+  assert.equal(
+    JSON.parse(verbose.stderr.trim().split("\n")[0]).event,
+    "command.started",
+  );
+  assert.equal((await call(["version", "--quiet"])).stderr, "");
+  const timeout = await call(["init", "--request", "-", "--timeout", "25ms"], {
+    keepStdin: true,
+  });
+  assert.equal(timeout.code, 6);
+  assert.equal(timeout.envelope.error.retrySafety, "unsafe");
+  const dry = await call(
+    ["init", "--dry-run", "--request", "-", "--timeout", "25ms"],
+    { keepStdin: true },
+  );
+  assert.equal(dry.envelope.error.retrySafety, "safe");
+});
+test("expired queued writes cannot commit; detached work survives a request deadline", async () => {
+  const storage = new Storage("/unused");
+  let release;
+  let wrote = false;
+  const first = storage.exclusive(
+    () => new Promise((resolve) => (release = resolve)),
+  );
+  const execution = new Execution(20, true);
+  await assert.rejects(
+    execution.run(() =>
+      storage.exclusive(async () => {
+        wrote = true;
+      }),
+    ),
+    (e) => e.code === "runtime.timeout" && e.retrySafety === "unsafe",
+  );
+  release();
+  await first;
+  await delay(10);
+  assert.equal(wrote, false);
+  let background;
+  await new Execution(20).run(async () => {
+    background = withoutExecution(async () => {
+      await delay(40);
+      checkpoint();
+      return "completed";
+    });
+  });
+  assert.equal(await background, "completed");
+});
+test("diagnostics report missing configuration without creating a runtime home", async () => {
+  const temp = await mkdtemp(path.join(tmpdir(), "nightcrew-diagnostics-"));
+  try {
+    const home = path.join(temp, "absent");
+    const result = await call(["doctor", "--home", home]);
+    assert.equal(result.envelope.ok, true);
+    assert.equal(result.envelope.result.healthy, false);
+    assert.equal(result.envelope.result.serviceReady, null);
+    assert.ok(
+      result.envelope.result.checks.some(
+        (c) => c.id === "configuration" && c.status === "fail",
+      ),
+    );
+    await assert.rejects(readFile(path.join(home, "config.json")), {
+      code: "ENOENT",
+    });
+  } finally {
+    await rm(temp, { recursive: true, force: true });
+  }
+});
+
+test("bundled examples use ordinary validated commands and remain opt-in", async () => {
+  const { requestSchemas } = await import("../dist/protocol.js");
+  const { readFile } = await import("node:fs/promises");
+  const agent = requestSchemas["agents create"].parse(
+    JSON.parse(
+      await readFile(
+        new URL("../examples/hello-world/agent.json", import.meta.url),
+        "utf8",
+      ),
+    ),
+  ).agent;
+  assert.equal(agent.enabled, false);
+  assert.equal(agent.thinking, false);
+  assert.deepEqual(agent.toolIDs, []);
+  for (const name of ["turn.json", "turn-thinking.json"])
+    requestSchemas["agents run"].parse(
+      JSON.parse(
+        await readFile(
+          new URL("../examples/hello-world/" + name, import.meta.url),
+          "utf8",
+        ),
+      ),
+    );
+});
+
+test("Granite example uses a disabled single-turn audio agent", async () => {
+  const { requestSchemas } = await import("../dist/protocol.js");
+  const request = JSON.parse(
+    await readFile(
+      new URL("../examples/granite-transcription/agent.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const { agent } = requestSchemas["agents create"].parse(request);
+  assert.equal(agent.mode, "single-turn");
+  assert.equal(agent.enabled, false);
+  assert.equal(agent.modelID, "granite");
+});

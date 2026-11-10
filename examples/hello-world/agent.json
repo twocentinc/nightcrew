@@ -1,0 +1,16 @@
+{
+  "agent": {
+    "agentID": "hello-world",
+    "name": "hello world",
+    "systemPrompt": "Respond with exactly: Hello world! Do not explain or use tools.",
+    "mode": "single-turn",
+    "modelID": "qwen",
+    "slotID": "instant",
+    "skillIDs": [],
+    "toolIDs": [],
+    "thinking": false,
+    "maxOutputTokens": 32,
+    "timeoutMs": 180000,
+    "enabled": false
+  }
+}

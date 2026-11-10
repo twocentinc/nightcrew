@@ -1,0 +1,283 @@
+import {
+  remainingTimeout,
+  executionSignal,
+  checkpoint,
+  pause,
+} from "./execution.js";
+import { NightcrewError, invalidInput, timeoutFailure } from "./protocol.js";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { homedir } from "node:os";
+import {
+  mkdir,
+  readFile,
+  writeFile,
+  rename,
+  unlink,
+  lstat,
+  open,
+} from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
+export const label = "dev.nightcrew.daemon";
+export const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+export const cliFile = path.join(projectRoot, "dist", "cli.js");
+export const plistPath = path.join(
+  homedir(),
+  "Library",
+  "LaunchAgents",
+  label + ".plist",
+);
+const exec = promisify(execFile);
+const escape = (s: string) =>
+  s
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+export function renderPlist(home: string) {
+  const executablePath = [
+    path.dirname(process.execPath),
+    ...(process.env.PATH ?? "").split(path.delimiter),
+  ].filter((p) => path.isAbsolute(p));
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>Label</key><string>${label}</string>
+<key>ProgramArguments</key><array><string>${escape(process.execPath)}</string><string>${escape(cliFile)}</string><string>daemon</string><string>run</string><string>--home</string><string>${escape(home)}</string></array>
+<key>WorkingDirectory</key><string>${escape(projectRoot)}</string>
+<key>EnvironmentVariables</key><dict><key>PATH</key><string>${escape([...new Set(executablePath)].join(path.delimiter))}</string></dict>
+<key>RunAtLoad</key><true/>
+<key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+<key>ProcessType</key><string>Standard</string><key>ThrottleInterval</key><integer>30</integer><key>Umask</key><integer>63</integer>
+<key>ExitTimeOut</key><integer>75</integer>
+<key>StandardOutPath</key><string>${escape(path.join(home, "logs", "launchd.stdout.log"))}</string>
+<key>StandardErrorPath</key><string>${escape(path.join(home, "logs", "launchd.stderr.log"))}</string>
+</dict></plist>\n`;
+}
+export type Runner = (
+  args: string[],
+) => Promise<{ code: number; stdout: string }>;
+export const launchctl: Runner = async (args) => {
+  try {
+    const { stdout } = await exec("/bin/launchctl", args, {
+      timeout: remainingTimeout(10000),
+      signal: executionSignal(),
+      maxBuffer: 1024 * 1024,
+    });
+    return { code: 0, stdout };
+  } catch (e) {
+    const error = e as Error & { code?: number | string; stdout?: string };
+    if (typeof error.code !== "number") {
+      checkpoint();
+      throw new NightcrewError(
+        "startup.launchctlUnavailable",
+        "launchctl unavailable",
+        5,
+      );
+    }
+    return { code: error.code, stdout: error.stdout ?? "" };
+  }
+};
+function uid() {
+  if (process.platform !== "darwin" || !process.getuid?.())
+    throw new NightcrewError(
+      "startup.unsupportedHost",
+      "LaunchAgent management requires a non-root macOS user",
+      4,
+    );
+  return process.getuid();
+}
+async function installed() {
+  try {
+    const stat = await lstat(plistPath);
+    if (
+      !stat.isFile() ||
+      stat.isSymbolicLink() ||
+      stat.uid !== process.getuid?.()
+    )
+      throw Error("Invalid LaunchAgent file");
+    return await readFile(plistPath, "utf8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw e;
+  }
+}
+export async function startupStatus(runner = launchctl) {
+  const configured = await installed();
+  const result = await runner(["print", `gui/${uid()}/${label}`]);
+  return {
+    label,
+    plistPath,
+    configured: configured !== null,
+    loaded: result.code === 0,
+    running: result.code === 0 && /^\s*pid\s*=\s*\d+/m.test(result.stdout),
+    pid:
+      result.code === 0
+        ? Number(/^\s*pid\s*=\s*(\d+)/m.exec(result.stdout)?.[1]) || null
+        : null,
+    state: /^\s*state\s*=\s*(.+)$/m.exec(result.stdout)?.[1]?.trim() ?? null,
+    lastExitStatus:
+      /^\s*last exit code\s*=\s*(-?\d+)/m.exec(result.stdout)?.[1] ?? null,
+  };
+}
+export async function startup(
+  action: string,
+  home: string,
+  options: { dryRun?: boolean; yes?: boolean; timeoutMs: number },
+  runner = launchctl,
+) {
+  const target = `gui/${uid()}/${label}`;
+  const old = await installed();
+  const expected = renderPlist(home);
+  if (old && !old.includes(`<string>${escape(home)}</string>`))
+    throw new NightcrewError(
+      "startup.conflict",
+      "LaunchAgent belongs to another runtime home",
+      9,
+    );
+  if (action === "status") return startupStatus(runner);
+  const before = await startupStatus(runner);
+  if (!old && before.loaded)
+    throw Error(
+      "Conflicting loaded LaunchAgent without the expected registration",
+    );
+  if (options.dryRun)
+    return {
+      changed: false,
+      action,
+      label,
+      plistPath,
+      ...(action === "install" ? { plist: expected } : {}),
+    };
+  const required = async (args: string[]) => {
+    checkpoint();
+    const r = await runner(args);
+    if (r.code !== 0)
+      throw new NightcrewError(
+        "startup.launchctlFailed",
+        "launchctl operation failed",
+        5,
+        "unsafe",
+        { operation: args[0]!, outcomeUnknown: true },
+      );
+  };
+  const stop = async () => {
+    const status = await startupStatus(runner);
+    if (!status.loaded) return;
+    await required(["bootout", target]);
+    const deadline = Date.now() + remainingTimeout(options.timeoutMs);
+    while (Date.now() < deadline) {
+      const current = await startupStatus(runner);
+      let alive = false;
+      if (status.pid)
+        try {
+          process.kill(status.pid, 0);
+          alive = true;
+        } catch {}
+      if (!current.loaded && !alive) return;
+      await pause(200);
+    }
+    throw timeoutFailure(true);
+  };
+  if (action === "install") {
+    if (old && old !== expected)
+      throw Error(
+        "Conflicting registration; uninstall explicitly before replacing",
+      );
+    await mkdir(path.join(home, "logs"), { recursive: true, mode: 0o700 });
+    await mkdir(path.dirname(plistPath), { recursive: true });
+    if (!old) {
+      const temp = plistPath + "." + randomUUID() + ".tmp";
+      await writeFile(temp, expected, { flag: "wx", mode: 0o600 });
+      await exec("/usr/bin/plutil", ["-lint", temp], {
+        timeout: remainingTimeout(10000),
+        signal: executionSignal(),
+      });
+      checkpoint();
+      await rename(temp, plistPath);
+    }
+    const status = await startupStatus(runner);
+    if (!status.loaded) {
+      await required(["enable", target]);
+      await required(["bootstrap", `gui/${uid()}`, plistPath]);
+    }
+  } else if (action === "stop") {
+    await stop();
+  } else if (action === "uninstall") {
+    if (!options.yes)
+      throw new NightcrewError(
+        "cli.confirmationRequired",
+        "Uninstall requires --yes",
+        8,
+      );
+    await stop();
+    if (old) await unlink(plistPath);
+  } else if (action === "start" || action === "restart") {
+    if (!old)
+      throw new NightcrewError(
+        "startup.notInstalled",
+        "Run startup install first",
+        7,
+      );
+    if (action === "restart") await stop();
+    const status = await startupStatus(runner);
+    if (!status.loaded) {
+      await required(["enable", target]);
+      await required(["bootstrap", `gui/${uid()}`, plistPath]);
+    } else if (!status.running) await required(["kickstart", target]);
+  } else throw Error("Unknown startup command");
+  const changed =
+    action === "install"
+      ? !old || !before.loaded
+      : action === "stop"
+        ? before.loaded
+        : action === "uninstall"
+          ? !!old || before.loaded
+          : action === "start"
+            ? !before.running
+            : true;
+  return { changed, ...(await startupStatus(runner)) };
+}
+export async function startupLogs(home: string, lines: number) {
+  if (!Number.isInteger(lines) || lines < 1 || lines > 10000)
+    throw invalidInput("lines must be 1..10000");
+  const files = [];
+  for (const name of [
+    "daemon.jsonl",
+    ...Array.from({ length: 9 }, (_, i) => "daemon.jsonl." + (i + 1)),
+    "launchd.stdout.log",
+    "launchd.stderr.log",
+  ]) {
+    const file = path.join(home, "logs", name);
+    let contents = "";
+    let truncated = false;
+    try {
+      const stat = await lstat(file);
+      if (!stat.isFile() || stat.isSymbolicLink())
+        throw Error("Invalid log file");
+      const handle = await open(file, "r");
+      try {
+        const bytes = Math.min(stat.size, 1024 * 1024);
+        const data = Buffer.alloc(bytes);
+        await handle.read(data, 0, bytes, stat.size - bytes);
+        contents = data.toString("utf8");
+        truncated = stat.size > bytes;
+      } finally {
+        await handle.close();
+      }
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+      if (name.startsWith("daemon.jsonl")) continue;
+    }
+    files.push({
+      path: file,
+      lines: contents.trimEnd().split(/\r?\n/).slice(-lines),
+      truncated,
+    });
+  }
+  return { files };
+}

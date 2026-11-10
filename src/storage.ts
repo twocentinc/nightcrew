@@ -1,0 +1,395 @@
+import type { OperationalLog } from "./logging.js";
+import { NightcrewError } from "./protocol.js";
+import { checkpoint } from "./execution.js";
+import { createHash, randomUUID, randomBytes } from "node:crypto";
+import { constants } from "node:fs";
+import {
+  mkdir,
+  open,
+  lstat,
+  readFile,
+  readdir,
+  rename,
+  unlink,
+} from "node:fs/promises";
+import path from "node:path";
+import { type ZodType } from "zod";
+import {
+  runSchema,
+  storeSchema,
+  validateConfig,
+  type Store,
+  type Run,
+  type Config,
+} from "./contracts.js";
+
+export const tokenHash = (token: string) =>
+  createHash("sha256").update(token).digest("hex");
+export const canonical = (x: unknown): string => {
+  if (Array.isArray(x)) return "[" + x.map(canonical).join(",") + "]";
+  if (x && typeof x === "object")
+    return (
+      "{" +
+      Object.entries(x)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => JSON.stringify(k) + ":" + canonical(v))
+        .join(",") +
+      "}"
+    );
+  return JSON.stringify(x);
+};
+export type Summary = Pick<
+  Run,
+  | "runID"
+  | "revision"
+  | "createdAt"
+  | "updatedAt"
+  | "state"
+  | "segment"
+  | "activeMs"
+  | "pauseReason"
+> & { agentID: string; remainingMs: number };
+export const summarize = (r: Run): Summary => ({
+  runID: r.runID,
+  agentID: r.agent.agentID,
+  revision: r.revision,
+  createdAt: r.createdAt,
+  updatedAt: r.updatedAt,
+  state: r.state,
+  segment: r.segment,
+  activeMs: r.activeMs,
+  pauseReason: r.pauseReason,
+  remainingMs: Math.max(0, r.agent.timeoutMs - r.activeMs),
+});
+async function regular(file: string, max: number) {
+  const stat = await lstat(file);
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.size > max)
+    throw new Error("Invalid state file");
+  if (
+    process.getuid &&
+    (stat.uid !== process.getuid() || (stat.mode & 0o077) !== 0)
+  )
+    throw new NightcrewError(
+      "config.invalidPermissions",
+      "State files must be owner-only",
+      3,
+    );
+}
+export async function readJSON<T>(
+  file: string,
+  schema: ZodType<T>,
+  max: number,
+): Promise<T> {
+  await regular(file, max);
+  const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    return schema.parse(JSON.parse(await handle.readFile("utf8")));
+  } finally {
+    await handle.close();
+  }
+}
+export async function atomicJSON(file: string, value: unknown, max: number) {
+  checkpoint();
+  const data = JSON.stringify(value);
+  if (Buffer.byteLength(data) > max) throw new Error("resource_limit");
+  const dir = path.dirname(file);
+  const temporary = path.join(dir, "." + randomUUID() + ".tmp");
+  const h = await open(temporary, "wx", 0o600);
+  try {
+    await h.writeFile(data);
+    await h.sync();
+  } finally {
+    await h.close();
+  }
+  try {
+    checkpoint();
+    await rename(temporary, file);
+    const d = await open(dir, "r");
+    try {
+      await d.sync();
+    } finally {
+      await d.close();
+    }
+  } catch (e) {
+    await unlink(temporary).catch(() => {});
+    throw e;
+  }
+}
+export class Storage {
+  store!: Store;
+  summaries = new Map<string, Summary>();
+  messages = new Map<string, { runID: string; index: number }>();
+  unreadable: string[] = [];
+  private tail: Promise<unknown> = Promise.resolve();
+  private ownsLock = false;
+  constructor(
+    readonly home: string,
+    private logger?: OperationalLog,
+  ) {
+    if (!path.isAbsolute(home))
+      throw new Error("Runtime home must be absolute");
+  }
+  async exclusive<T>(fn: () => Promise<T>): Promise<T> {
+    const checked = () => {
+      checkpoint();
+      return fn();
+    };
+    const operation = this.tail.then(checked, checked);
+    this.tail = operation.catch((error) => {
+      const code = (error as NodeJS.ErrnoException)?.code;
+      if (code && ["ENOSPC", "EIO", "EROFS", "EACCES", "EPERM"].includes(code))
+        this.logger?.emit("storage.writeFailed", {
+          reason:
+            code === "ENOSPC" ? "space" : code === "EIO" ? "io" : "permissions",
+        });
+    });
+    return operation;
+  }
+  async initialize(): Promise<void> {
+    checkpoint();
+    await mkdir(this.home, { recursive: true, mode: 0o700 });
+    const st = await lstat(this.home);
+    if (!st.isDirectory() || st.isSymbolicLink() || (st.mode & 0o077) !== 0)
+      throw new NightcrewError(
+        "config.invalidHome",
+        "Runtime home must be an owner-only directory",
+        3,
+      );
+    if (process.getuid && st.uid !== process.getuid())
+      throw new NightcrewError(
+        "config.invalidHome",
+        "Runtime home owner mismatch",
+        3,
+      );
+    const lock = path.join(this.home, "daemon.lock");
+    try {
+      const h = await open(lock, "wx", 0o600);
+      await h.writeFile(String(process.pid));
+      await h.close();
+      this.ownsLock = true;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      await regular(lock, 100);
+      const pid = Number(await readFile(lock, "utf8"));
+      if (!Number.isInteger(pid) || pid <= 0)
+        throw new NightcrewError(
+          "config.invalidLock",
+          "Invalid daemon lock",
+          3,
+        );
+      try {
+        process.kill(pid, 0);
+        throw new NightcrewError(
+          "daemon.homeInUse",
+          "Runtime home already in use",
+          9,
+        );
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+      }
+      await unlink(lock);
+      return this.initialize();
+    }
+    try {
+      this.store = await readJSON(
+        path.join(this.home, "config.json"),
+        storeSchema,
+        8 * 1024 * 1024,
+      );
+      validateConfig(this.store);
+      await mkdir(path.join(this.home, "runs"), { mode: 0o700 });
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") {
+        await this.close();
+        throw e;
+      }
+    }
+    try {
+      const dir = await lstat(path.join(this.home, "runs"));
+      if (
+        !dir.isDirectory() ||
+        dir.isSymbolicLink() ||
+        (dir.mode & 0o077) !== 0
+      )
+        throw new Error("Invalid runs directory");
+      for (const entry of await readdir(path.join(this.home, "runs"), {
+        withFileTypes: true,
+      })) {
+        if (entry.name.startsWith(".")) continue;
+        if (
+          !entry.isDirectory() ||
+          !/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(entry.name)
+        ) {
+          this.unreadable.push(entry.name);
+          continue;
+        }
+        try {
+          this.index(await this.read(entry.name));
+        } catch {
+          this.unreadable.push(entry.name);
+        }
+      }
+    } catch (e) {
+      await this.close();
+      throw e;
+    }
+  }
+  private index(r: Run) {
+    r.messages.forEach((m, index) => {
+      if (m.role !== "user") return;
+      const existing = this.messages.get(m.messageID);
+      if (existing && (existing.runID !== r.runID || existing.index !== index))
+        throw new Error("Duplicate message UUID");
+    });
+    this.summaries.set(r.runID, summarize(r));
+    r.messages.forEach((m, index) => {
+      if (m.role === "user")
+        this.messages.set(m.messageID, { runID: r.runID, index });
+    });
+  }
+  async reconcile() {
+    for (const e of await readdir(path.join(this.home, "runs"), {
+      withFileTypes: true,
+    })) {
+      if (e.name.startsWith(".")) continue;
+      if (!this.summaries.has(e.name) && !this.unreadable.includes(e.name)) {
+        try {
+          this.index(await this.read(e.name));
+        } catch {
+          this.unreadable.push(e.name);
+        }
+      }
+    }
+  }
+  async read(runID: string) {
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(runID))
+      throw new Error("Invalid run ID");
+    const dir = path.join(this.home, "runs", runID);
+    const stat = await lstat(dir);
+    if (
+      !stat.isDirectory() ||
+      stat.isSymbolicLink() ||
+      (stat.mode & 0o077) !== 0
+    )
+      throw new Error("Invalid run directory");
+    const r = await readJSON(
+      path.join(dir, "state.json"),
+      runSchema,
+      64 * 1024 * 1024,
+    );
+    if (r.runID !== runID) throw new Error("Run identity mismatch");
+    if (new Set(r.messages.map((x) => x.messageID)).size !== r.messages.length)
+      throw new Error("Duplicate transcript message");
+    if (r.events.some((x, i) => x.sequence !== i + 1))
+      throw new Error("Invalid event order");
+    const calls = new Set<string>();
+    const results = new Set<string>();
+    for (const m of r.messages) {
+      if (m.role !== "user" && m.attachments.length)
+        throw new Error("Invalid attachments");
+      if (m.toolCalls.length && m.role !== "assistant")
+        throw new Error("Invalid tool calls");
+      for (const c of m.toolCalls) {
+        if (calls.has(c.callID)) throw new Error("Duplicate tool call");
+        calls.add(c.callID);
+      }
+      if (m.role === "tool") {
+        if (
+          !m.toolCallID ||
+          !calls.has(m.toolCallID) ||
+          results.has(m.toolCallID)
+        )
+          throw new Error("Invalid tool result");
+        results.add(m.toolCallID);
+      } else if (m.toolCallID) throw new Error("Invalid tool result reference");
+    }
+    return r;
+  }
+  async write(r: Run, initial = false) {
+    r.version = 2;
+    runSchema.parse(r);
+    const root = path.join(this.home, "runs");
+    if (initial) {
+      const staging = path.join(root, "." + randomUUID());
+      await mkdir(staging, { mode: 0o700 });
+      await atomicJSON(path.join(staging, "state.json"), r, 56 * 1024 * 1024);
+      // The daemon lock serializes allocation; no externally supplied directory names.
+      await rename(staging, path.join(root, r.runID));
+      const h = await open(root, "r");
+      try {
+        await h.sync();
+      } finally {
+        await h.close();
+      }
+    } else
+      await atomicJSON(
+        path.join(root, r.runID, "state.json"),
+        r,
+        64 * 1024 * 1024,
+      );
+    this.index(r);
+  }
+  async saveConfig(next: Store) {
+    storeSchema.parse(next);
+    validateConfig(next);
+    await atomicJSON(
+      path.join(this.home, "config.json"),
+      next,
+      8 * 1024 * 1024,
+    );
+    this.store = next;
+  }
+  async close() {
+    await this.tail;
+    if (this.ownsLock) {
+      await unlink(path.join(this.home, "daemon.lock"));
+      this.ownsLock = false;
+    }
+  }
+}
+
+/** Bootstrap a new private home; the credential is returned once and never logged. */
+export async function initializeHome(
+  home: string,
+  settings: Omit<
+    Config,
+    "revision" | "rootTokenHash" | "interactionCooldownMs"
+  > & { interactionCooldownMs?: number },
+) {
+  checkpoint();
+  if (!path.isAbsolute(home)) throw Error("Runtime home must be absolute");
+  await mkdir(home, { recursive: true, mode: 0o700 });
+  const stat = await lstat(home);
+  if (
+    !stat.isDirectory() ||
+    stat.isSymbolicLink() ||
+    (stat.mode & 0o077) !== 0 ||
+    (process.getuid && stat.uid !== process.getuid())
+  )
+    throw new NightcrewError(
+      "config.invalidHome",
+      "Runtime home must be owner-only",
+      3,
+    );
+  const token = randomBytes(32).toString("base64url");
+  const store = storeSchema.parse({
+    version: 2,
+    config: {
+      interactionCooldownMs: 300000,
+      ...settings,
+      revision: 1,
+      rootTokenHash: tokenHash(token),
+    },
+    agents: [],
+    cooldownUntil: null,
+  });
+  validateConfig(store);
+  const file = await open(path.join(home, "config.json"), "wx", 0o600);
+  try {
+    await file.writeFile(JSON.stringify(store));
+    await file.sync();
+  } finally {
+    await file.close();
+  }
+  return { token };
+}

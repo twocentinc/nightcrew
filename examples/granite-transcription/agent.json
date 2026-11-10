@@ -1,0 +1,17 @@
+{
+  "agent": {
+    "agentID": "transcribe-audio",
+    "name": "transcribe audio",
+    "systemPrompt": "",
+    "mode": "single-turn",
+    "modelID": "granite",
+    "slotID": "granite",
+    "skillIDs": [],
+    "toolIDs": [],
+    "thinking": false,
+    "maxOutputTokens": 200,
+    "timeoutMs": 180000,
+    "enabled": false,
+    "temperature": 0
+  }
+}
