@@ -653,6 +653,9 @@ export class LlamaRuntime implements Runtime {
         await post("/apply-template", {
           messages: this.formatMessages(input.messages),
           tools: input.tools.map((t) => ({ type: "function", function: t })),
+          ...(input.sampling?.parallelToolCalls === undefined
+            ? {}
+            : { parallel_tool_calls: input.sampling.parallelToolCalls }),
           add_generation_prompt: true,
           chat_template_kwargs: { enable_thinking: input.thinking ?? true },
         }),
@@ -779,11 +782,22 @@ export class LlamaRuntime implements Runtime {
             cache_prompt: true,
             messages,
             tools: input.tools.map((t) => ({ type: "function", function: t })),
+            tool_choice: input.tools.length ? "auto" : "none",
             ...(input.thinking === undefined
               ? {}
               : { chat_template_kwargs: { enable_thinking: input.thinking } }),
             max_tokens: input.maxOutputTokens,
             temperature: input.temperature,
+            ...(input.sampling
+              ? {
+                  top_p: input.sampling.topP,
+                  top_k: input.sampling.topK,
+                  min_p: input.sampling.minP,
+                  presence_penalty: input.sampling.presencePenalty,
+                  repeat_penalty: input.sampling.repeatPenalty,
+                  parallel_tool_calls: input.sampling.parallelToolCalls,
+                }
+              : {}),
             stream: true,
             stream_options: { include_usage: true },
           }),

@@ -114,7 +114,18 @@ export const agentSchema = z.strictObject({
   skillIDs: z.array(id).max(40),
   toolIDs: z.array(toolID).max(64),
   thinking: z.boolean().default(true),
+  maxToolCalls: z.number().int().min(1).max(1000).optional(),
   temperature: z.number().min(0).max(2).default(0.7),
+  sampling: z
+    .strictObject({
+      topP: z.number().min(0).max(1).optional(),
+      topK: z.number().int().min(0).max(1000).optional(),
+      minP: z.number().min(0).max(1).optional(),
+      presencePenalty: z.number().min(-2).max(2).optional(),
+      repeatPenalty: z.number().min(0).max(2).optional(),
+      parallelToolCalls: z.boolean().optional(),
+    })
+    .optional(),
   maxOutputTokens: z.number().int().min(1).max(32768).default(4096),
   timeoutMs: z.number().int().min(1000).max(86400000),
   enabled: z.boolean(),

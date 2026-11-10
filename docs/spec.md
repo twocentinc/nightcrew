@@ -296,3 +296,31 @@ request from files requests, which must use actual manifest resource paths.
 Compaction also normalizes a JSON string or an exact fenced JSON value before
 validating the summary. Arbitrary prose is not extracted as JSON. Invalid tool arguments return bounded schema-validation details so
 the model can correct fields and enum values without guessing.
+
+
+## Agent sampling controls
+
+Agents optionally configure `sampling` with `topP` (0–1), `topK` (integer 0–1000),
+`minP` (0–1), `presencePenalty` (-2–2), `repeatPenalty` (0–2), and
+`parallelToolCalls` (boolean). Omitted values retain the backend defaults.
+Settings are captured in the run snapshot and forwarded to llama.cpp;
+`parallelToolCalls` also participates in template token counting. These controls
+apply to chat-agent inference, not audio models or client-owned instant requests. Temperature
+remains the existing separate agent property. Schema version 25 adds these
+optional controls without changing existing agent defaults.
+
+
+Agents may also set `maxToolCalls` (1–1000, omitted means no tool-call cap).
+It counts attempted calls since the latest user message, including builtin tools
+and invalid calls, and survives pauses/restarts in the transcript. Excess calls
+in a batch receive a nonfatal `tool_budget_exhausted` result without execution.
+After the budget, the next generation has no tools, explicit `tool_choice: none`,
+and an execution-limit instruction to answer from existing evidence. The limit
+resets on a new user turn. It does not discard evidence or bypass timeouts.
+
+Tool-budget finalization disables thinking so the remaining output budget is
+available for the visible answer. An agent-loop response with no tools and an
+empty visible answer receives one tool-free, thinking-disabled finalization
+attempt. If that is also empty, the run fails explicitly instead of completing
+with an empty report. Thinking remains in the transcript as evidence; it is never
+promoted into the final answer. Single-turn/audio behavior is unchanged.

@@ -421,7 +421,7 @@ test("managed llama router provisions from PATH and parses streamed completions"
   await writeFile(weights, "test");
   await writeFile(
     binary,
-    `#!${process.execPath}\nconst http=require('node:http');if(process.argv.includes('--help')){console.log('--models-preset --parallel --slots --kv-unified-per-slot');process.exit(0);}const port=Number(process.argv[process.argv.indexOf('--port')+1]);const server=http.createServer((req,res)=>{if(req.url==='/health'){res.end('{}');return;}if(req.url.startsWith('/slots')){res.end('[{"is_processing":false}]');return;}let body='';req.on('data',c=>body+=c);req.on('end',()=>{const input=JSON.parse(body);if(input.id_slot!==1||input.model!=='qwen'||input.chat_template_kwargs?.enable_thinking!==false||input.max_tokens!==32){res.writeHead(400);res.end();return;}res.setHeader('Content-Type','text/event-stream');res.write('data: '+JSON.stringify({choices:[{index:0,delta:{content:'hello'},finish_reason:null}]})+'\\n\\n');res.write('data: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'stop'}],usage:{prompt_tokens:2,completion_tokens:1}})+'\\n\\n');res.end('data: [DONE]\\n\\n');});});server.listen(port,'127.0.0.1');`,
+    `#!${process.execPath}\nconst http=require('node:http');if(process.argv.includes('--help')){console.log('--models-preset --parallel --slots --kv-unified-per-slot');process.exit(0);}const port=Number(process.argv[process.argv.indexOf('--port')+1]);const server=http.createServer((req,res)=>{if(req.url==='/health'){res.end('{}');return;}if(req.url.startsWith('/slots')){res.end('[{"is_processing":false}]');return;}let body='';req.on('data',c=>body+=c);req.on('end',()=>{const input=JSON.parse(body);if(input.id_slot!==1||input.model!=='qwen'||input.chat_template_kwargs?.enable_thinking!==false||input.max_tokens!==32||input.top_p!==0.95||input.top_k!==20||input.min_p!==0||input.presence_penalty!==1.5||input.repeat_penalty!==1||input.parallel_tool_calls!==false){res.writeHead(400);res.end();return;}res.setHeader('Content-Type','text/event-stream');res.write('data: '+JSON.stringify({choices:[{index:0,delta:{content:'hello'},finish_reason:null}]})+'\\n\\n');res.write('data: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'stop'}],usage:{prompt_tokens:2,completion_tokens:1}})+'\\n\\n');res.end('data: [DONE]\\n\\n');});});server.listen(port,'127.0.0.1');`,
   );
   await chmod(binary, 0o700);
   const previous = process.env.PATH;
@@ -467,6 +467,14 @@ test("managed llama router provisions from PATH and parses streamed completions"
       thinking: false,
       temperature: 0.7,
       maxOutputTokens: 32,
+      sampling: {
+        topP: 0.95,
+        topK: 20,
+        minP: 0,
+        presencePenalty: 1.5,
+        repeatPenalty: 1,
+        parallelToolCalls: false,
+      },
     },
     new AbortController().signal,
     (chunk) => (text += chunk),
@@ -1605,9 +1613,9 @@ test("worker history bounds long evidence while administrator transcripts remain
     arguments: JSON.stringify({ evidence: long }),
   }));
   await f.app.service.storage.write(run);
-  const offset = f.app.service.transcript(run).findIndex(
-    (e) => e.message?.messageID === run.messages.at(-1).messageID,
-  );
+  const offset = f.app.service
+    .transcript(run)
+    .findIndex((e) => e.message?.messageID === run.messages.at(-1).messageID);
   assert(offset >= 0);
   const oversized = await f.app.service.invokeTool(
     run,
@@ -1619,3 +1627,141 @@ test("worker history bounds long evidence while administrator transcripts remain
   assert.equal(oversized[0].nextOffset, offset + 1);
   assert(JSON.stringify(oversized).length < 12500);
 });
+
+test("agent sampling settings are validated, snapshotted and forwarded to inference", async (t) => {
+  let sampled;
+  const f = await fixture(t, async (input) => {
+    sampled = input.sampling;
+    return {
+      text: "done",
+      toolCalls: [],
+      usage: { inputTokens: 1, outputTokens: 1 },
+    };
+  });
+  const sampling = {
+    topP: 0.95,
+    topK: 20,
+    minP: 0,
+    presencePenalty: 1.5,
+    repeatPenalty: 1,
+    parallelToolCalls: false,
+  };
+  const changed = await f.request("PATCH", "/v1/agents/researcher", {
+    expectedRevision: 1,
+    changes: { sampling },
+  });
+  assert.equal(changed.status, 200);
+  f.state.away = true;
+  await f.app.service.tick();
+  const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
+    message: message(),
+  });
+  const run = await until(async () => {
+    const r = await f.app.service.storage.read(submitted.body.runID);
+    return r.state === "completed" && r;
+  });
+  assert.deepEqual(sampled, sampling);
+  assert.deepEqual(run.agent.sampling, sampling);
+  const { agentSchema } = await import("../dist/contracts.js");
+  assert.equal(agentSchema.safeParse(run.agent).success, true);
+  assert.equal(
+    agentSchema.safeParse({ ...run.agent, sampling: { presencePenalty: 3 } })
+      .success,
+    false,
+  );
+});
+
+test("tool budget rejects excess batch calls and requests a tool-free final answer", async (t) => {
+  let turns = 0;
+  const f = await fixture(t, async (input) => {
+    if (++turns === 1)
+      return {
+        text: "",
+        toolCalls: [0, 1].map((i) => ({
+          callID: `budget-${i}`,
+          name: "runs_list",
+          arguments: "{}",
+        })),
+        usage: { inputTokens: 1, outputTokens: 1 },
+      };
+    assert.deepEqual(input.tools, []);
+    assert.match(input.messages.at(-1).content, /budget.*exhausted/);
+    return {
+      text: "Supported result; research was bounded.",
+      toolCalls: [],
+      usage: { inputTokens: 1, outputTokens: 1 },
+    };
+  });
+  await f.request("PATCH", "/v1/agents/researcher", {
+    expectedRevision: 1,
+    changes: { mode: "agent-loop", toolIDs: ["runs_list"], maxToolCalls: 1 },
+  });
+  let invoked = 0;
+  const invoke = f.app.service.invokeTool.bind(f.app.service);
+  f.app.service.invokeTool = (...args) => {
+    invoked++;
+    return invoke(...args);
+  };
+  f.state.away = true;
+  await f.app.service.tick();
+  const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
+    message: message(),
+  });
+  const run = await until(async () => {
+    const r = await f.app.service.storage.read(submitted.body.runID);
+    return r.state === "completed" && r;
+  });
+  assert.equal(invoked, 1);
+  assert.equal(turns, 2);
+  const results = run.messages.filter((m) => m.role === "tool");
+  assert.equal(results.length, 2);
+  assert.equal(
+    JSON.parse(results[1].content).error.code,
+    "tool_budget_exhausted",
+  );
+  assert.equal(JSON.parse(results[1].content).error.outcome, "not_started");
+});
+
+for (const emptyAgain of [false, true])
+  test(`empty agent answers get one tool-free retry (${emptyAgain ? "failure" : "recovery"})`, async (t) => {
+    let turns = 0;
+    const f = await fixture(t, async (input) => {
+      turns++;
+      if (turns === 1)
+        return {
+          text: "",
+          reasoningContent: "Unverified private draft",
+          toolCalls: [],
+          usage: { inputTokens: 1, outputTokens: 1 },
+        };
+      assert.equal(input.thinking, false);
+      assert.deepEqual(input.tools, []);
+      assert.match(input.messages.at(-1).content, /no visible answer/);
+      return {
+        text: emptyAgain ? "" : "Verified visible answer",
+        toolCalls: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      };
+    });
+    await f.request("PATCH", "/v1/agents/researcher", {
+      expectedRevision: 1,
+      changes: { mode: "agent-loop" },
+    });
+    f.state.away = true;
+    await f.app.service.tick();
+    const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
+      message: message(),
+    });
+    const run = await until(async () => {
+      const r = await f.app.service.storage.read(submitted.body.runID);
+      return ["completed", "failed"].includes(r.state) && r;
+    });
+    assert.equal(turns, 2);
+    assert.equal(run.state, emptyAgain ? "failed" : "completed");
+    assert.equal(run.result, emptyAgain ? null : "Verified visible answer");
+    assert(
+      run.messages.some(
+        (m) => m.reasoningContent === "Unverified private draft",
+      ),
+    );
+  });

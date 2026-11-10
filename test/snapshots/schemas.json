@@ -137,6 +137,11 @@
             "minimum": 1,
             "type": "integer"
           },
+          "maxToolCalls": {
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
           "mode": {
             "enum": [
               "single-turn",
@@ -158,6 +163,40 @@
             "maximum": 100,
             "minimum": -100,
             "type": "integer"
+          },
+          "sampling": {
+            "additionalProperties": false,
+            "properties": {
+              "minP": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "parallelToolCalls": {
+                "type": "boolean"
+              },
+              "presencePenalty": {
+                "maximum": 2,
+                "minimum": -2,
+                "type": "number"
+              },
+              "repeatPenalty": {
+                "maximum": 2,
+                "minimum": 0,
+                "type": "number"
+              },
+              "topK": {
+                "maximum": 1000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "topP": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "type": "object"
           },
           "skillIDs": {
             "items": {
@@ -338,6 +377,11 @@
             "minimum": 1,
             "type": "integer"
           },
+          "maxToolCalls": {
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
           "mode": {
             "enum": [
               "single-turn",
@@ -364,6 +408,40 @@
             "exclusiveMinimum": 0,
             "maximum": 2147483647,
             "type": "integer"
+          },
+          "sampling": {
+            "additionalProperties": false,
+            "properties": {
+              "minP": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "parallelToolCalls": {
+                "type": "boolean"
+              },
+              "presencePenalty": {
+                "maximum": 2,
+                "minimum": -2,
+                "type": "number"
+              },
+              "repeatPenalty": {
+                "maximum": 2,
+                "minimum": 0,
+                "type": "number"
+              },
+              "topK": {
+                "maximum": 1000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "topP": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "type": "object"
           },
           "skillIDs": {
             "items": {
@@ -986,6 +1064,11 @@
             "minimum": 1,
             "type": "integer"
           },
+          "maxToolCalls": {
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
           "mode": {
             "enum": [
               "single-turn",
@@ -1012,6 +1095,40 @@
             "exclusiveMinimum": 0,
             "maximum": 2147483647,
             "type": "integer"
+          },
+          "sampling": {
+            "additionalProperties": false,
+            "properties": {
+              "minP": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "parallelToolCalls": {
+                "type": "boolean"
+              },
+              "presencePenalty": {
+                "maximum": 2,
+                "minimum": -2,
+                "type": "number"
+              },
+              "repeatPenalty": {
+                "maximum": 2,
+                "minimum": 0,
+                "type": "number"
+              },
+              "topK": {
+                "maximum": 1000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "topP": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "type": "object"
           },
           "skillIDs": {
             "items": {
@@ -1228,6 +1345,11 @@
             "minimum": 1,
             "type": "integer"
           },
+          "maxToolCalls": {
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
           "mode": {
             "enum": [
               "single-turn",
@@ -1254,6 +1376,40 @@
             "exclusiveMinimum": 0,
             "maximum": 2147483647,
             "type": "integer"
+          },
+          "sampling": {
+            "additionalProperties": false,
+            "properties": {
+              "minP": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "parallelToolCalls": {
+                "type": "boolean"
+              },
+              "presencePenalty": {
+                "maximum": 2,
+                "minimum": -2,
+                "type": "number"
+              },
+              "repeatPenalty": {
+                "maximum": 2,
+                "minimum": 0,
+                "type": "number"
+              },
+              "topK": {
+                "maximum": 1000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "topP": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "type": "object"
           },
           "skillIDs": {
             "items": {
@@ -1461,6 +1617,11 @@
             "minimum": 1,
             "type": "integer"
           },
+          "maxToolCalls": {
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
           "mode": {
             "enum": [
               "single-turn",
@@ -1487,6 +1648,40 @@
             "exclusiveMinimum": 0,
             "maximum": 2147483647,
             "type": "integer"
+          },
+          "sampling": {
+            "additionalProperties": false,
+            "properties": {
+              "minP": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "parallelToolCalls": {
+                "type": "boolean"
+              },
+              "presencePenalty": {
+                "maximum": 2,
+                "minimum": -2,
+                "type": "number"
+              },
+              "repeatPenalty": {
+                "maximum": 2,
+                "minimum": 0,
+                "type": "number"
+              },
+              "topK": {
+                "maximum": 1000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "topP": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "type": "object"
           },
           "skillIDs": {
             "items": {
@@ -1691,6 +1886,11 @@
               "minimum": 1,
               "type": "integer"
             },
+            "maxToolCalls": {
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            },
             "mode": {
               "enum": [
                 "single-turn",
@@ -1717,6 +1917,40 @@
               "exclusiveMinimum": 0,
               "maximum": 2147483647,
               "type": "integer"
+            },
+            "sampling": {
+              "additionalProperties": false,
+              "properties": {
+                "minP": {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "parallelToolCalls": {
+                  "type": "boolean"
+                },
+                "presencePenalty": {
+                  "maximum": 2,
+                  "minimum": -2,
+                  "type": "number"
+                },
+                "repeatPenalty": {
+                  "maximum": 2,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "topK": {
+                  "maximum": 1000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "topP": {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                }
+              },
+              "type": "object"
             },
             "skillIDs": {
               "items": {
@@ -2031,6 +2265,11 @@
             "minimum": 1,
             "type": "integer"
           },
+          "maxToolCalls": {
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
           "mode": {
             "enum": [
               "single-turn",
@@ -2051,6 +2290,40 @@
             "maximum": 100,
             "minimum": -100,
             "type": "integer"
+          },
+          "sampling": {
+            "additionalProperties": false,
+            "properties": {
+              "minP": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "parallelToolCalls": {
+                "type": "boolean"
+              },
+              "presencePenalty": {
+                "maximum": 2,
+                "minimum": -2,
+                "type": "number"
+              },
+              "repeatPenalty": {
+                "maximum": 2,
+                "minimum": 0,
+                "type": "number"
+              },
+              "topK": {
+                "maximum": 1000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "topP": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "type": "object"
           },
           "skillIDs": {
             "items": {
@@ -2221,6 +2494,11 @@
             "minimum": 1,
             "type": "integer"
           },
+          "maxToolCalls": {
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
           "mode": {
             "enum": [
               "single-turn",
@@ -2247,6 +2525,40 @@
             "exclusiveMinimum": 0,
             "maximum": 2147483647,
             "type": "integer"
+          },
+          "sampling": {
+            "additionalProperties": false,
+            "properties": {
+              "minP": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "parallelToolCalls": {
+                "type": "boolean"
+              },
+              "presencePenalty": {
+                "maximum": 2,
+                "minimum": -2,
+                "type": "number"
+              },
+              "repeatPenalty": {
+                "maximum": 2,
+                "minimum": 0,
+                "type": "number"
+              },
+              "topK": {
+                "maximum": 1000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "topP": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "type": "object"
           },
           "skillIDs": {
             "items": {
@@ -7949,6 +8261,11 @@
                 "minimum": 1,
                 "type": "integer"
               },
+              "maxToolCalls": {
+                "maximum": 1000,
+                "minimum": 1,
+                "type": "integer"
+              },
               "mode": {
                 "enum": [
                   "single-turn",
@@ -7975,6 +8292,40 @@
                 "exclusiveMinimum": 0,
                 "maximum": 2147483647,
                 "type": "integer"
+              },
+              "sampling": {
+                "additionalProperties": false,
+                "properties": {
+                  "minP": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "parallelToolCalls": {
+                    "type": "boolean"
+                  },
+                  "presencePenalty": {
+                    "maximum": 2,
+                    "minimum": -2,
+                    "type": "number"
+                  },
+                  "repeatPenalty": {
+                    "maximum": 2,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "topK": {
+                    "maximum": 1000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "topP": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "type": "object"
               },
               "skillIDs": {
                 "items": {
@@ -8463,6 +8814,11 @@
                       "minimum": 1,
                       "type": "integer"
                     },
+                    "maxToolCalls": {
+                      "maximum": 1000,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
                     "mode": {
                       "enum": [
                         "single-turn",
@@ -8489,6 +8845,40 @@
                       "exclusiveMinimum": 0,
                       "maximum": 2147483647,
                       "type": "integer"
+                    },
+                    "sampling": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "minP": {
+                          "maximum": 1,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "parallelToolCalls": {
+                          "type": "boolean"
+                        },
+                        "presencePenalty": {
+                          "maximum": 2,
+                          "minimum": -2,
+                          "type": "number"
+                        },
+                        "repeatPenalty": {
+                          "maximum": 2,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "topK": {
+                          "maximum": 1000,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "topP": {
+                          "maximum": 1,
+                          "minimum": 0,
+                          "type": "number"
+                        }
+                      },
+                      "type": "object"
                     },
                     "skillIDs": {
                       "items": {
@@ -9488,6 +9878,11 @@
                 "minimum": 1,
                 "type": "integer"
               },
+              "maxToolCalls": {
+                "maximum": 1000,
+                "minimum": 1,
+                "type": "integer"
+              },
               "mode": {
                 "enum": [
                   "single-turn",
@@ -9514,6 +9909,40 @@
                 "exclusiveMinimum": 0,
                 "maximum": 2147483647,
                 "type": "integer"
+              },
+              "sampling": {
+                "additionalProperties": false,
+                "properties": {
+                  "minP": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "parallelToolCalls": {
+                    "type": "boolean"
+                  },
+                  "presencePenalty": {
+                    "maximum": 2,
+                    "minimum": -2,
+                    "type": "number"
+                  },
+                  "repeatPenalty": {
+                    "maximum": 2,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "topK": {
+                    "maximum": 1000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "topP": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "type": "object"
               },
               "skillIDs": {
                 "items": {
@@ -10002,6 +10431,11 @@
                       "minimum": 1,
                       "type": "integer"
                     },
+                    "maxToolCalls": {
+                      "maximum": 1000,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
                     "mode": {
                       "enum": [
                         "single-turn",
@@ -10028,6 +10462,40 @@
                       "exclusiveMinimum": 0,
                       "maximum": 2147483647,
                       "type": "integer"
+                    },
+                    "sampling": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "minP": {
+                          "maximum": 1,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "parallelToolCalls": {
+                          "type": "boolean"
+                        },
+                        "presencePenalty": {
+                          "maximum": 2,
+                          "minimum": -2,
+                          "type": "number"
+                        },
+                        "repeatPenalty": {
+                          "maximum": 2,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "topK": {
+                          "maximum": 1000,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "topP": {
+                          "maximum": 1,
+                          "minimum": 0,
+                          "type": "number"
+                        }
+                      },
+                      "type": "object"
                     },
                     "skillIDs": {
                       "items": {
@@ -11038,6 +11506,11 @@
                 "minimum": 1,
                 "type": "integer"
               },
+              "maxToolCalls": {
+                "maximum": 1000,
+                "minimum": 1,
+                "type": "integer"
+              },
               "mode": {
                 "enum": [
                   "single-turn",
@@ -11064,6 +11537,40 @@
                 "exclusiveMinimum": 0,
                 "maximum": 2147483647,
                 "type": "integer"
+              },
+              "sampling": {
+                "additionalProperties": false,
+                "properties": {
+                  "minP": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "parallelToolCalls": {
+                    "type": "boolean"
+                  },
+                  "presencePenalty": {
+                    "maximum": 2,
+                    "minimum": -2,
+                    "type": "number"
+                  },
+                  "repeatPenalty": {
+                    "maximum": 2,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "topK": {
+                    "maximum": 1000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "topP": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "type": "object"
               },
               "skillIDs": {
                 "items": {
@@ -11552,6 +12059,11 @@
                       "minimum": 1,
                       "type": "integer"
                     },
+                    "maxToolCalls": {
+                      "maximum": 1000,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
                     "mode": {
                       "enum": [
                         "single-turn",
@@ -11578,6 +12090,40 @@
                       "exclusiveMinimum": 0,
                       "maximum": 2147483647,
                       "type": "integer"
+                    },
+                    "sampling": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "minP": {
+                          "maximum": 1,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "parallelToolCalls": {
+                          "type": "boolean"
+                        },
+                        "presencePenalty": {
+                          "maximum": 2,
+                          "minimum": -2,
+                          "type": "number"
+                        },
+                        "repeatPenalty": {
+                          "maximum": 2,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "topK": {
+                          "maximum": 1000,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "topP": {
+                          "maximum": 1,
+                          "minimum": 0,
+                          "type": "number"
+                        }
+                      },
+                      "type": "object"
                     },
                     "skillIDs": {
                       "items": {
@@ -12731,6 +13277,11 @@
                 "minimum": 1,
                 "type": "integer"
               },
+              "maxToolCalls": {
+                "maximum": 1000,
+                "minimum": 1,
+                "type": "integer"
+              },
               "mode": {
                 "enum": [
                   "single-turn",
@@ -12757,6 +13308,40 @@
                 "exclusiveMinimum": 0,
                 "maximum": 2147483647,
                 "type": "integer"
+              },
+              "sampling": {
+                "additionalProperties": false,
+                "properties": {
+                  "minP": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "parallelToolCalls": {
+                    "type": "boolean"
+                  },
+                  "presencePenalty": {
+                    "maximum": 2,
+                    "minimum": -2,
+                    "type": "number"
+                  },
+                  "repeatPenalty": {
+                    "maximum": 2,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "topK": {
+                    "maximum": 1000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "topP": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "type": "object"
               },
               "skillIDs": {
                 "items": {
@@ -13245,6 +13830,11 @@
                       "minimum": 1,
                       "type": "integer"
                     },
+                    "maxToolCalls": {
+                      "maximum": 1000,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
                     "mode": {
                       "enum": [
                         "single-turn",
@@ -13271,6 +13861,40 @@
                       "exclusiveMinimum": 0,
                       "maximum": 2147483647,
                       "type": "integer"
+                    },
+                    "sampling": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "minP": {
+                          "maximum": 1,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "parallelToolCalls": {
+                          "type": "boolean"
+                        },
+                        "presencePenalty": {
+                          "maximum": 2,
+                          "minimum": -2,
+                          "type": "number"
+                        },
+                        "repeatPenalty": {
+                          "maximum": 2,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "topK": {
+                          "maximum": 1000,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "topP": {
+                          "maximum": 1,
+                          "minimum": 0,
+                          "type": "number"
+                        }
+                      },
+                      "type": "object"
                     },
                     "skillIDs": {
                       "items": {
@@ -14341,6 +14965,11 @@
                 "minimum": 1,
                 "type": "integer"
               },
+              "maxToolCalls": {
+                "maximum": 1000,
+                "minimum": 1,
+                "type": "integer"
+              },
               "mode": {
                 "enum": [
                   "single-turn",
@@ -14367,6 +14996,40 @@
                 "exclusiveMinimum": 0,
                 "maximum": 2147483647,
                 "type": "integer"
+              },
+              "sampling": {
+                "additionalProperties": false,
+                "properties": {
+                  "minP": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "parallelToolCalls": {
+                    "type": "boolean"
+                  },
+                  "presencePenalty": {
+                    "maximum": 2,
+                    "minimum": -2,
+                    "type": "number"
+                  },
+                  "repeatPenalty": {
+                    "maximum": 2,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "topK": {
+                    "maximum": 1000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "topP": {
+                    "maximum": 1,
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "type": "object"
               },
               "skillIDs": {
                 "items": {
@@ -14855,6 +15518,11 @@
                       "minimum": 1,
                       "type": "integer"
                     },
+                    "maxToolCalls": {
+                      "maximum": 1000,
+                      "minimum": 1,
+                      "type": "integer"
+                    },
                     "mode": {
                       "enum": [
                         "single-turn",
@@ -14881,6 +15549,40 @@
                       "exclusiveMinimum": 0,
                       "maximum": 2147483647,
                       "type": "integer"
+                    },
+                    "sampling": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "minP": {
+                          "maximum": 1,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "parallelToolCalls": {
+                          "type": "boolean"
+                        },
+                        "presencePenalty": {
+                          "maximum": 2,
+                          "minimum": -2,
+                          "type": "number"
+                        },
+                        "repeatPenalty": {
+                          "maximum": 2,
+                          "minimum": 0,
+                          "type": "number"
+                        },
+                        "topK": {
+                          "maximum": 1000,
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "topP": {
+                          "maximum": 1,
+                          "minimum": 0,
+                          "type": "number"
+                        }
+                      },
+                      "type": "object"
                     },
                     "skillIDs": {
                       "items": {

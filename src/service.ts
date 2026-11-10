@@ -100,6 +100,7 @@ export interface Runtime {
       thinking?: boolean;
       maxOutputTokens: number;
       temperature: number;
+      sampling?: Agent["sampling"];
     },
     signal: AbortSignal,
     onDelta?: (text: string) => void,
@@ -2180,12 +2181,27 @@ export class Service {
             if (this.atStorageLimit(r)) break;
             if (r.messages.some((m) => m.toolCallID === call.callID)) continue;
             if (controller.signal.aborted) break;
-            const output = await this.invokeTool(
-              r,
-              call.name,
-              call.arguments,
-              controller.signal,
-            );
+            const callIndex = currentMessages
+              .flatMap((m) => m.toolCalls)
+              .findIndex((c) => c.callID === call.callID);
+            const output =
+              r.agent.maxToolCalls !== undefined &&
+              callIndex >= r.agent.maxToolCalls
+                ? {
+                    ok: false,
+                    error: {
+                      code: "tool_budget_exhausted",
+                      outcome: "not_started",
+                      message:
+                        "Tool budget exhausted. Return a final answer from the available evidence.",
+                    },
+                  }
+                : await this.invokeTool(
+                    r,
+                    call.name,
+                    call.arguments,
+                    controller.signal,
+                  );
             const m: Message = {
               messageID: randomUUID(),
               role: "tool",
@@ -2203,9 +2219,34 @@ export class Service {
           this.pauseForStorage(r);
           break;
         }
-        const thinking =
-          [...r.messages].reverse().find((m) => m.role === "user")?.thinking ??
-          r.agent.thinking;
+        const budgetExhausted =
+          r.agent.maxToolCalls !== undefined &&
+          currentMessages.reduce((count, m) => count + m.toolCalls.length, 0) >=
+            r.agent.maxToolCalls;
+        const emptyAnswer =
+          r.agent.mode === "agent-loop" &&
+          !!lastAssistant &&
+          !lastAssistant.toolCalls.length &&
+          !lastAssistant.content.trim();
+        const finalizing = budgetExhausted || emptyAnswer;
+        const thinking = finalizing
+          ? false
+          : ([...r.messages].reverse().find((m) => m.role === "user")
+              ?.thinking ?? r.agent.thinking);
+        const messages = this.runMessages(r);
+        if (finalizing)
+          messages.push({
+            messageID: randomUUID(),
+            role: "user",
+            content:
+              (budgetExhausted
+                ? "Nightcrew execution limit: your tool-call budget for this turn is exhausted."
+                : "Nightcrew finalization: the previous generation contained no visible answer.") +
+              " No more tools are available. Return your final answer now using only the original tool evidence already collected. State limitations rather than inventing missing facts. Thinking drafts are not verified evidence.",
+            attachments: [],
+            toolCalls: [],
+            toolCallID: null,
+          });
         const input: Parameters<Runtime["generate"]>[0] = {
           modelID: r.agent.modelID,
           slotID,
@@ -2220,8 +2261,8 @@ export class Service {
                 : "run-" + r.runID,
           persistContext: r.agent.contextMode === "persistent",
           contextEpoch: r.compactions.length,
-          messages: this.runMessages(r),
-          tools: this.runTools(r).map((t) => ({
+          messages,
+          tools: (finalizing ? [] : this.runTools(r)).map((t) => ({
             name: t.toolID,
             description: t.description,
             parameters: t.parameters,
@@ -2229,6 +2270,7 @@ export class Service {
           thinking,
           maxOutputTokens: r.agent.maxOutputTokens,
           temperature: r.agent.temperature,
+          sampling: r.agent.sampling,
         };
         if (
           !(await this.prepareContext(
@@ -2333,6 +2375,12 @@ export class Service {
         this.provisional.delete(runID);
         this.event(r, "message", { messageID: m.messageID });
         if (!result.toolCalls.length) {
+          if (r.agent.mode === "agent-loop" && !result.text.trim()) {
+            if (finalizing)
+              throw Error("Model returned no visible final answer");
+            await this.storage.exclusive(() => this.save(r));
+            continue;
+          }
           r.state = "completed";
           r.result = result.text;
           this.event(r, "completed", { messageID: m.messageID });
