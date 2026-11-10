@@ -1,10 +1,13 @@
 {
   "name": "nightcrew",
-  "version": "0.10.0",
+  "version": "0.19.0",
   "private": true,
   "type": "module",
   "description": "Standalone local-agent HTTP service",
-  "exports": "./dist/server.js",
+  "exports": {
+    ".": "./dist/server.js",
+    "./operations": "./dist/operations.js"
+  },
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.json && chmod +x dist/cli.js",
     "lint": "tsc -p tsconfig.json --noEmit",
@@ -12,7 +15,8 @@
     "prepack": "npm run build",
     "contracts:check": "npm run build && node scripts/contracts.mjs --check",
     "contracts:update": "npm run build && node scripts/contracts.mjs --update",
-    "test:package": "npm run build && node scripts/package-smoke.mjs"
+    "test:package": "npm run build && node scripts/package-smoke.mjs",
+    "test:live": "node --test test/live/*.test.mjs"
   },
   "engines": {
     "node": ">=22.12.0"

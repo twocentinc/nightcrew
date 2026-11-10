@@ -16,6 +16,8 @@ export const loggingSchema = z.strictObject({
 export type LoggingConfig = z.infer<typeof loggingSchema>;
 // An explicit event/field allowlist prevents accidental transcript or secret logging.
 const events = {
+  "scheduler.hookFailed": "warn",
+  "trigger.dispatchFailed": "warn",
   "daemon.ready": "info",
   "daemon.stopped": "info",
   "daemon.stopFailed": "error",

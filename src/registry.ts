@@ -1,61 +1,55 @@
 import { lstat, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { id, skillSchema, type Skill } from "./contracts.js";
+import {
+  id,
+  skillSchema,
+  skillLoadInputSchema,
+  type Skill,
+} from "./contracts.js";
 import { readJSON } from "./storage.js";
-export const builtinAdapter = z.enum([
-  "load_skills",
-  "runs_list",
-  "runs_transcript",
-]);
+import { readSkillFiles } from "./skills.js";
 export const toolDefinitionSchema = z
   .strictObject({
     toolID: id,
     description: z.string().min(1).max(2000),
-    adapter: z.enum(["load_skills", "runs_list", "runs_transcript", "exec"]),
     parameters: z.record(z.string(), z.json()),
-    readOnly: z.literal(true),
-    executablePath: z.string().optional(),
-    arguments: z.array(z.string().max(4000)).max(64).default([]),
+    executablePath: z
+      .string()
+      .refine(path.isAbsolute, "Executable path must be absolute"),
+    argv: z
+      .array(
+        z
+          .string()
+          .max(4000)
+          .describe(
+            "One process argument. Supports %parameter% and %nested.path%; %% is a literal percent. Substituted values remain one argument.",
+          ),
+      )
+      .max(64)
+      .default([]),
     timeoutMs: z.number().int().min(100).max(60000).default(10000),
   })
   .superRefine((value, ctx) => {
-    if (value.adapter === "exec") {
-      if (value.parameters.type !== "object")
-        ctx.addIssue({
-          code: "custom",
-          message: "Tool parameters must be an object JSON Schema",
-        });
-      if (!value.executablePath || !path.isAbsolute(value.executablePath))
-        ctx.addIssue({
-          code: "custom",
-          message: "External tools require an absolute executablePath",
-        });
-      try {
-        z.fromJSONSchema(value.parameters);
-      } catch {
-        ctx.addIssue({
-          code: "custom",
-          message: "Unsupported parameters schema",
-        });
-      }
-    } else if (value.executablePath || value.arguments.length)
+    if (value.parameters.type !== "object")
       ctx.addIssue({
         code: "custom",
-        message: "Builtin adapters cannot specify executables",
+        message: "Tool parameters must be an object JSON Schema",
       });
+    try {
+      z.fromJSONSchema(value.parameters);
+    } catch {
+      ctx.addIssue({
+        code: "custom",
+        message: "Unsupported parameters schema",
+      });
+    }
   });
 export type ToolDefinition = z.infer<typeof toolDefinitionSchema>;
 const parameters = {
-  load_skills: {
-    type: "object",
-    properties: {
-      skillIDs: { type: "array", items: { type: "string" }, maxItems: 40 },
-    },
-    required: ["skillIDs"],
-    additionalProperties: false,
-  },
+  load_skills: z.toJSONSchema(skillLoadInputSchema),
   runs_list: {
     type: "object",
     properties: { limit: { type: "integer", minimum: 1, maximum: 100 } },
@@ -72,20 +66,55 @@ const parameters = {
     additionalProperties: false,
   },
 };
-export const builtinTools: ToolDefinition[] = builtinAdapter.options.map(
-  (adapter) =>
-    toolDefinitionSchema.parse({
-      toolID: adapter,
-      adapter,
-      description: {
-        load_skills: "Read selected skill instructions.",
-        runs_list: "List recent runs of this agent.",
-        runs_transcript: "Read a page of a run belonging to this agent.",
-      }[adapter],
-      parameters: parameters[adapter],
-      readOnly: true,
-    }),
+export const builtinTools: ToolDefinition[] = (
+  ["load_skills", "runs_list", "runs_transcript"] as const
+).map((name) =>
+  toolDefinitionSchema.parse({
+    toolID: name,
+    executablePath: process.execPath,
+    argv: [fileURLToPath(new URL("./toolCommands.js", import.meta.url)), name],
+    description: {
+      load_skills:
+        "Discover selected skills, load their instructions, and read references or assets on demand.",
+      runs_list: "List recent runs of this agent.",
+      runs_transcript: "Read a page of a run belonging to this agent.",
+    }[name],
+    parameters: parameters[name],
+  }),
 );
+// Read compatibility only: new command requests must use the executable-only schema.
+// Historical snapshots retain their original bytes; conversion happens at execution.
+export function normalizeStoredTool(value: unknown): ToolDefinition {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    return toolDefinitionSchema.parse(value);
+  const {
+    adapter,
+    readOnly,
+    arguments: legacyArgv,
+    ...rest
+  } = value as Record<string, unknown>;
+  if (
+    legacyArgv !== undefined &&
+    rest.argv !== undefined &&
+    JSON.stringify(legacyArgv) !== JSON.stringify(rest.argv)
+  )
+    throw Error("Conflicting legacy arguments and argv");
+  const executable = {
+    ...rest,
+    ...(rest.argv === undefined && legacyArgv !== undefined
+      ? { argv: legacyArgv }
+      : {}),
+  };
+  if (adapter === undefined || adapter === "exec")
+    return toolDefinitionSchema.parse(executable);
+  const bundled = builtinTools.find((t) => t.toolID === adapter);
+  if (!bundled) throw Error("Unknown legacy tool adapter");
+  return toolDefinitionSchema.parse({
+    ...executable,
+    executablePath: bundled.executablePath,
+    argv: bundled.argv,
+  });
+}
 export async function loadRegistry(home: string) {
   const skills = new Map<string, Skill>();
   const tools = new Map(builtinTools.map((t) => [t.toolID, t]));
@@ -100,12 +129,13 @@ export async function loadRegistry(home: string) {
       throw e;
     }
     for (const entry of await readdir(root, { withFileTypes: true })) {
+      if (entry.name.startsWith(".")) continue;
+      if (kind === "skills" && entry.isSymbolicLink())
+        throw Error("Skill folders cannot be symlinks");
       if (kind === "tools" && entry.name.endsWith(".json")) {
         const name = id.parse(entry.name.slice(0, -5));
-        const tool = await readJSON(
-          path.join(root, entry.name),
-          toolDefinitionSchema,
-          128 * 1024,
+        const tool = normalizeStoredTool(
+          await readJSON(path.join(root, entry.name), z.unknown(), 128 * 1024),
         );
         if (tool.toolID !== name || tools.has(name))
           throw Error("Conflicting tool identity");
@@ -139,6 +169,7 @@ export async function loadRegistry(home: string) {
           name: field("name"),
           description: field("description"),
           instructions: match[2],
+          files: await readSkillFiles(path.join(root, entry.name)),
           toolIDs: [...match[1]!.matchAll(/^\s+-\s+([\w-]+)\s*$/gm)].map(
             (m) => m[1],
           ),
@@ -163,24 +194,88 @@ export function validateRegistry(
     for (const name of agent.skillIDs) {
       const skill = skills.get(name);
       if (!skill) throw Error("Agent references an unknown skill");
-      if (skill.toolIDs.some((t) => !agent.toolIDs.includes(t)))
+      if (
+        skill.toolIDs.some(
+          (t) => t !== "load_skills" && !agent.toolIDs.includes(t),
+        )
+      )
         throw Error("Skill tools must be allowed by the agent");
     }
   }
+}
+// Substitute into individual argv entries, never a shell command or a second template.
+export function resolveToolArgv(
+  templates: string[],
+  parameters: unknown,
+): string[] {
+  return templates.map((template) => {
+    const argument = template.replace(
+      /%%|%([A-Za-z_][A-Za-z0-9_-]*(?:\.[A-Za-z0-9_-]+)*)%/g,
+      (match, name: string | undefined) => {
+        if (match === "%%") return "%";
+        let value: unknown = parameters;
+        for (const key of name!.split(".")) {
+          if (
+            value === null ||
+            typeof value !== "object" ||
+            !Object.hasOwn(value, key)
+          )
+            throw Error("Missing tool parameter for argv: " + name);
+          value = (value as Record<string, unknown>)[key];
+        }
+        if (value === undefined)
+          throw Error("Missing tool parameter for argv: " + name);
+        return typeof value === "string" ? value : JSON.stringify(value);
+      },
+    );
+    if (argument.includes("\0")) throw Error("Tool argv cannot contain NUL");
+    if (argument.length > 4000)
+      throw Error("Expanded tool argv entry exceeds 4000 characters");
+    return argument;
+  });
 }
 export async function executeExternalTool(
   tool: ToolDefinition,
   input: unknown,
   signal: AbortSignal,
+  context?: {
+    home: string;
+    agentID?: string;
+    runID?: string;
+    skills?: Skill[];
+  },
 ) {
   const validated = z.fromJSONSchema(tool.parameters).parse(input);
   signal.throwIfAborted();
+  const argv = resolveToolArgv(tool.argv, validated);
   return new Promise<unknown>((resolve, reject) => {
-    const child = spawn(tool.executablePath!, tool.arguments, {
-      stdio: ["pipe", "pipe", "ignore"],
+    const child = spawn(tool.executablePath, argv, {
+      stdio: [
+        "pipe",
+        "pipe",
+        "ignore",
+        ...(context?.skills ? ["pipe" as const] : []),
+      ],
       detached: true,
-      env: { PATH: process.env.PATH ?? "" },
+      env: {
+        PATH: process.env.PATH ?? "",
+        ...(context
+          ? {
+              NIGHTCREW_HOME: context.home,
+              ...(context.agentID
+                ? { NIGHTCREW_AGENT_ID: context.agentID }
+                : {}),
+              ...(context.runID ? { NIGHTCREW_RUN_ID: context.runID } : {}),
+              ...(context.skills ? { NIGHTCREW_SKILLS_FD: "3" } : {}),
+            }
+          : {}),
+      },
     });
+    if (context?.skills) {
+      const input = child.stdio[3] as import("node:stream").Writable;
+      input.on("error", () => {});
+      input.end(JSON.stringify(context.skills));
+    }
     const output: Buffer[] = [];
     let bytes = 0;
     let error: Error | undefined;
@@ -195,14 +290,14 @@ export async function executeExternalTool(
     const timer = setTimeout(() => stop("Tool timed out"), tool.timeoutMs);
     signal.addEventListener("abort", aborted, { once: true });
     if (signal.aborted) aborted();
-    child.stdout.on("data", (chunk: Buffer) => {
+    child.stdout!.on("data", (chunk: Buffer) => {
       if (bytes + chunk.length > 1048576) stop("Tool output limit");
       else {
         output.push(chunk);
         bytes += chunk.length;
       }
     });
-    child.stdin.on("error", () => {});
+    child.stdin!.on("error", () => {});
     child.once("error", (e) => {
       error = e;
     });
@@ -219,6 +314,6 @@ export async function executeExternalTool(
         reject(Error("Tool must return JSON"));
       }
     });
-    child.stdin.end(JSON.stringify(validated) + "\n");
+    child.stdin!.end(JSON.stringify(validated) + "\n");
   });
 }

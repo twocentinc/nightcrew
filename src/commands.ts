@@ -1,8 +1,10 @@
+import { requestSchemas } from "./operationInputs.js";
+import { operationDefinitions, callOperation } from "./operations.js";
 import path from "node:path";
 import { z } from "zod";
 import { Storage, initializeHome, readJSON } from "./storage.js";
 import { Service } from "./service.js";
-import { manage, type ManagementInput } from "./management.js";
+import { type ManagementInput } from "./management.js";
 import { control, runDaemon } from "./daemon.js";
 import { startup, startupStatus, startupLogs } from "./startup.js";
 import { LlamaRuntime, samplePresence } from "./runtime.js";
@@ -13,7 +15,6 @@ import {
   capabilitiesSchema,
 } from "./diagnostics.js";
 import {
-  requestSchemas,
   packageVersion,
   PROTOCOL_VERSION,
   SCHEMA_VERSION,
@@ -21,30 +22,14 @@ import {
   NightcrewError,
   errorEnvelopeSchema,
   successEnvelopeSchema,
-  normalizeError,
 } from "./protocol.js";
 import {
-  currentExecution,
   remainingTimeout,
   pause,
   checkpoint,
   diagnostic,
 } from "./execution.js";
-import {
-  agentSchema,
-  modelSchema,
-  slotSchema,
-  skillSchema,
-  configSchema,
-  storeSchema,
-  runSummarySchema,
-  runDetailSchema,
-  transcriptEntrySchema,
-  acceptanceSchema,
-  statusSchema,
-  searchMatchSchema,
-} from "./contracts.js";
-import { toolDefinitionSchema } from "./registry.js";
+import { configSchema, storeSchema, statusSchema } from "./contracts.js";
 export type CommandContext = {
   home: string;
   resourceID?: string;
@@ -67,14 +52,7 @@ export type Definition = {
   handler: (context: CommandContext) => Promise<unknown>;
 };
 const empty = z.strictObject({});
-const changed = z.object({ changed: z.boolean() });
 const adminConfig = configSchema.omit({ rootTokenHash: true });
-const configMutation = z.object({
-  changed: z.boolean(),
-  restartRequired: z.boolean(),
-  config: adminConfig,
-  agentID: z.string().optional(),
-});
 const serviceStatus = z.object({
   label: z.string(),
   plistPath: z.string(),
@@ -181,33 +159,14 @@ async function management(
     );
     try {
       await service.reloadRegistry();
+      if (name.startsWith("runs ")) await storage.reconcile();
       checkpoint();
-      return await manage(service, input);
+      return await callOperation(service, input);
     } finally {
       await storage.close();
     }
   }
 }
-const managed = (
-  name: string,
-  description: string,
-  result: z.ZodType,
-  mutates = false,
-  operand: Definition["operand"] = "none",
-  confirmation = false,
-  scope: Definition["scope"] = "management",
-  options: string[] = [],
-) =>
-  define(
-    name,
-    description,
-    scope,
-    operand,
-    mutates,
-    result,
-    (c) => management(c, name, scope),
-    { confirmation, options },
-  );
 const helpDefinitionSchema = z.object({
   name: z.string(),
   description: z.string(),
@@ -351,32 +310,6 @@ define(
   },
 );
 define(
-  "presence status",
-  "Inspect the daemon's latest presence sample and interaction cooldown",
-  "daemon",
-  "none",
-  false,
-  statusSchema.pick({ presence: true, cooldownUntil: true }),
-  async (c) => {
-    const status = statusSchema.parse(
-      await control(
-        c.home,
-        { command: "daemon status" },
-        remainingTimeout(90000),
-      ),
-    );
-    return { presence: status.presence, cooldownUntil: status.cooldownUntil };
-  },
-);
-managed(
-  "auth rotate",
-  "Replace the HTTP root token and return it once",
-  changed.extend({ token: z.string().optional() }),
-  true,
-  "none",
-  true,
-);
-define(
   "daemon run",
   "Run the daemon in the foreground",
   "local",
@@ -388,15 +321,6 @@ define(
     await runDaemon(c.home, !!c.values.quiet || c.values.verbosity === "quiet");
     return undefined;
   },
-);
-managed(
-  "daemon status",
-  "Inspect current daemon and scheduler state",
-  statusSchema.extend({ pid: z.number() }),
-  false,
-  "none",
-  false,
-  "daemon",
 );
 define(
   "daemon stop",
@@ -516,190 +440,29 @@ for (const action of [
     },
   );
 }
-managed(
-  "config get",
-  "Read redacted configuration",
-  z.object({ config: adminConfig }),
-);
-managed(
-  "config update",
-  "Apply revision-checked configuration changes",
-  configMutation,
-  true,
-);
-for (const [resource, schema] of Object.entries({
-  agents: agentSchema,
-  models: modelSchema,
-  slots: slotSchema,
-  skills: skillSchema.extend({ hash: z.string() }),
-  tools: toolDefinitionSchema.safeExtend({
-    hash: z.string(),
-    builtin: z.boolean(),
-  }),
-})) {
-  managed(
-    resource + " list",
-    "List " + resource,
-    z.object({ items: z.array(schema) }),
+for (const operation of operationDefinitions) {
+  const {
+    name,
+    description,
+    scope,
+    operand,
+    mutates,
+    result,
+    confirmation,
+    options,
+    request,
+  } = operation;
+  define(
+    name,
+    description,
+    scope,
+    operand,
+    mutates,
+    result,
+    (c) => management(c, name, scope),
+    { confirmation, options, request },
   );
-  managed(
-    resource + " get",
-    "Inspect one " + resource.slice(0, -1),
-    z.object({ item: schema }),
-    false,
-    "required",
-  );
-  for (const action of ["create", "update", "delete"]) {
-    let result: z.ZodType = configMutation;
-    if (resource === "agents" && action !== "delete")
-      result = z.object({ agent: agentSchema, changed: z.boolean() });
-    if (resource === "skills" || resource === "tools")
-      result = z.object({
-        changed: z.boolean(),
-        item: (resource === "skills"
-          ? skillSchema.extend({ hash: z.string() })
-          : toolDefinitionSchema.safeExtend({ hash: z.string() })
-        ).nullable(),
-      });
-    managed(
-      resource + " " + action,
-      `${action} ${resource}`,
-      result,
-      true,
-      action === "create" ? "none" : "required",
-      action === "delete",
-    );
-  }
 }
-for (const action of ["enable", "disable"])
-  managed(
-    "agents " + action,
-    action + " automatic agent eligibility",
-    z.object({ agent: agentSchema, changed: z.boolean() }),
-    true,
-    "required",
-  );
-managed(
-  "agents run",
-  "Submit a fresh managed run",
-  acceptanceSchema,
-  true,
-  "required",
-  false,
-  "daemon",
-);
-managed(
-  "runs list",
-  "List durable run summaries",
-  z.object({
-    items: z.array(runSummarySchema),
-    nextCursor: z.string().nullable(),
-  }),
-  false,
-  "none",
-  false,
-  "daemon",
-  ["limit", "cursor", "agent", "state"],
-);
-managed(
-  "runs get",
-  "Inspect a durable run",
-  z.object({ run: runDetailSchema }),
-  false,
-  "required",
-  false,
-  "daemon",
-);
-managed(
-  "runs transcript",
-  "Read committed run evidence",
-  z.object({
-    items: z.array(transcriptEntrySchema),
-    nextCursor: z.string().nullable(),
-  }),
-  false,
-  "required",
-  false,
-  "daemon",
-  ["limit", "cursor"],
-);
-managed(
-  "runs search",
-  "Search saved messages, attachments and results with bounded excerpts",
-  z.object({
-    items: z.array(searchMatchSchema),
-    nextCursor: z.string().nullable(),
-  }),
-  false,
-  "required",
-  false,
-  "daemon",
-  ["limit", "cursor", "agent", "state"],
-);
-managed(
-  "runs export",
-  "Export a committed run snapshot and checksum manifest to a new directory",
-  z.object({
-    runID: z.string(),
-    destination: z.string(),
-    changed: z.boolean(),
-    revision: z.number(),
-    lastEventSequence: z.number(),
-  }),
-  true,
-  "required",
-  false,
-  "management",
-);
-managed(
-  "runs verify",
-  "Validate saved run integrity or an exported bundle without modifying it",
-  z.object({
-    runID: z.string(),
-    valid: z.boolean(),
-    checks: z.array(z.string()),
-    errors: z.array(z.string()),
-    revision: z.number().nullable(),
-    lastEventSequence: z.number().nullable(),
-  }),
-  false,
-  "required",
-  false,
-  "management",
-);
-managed(
-  "runs reply",
-  "Submit a continuation",
-  acceptanceSchema,
-  true,
-  "required",
-  false,
-  "daemon",
-);
-managed(
-  "runs cancel",
-  "Cancel managed work",
-  z.object({ runID: z.string(), status: z.string(), changed: z.boolean() }),
-  true,
-  "required",
-  false,
-  "daemon",
-);
-for (const action of ["save", "restore"])
-  managed(
-    "slots " + action,
-    action + " a slot prompt cache on disk",
-    z.object({
-      slotID: z.string(),
-      action: z.string(),
-      changed: z.boolean(),
-      directory: z.string(),
-    }),
-    true,
-    "required",
-    false,
-    "daemon",
-  );
 export const commandDefinitions: readonly Definition[] = definitions;
 export const getCommand = (name: string) =>
   definitions.find((d) => d.name === name);

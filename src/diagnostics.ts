@@ -1,3 +1,4 @@
+import { executionSlots } from "./scheduler.js";
 import path from "node:path";
 import { access, lstat, readFile } from "node:fs/promises";
 import { constants } from "node:fs";
@@ -29,8 +30,7 @@ export const capabilitiesSchema = z.strictObject({
   tools: z.array(
     z.strictObject({
       toolID: z.string(),
-      adapter: z.string(),
-      readOnlyDeclared: z.boolean(),
+      executablePath: z.string(),
       sandboxed: z.literal(false),
     }),
   ),
@@ -92,7 +92,7 @@ export async function capabilities(
       modelID: model.modelID,
       kind: model.kind,
       available,
-      slotIDs: state.config.slots
+      slotIDs: executionSlots(state.config)
         .filter((s) => s.modelID === model.modelID)
         .map((s) => s.slotID)
         .sort(),
@@ -110,14 +110,13 @@ export async function capabilities(
     tools: [...registry.tools.values()]
       .map((t) => ({
         toolID: t.toolID,
-        adapter: t.adapter,
-        readOnlyDeclared: t.readOnly,
+        executablePath: t.executablePath,
         sandboxed: false as const,
       }))
       .sort((a, b) => a.toolID.localeCompare(b.toolID)),
     limitations: [
       "Capability support describes the implemented adapter, not a successful model inference test.",
-      "External tool read-only declarations are administrator trust contracts, not OS sandboxing.",
+      "Tools run with the local user permissions; Nightcrew does not enforce read-only behavior or provide an OS sandbox.",
     ],
   };
 }
@@ -214,12 +213,11 @@ export async function doctor(
       const { tools } = await loadRegistry(home);
       const unavailable = [];
       for (const tool of tools.values())
-        if (tool.adapter === "exec")
-          try {
-            await access(tool.executablePath!, constants.X_OK);
-          } catch {
-            unavailable.push(tool.toolID);
-          }
+        try {
+          await access(tool.executablePath!, constants.X_OK);
+        } catch {
+          unavailable.push(tool.toolID);
+        }
       return {
         status: unavailable.length ? "fail" : "pass",
         message: unavailable.length

@@ -12,7 +12,7 @@ import {
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { OperationalLog, loggingSchema } from "../dist/logging.js";
-import { requestSchemas } from "../dist/protocol.js";
+import { requestSchemas } from "../dist/operationInputs.js";
 const fixture = async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "nightcrew-log-"));
   t.after(() => rm(home, { recursive: true, force: true }));

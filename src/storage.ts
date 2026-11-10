@@ -1,3 +1,4 @@
+import { validateCompactionState } from "./compaction.js";
 import type { OperationalLog } from "./logging.js";
 import { NightcrewError } from "./protocol.js";
 import { checkpoint } from "./execution.js";
@@ -48,6 +49,7 @@ export type Summary = Pick<
   | "segment"
   | "activeMs"
   | "pauseReason"
+  | "held"
 > & { agentID: string; remainingMs: number };
 export const summarize = (r: Run): Summary => ({
   runID: r.runID,
@@ -59,6 +61,7 @@ export const summarize = (r: Run): Summary => ({
   segment: r.segment,
   activeMs: r.activeMs,
   pauseReason: r.pauseReason,
+  held: r.held,
   remainingMs: Math.max(0, r.agent.timeoutMs - r.activeMs),
 });
 async function regular(file: string, max: number) {
@@ -235,22 +238,32 @@ export class Storage {
     }
   }
   private index(r: Run) {
-    r.messages.forEach((m, index) => {
+    const indexedMessages = [
+      ...r.messages,
+      ...r.pendingInputs.map((p) => ({ ...p.message, role: "user" })),
+    ];
+    for (const [messageID, record] of this.messages)
+      if (record.runID === r.runID) this.messages.delete(messageID);
+    indexedMessages.forEach((m, index) => {
       if (m.role !== "user") return;
       const existing = this.messages.get(m.messageID);
       if (existing && (existing.runID !== r.runID || existing.index !== index))
         throw new Error("Duplicate message UUID");
     });
     this.summaries.set(r.runID, summarize(r));
-    r.messages.forEach((m, index) => {
+    indexedMessages.forEach((m, index) => {
       if (m.role === "user")
         this.messages.set(m.messageID, { runID: r.runID, index });
     });
   }
   async reconcile() {
-    for (const e of await readdir(path.join(this.home, "runs"), {
+    const entries = await readdir(path.join(this.home, "runs"), {
       withFileTypes: true,
-    })) {
+    }).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    });
+    for (const e of entries) {
       if (e.name.startsWith(".")) continue;
       if (!this.summaries.has(e.name) && !this.unreadable.includes(e.name)) {
         try {
@@ -278,12 +291,19 @@ export class Storage {
       64 * 1024 * 1024,
     );
     if (r.runID !== runID) throw new Error("Run identity mismatch");
-    if (new Set(r.messages.map((x) => x.messageID)).size !== r.messages.length)
+    if (
+      new Set([
+        ...r.messages.map((x) => x.messageID),
+        ...r.pendingInputs.map((p) => p.message.messageID),
+      ]).size !==
+      r.messages.length + r.pendingInputs.length
+    )
       throw new Error("Duplicate transcript message");
     if (r.events.some((x, i) => x.sequence !== i + 1))
       throw new Error("Invalid event order");
     const calls = new Set<string>();
     const results = new Set<string>();
+    validateCompactionState(r);
     for (const m of r.messages) {
       if (m.role !== "user" && m.attachments.length)
         throw new Error("Invalid attachments");
@@ -302,6 +322,38 @@ export class Storage {
           throw new Error("Invalid tool result");
         results.add(m.toolCallID);
       } else if (m.toolCallID) throw new Error("Invalid tool result reference");
+    }
+    for (const source of [
+      r.triggerSource,
+      ...r.triggerHistory,
+      ...r.pendingInputs.map((p) => p.source),
+    ].filter((x): x is NonNullable<typeof x> => !!x)) {
+      if (
+        source.definition.agentID !== r.agent.agentID ||
+        new Set(source.occurrences.map((o) => o.occurrenceID)).size !==
+          source.occurrences.length
+      )
+        throw new Error("Invalid trigger provenance");
+      for (const occurrence of source.occurrences) {
+        const message = [
+          ...r.messages,
+          ...r.pendingInputs.map((p) => ({
+            ...p.message,
+            role: "user" as const,
+            toolCalls: [],
+            toolCallID: null,
+          })),
+        ].find(
+          (m) => m.messageID === occurrence.occurrenceID && m.role === "user",
+        );
+        if (!message) throw new Error("Missing trigger occurrence message");
+        const { messageID, role, toolCalls, toolCallID, ...input } = message;
+        if (
+          createHash("sha256").update(canonical(input)).digest("hex") !==
+          occurrence.inputHash
+        )
+          throw new Error("Trigger occurrence input mismatch");
+      }
     }
     return r;
   }

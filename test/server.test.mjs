@@ -135,7 +135,7 @@ async function fixture(t, generate) {
   };
 }
 async function until(fn) {
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 200; i++) {
     const value = await fn();
     if (value) return value;
     await delay(50);
@@ -553,9 +553,8 @@ test("custom executable tools run with snapshotted definitions and appear in dis
   const tool = {
     toolID: "inspect",
     description: "inspect fixture",
-    adapter: "exec",
     executablePath: process.execPath,
-    arguments: [
+    argv: [
       "-e",
       'process.stdin.resume();process.stdin.on("end",()=>process.stdout.write(JSON.stringify({answer:"read-only"})));',
     ],
@@ -565,7 +564,6 @@ test("custom executable tools run with snapshotted definitions and appear in dis
       required: ["query"],
       additionalProperties: false,
     },
-    readOnly: true,
     timeoutMs: 1000,
   };
   await manage(f.app.service, { command: "tools create", request: { tool } });
@@ -654,6 +652,7 @@ test("turn thinking overrides persist, deduplicate and reset to agent defaults o
     seen.push(input.thinking);
     return {
       text: "done",
+      reasoningContent: "Recorded reasoning",
       toolCalls: [],
       usage: { inputTokens: 1, outputTokens: 1 },
     };
@@ -682,6 +681,9 @@ test("turn thinking overrides persist, deduplicate and reset to agent defaults o
     });
   await completed();
   assert.equal(seen[0], false);
+  let saved = await f.app.service.storage.read(runID);
+  assert.equal(saved.messages.at(-1).thinking, false);
+  assert.equal(saved.messages.at(-1).reasoningContent, undefined);
   const replay = await f.request("POST", "/v1/agents/researcher/runs", {
     message: firstMessage,
   });
@@ -695,6 +697,13 @@ test("turn thinking overrides persist, deduplicate and reset to agent defaults o
   });
   await completed();
   assert.equal(seen[1], true);
+  saved = await f.app.service.storage.read(runID);
+  assert.equal(saved.messages.at(-1).reasoningContent, "Recorded reasoning");
+  assert.equal(saved.messages.at(-1).content, "done");
+  await f.restart();
+  setAway();
+  saved = await f.app.service.storage.read(runID);
+  assert.equal(saved.messages.at(-1).reasoningContent, "Recorded reasoning");
   const edited = await f.request("PATCH", "/v1/agents/researcher", {
     expectedRevision: 1,
     changes: { thinking: false },
@@ -905,4 +914,544 @@ test("audio adapter sends output settings and the WAV attachment to transcriptio
     new AbortController().signal,
   );
   assert.equal(result.text, "fixture transcript");
+});
+
+test("stream parser separates thinking from answers and tool calls across byte chunks", async () => {
+  const { LlamaRuntime } = await import("../dist/runtime.js");
+  const runtime = new LlamaRuntime(() => ({ models: [], slots: [] }));
+  const chunks = [
+    { reasoning_content: "Check " },
+    { reasoning_content: "π first." },
+    { content: "Answer" },
+    {
+      tool_calls: [
+        {
+          index: 0,
+          id: "call",
+          function: { name: "inspect", arguments: "{}" },
+        },
+      ],
+    },
+  ].map((delta) => ({ choices: [{ index: 0, delta, finish_reason: null }] }));
+  chunks.push({
+    choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
+  });
+  const bytes = Buffer.from(
+    chunks.map((c) => "data: " + JSON.stringify(c) + "\n\n").join("") +
+      "data: [DONE]\n\n",
+  );
+  const response = () =>
+    new Response(
+      new ReadableStream({
+        start(controller) {
+          for (const byte of bytes) controller.enqueue(Uint8Array.of(byte));
+          controller.close();
+        },
+      }),
+    );
+  let streamed = "";
+  const result = await runtime.readStream(
+    response(),
+    new AbortController().signal,
+    (text) => (streamed += text),
+    true,
+  );
+  assert.equal(result.reasoningContent, "Check π first.");
+  assert.equal(result.text, "Answer");
+  assert.equal(streamed, "Answer");
+  assert.equal(result.toolCalls[0].name, "inspect");
+  assert.equal(
+    (
+      await runtime.readStream(
+        response(),
+        new AbortController().signal,
+        undefined,
+        false,
+      )
+    ).reasoningContent,
+    undefined,
+  );
+});
+
+test("management HTTP and CLI share every oRPC operation contract", async (t) => {
+  const f = await fixture(t);
+  const { operationDefinitions } = await import("../dist/operations.js");
+  const { getCommand } = await import("../dist/commands.js");
+  for (const op of operationDefinitions) {
+    const command = getCommand(op.name);
+    assert.equal(command.request, op.request, op.name);
+    assert.equal(command.result, op.result, op.name);
+    const route = "/v1/operations/" + op.name.replaceAll(" ", "/");
+    assert.equal(Boolean(f.app.document.paths[route]), !op.localOnly, route);
+  }
+  const route = "/v1/operations/agents/get";
+  assert.equal(
+    (
+      await f.request(
+        "POST",
+        route,
+        { resourceID: "researcher", request: {} },
+        false,
+      )
+    ).status,
+    401,
+  );
+  const result = await f.request("POST", route, {
+    resourceID: "researcher",
+    request: {},
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.item.agentID, "researcher");
+  assert.equal(
+    (
+      await f.request("POST", route, {
+        resourceID: "researcher",
+        request: { unexpected: true },
+      })
+    ).status,
+    400,
+  );
+});
+
+test("failed generation retains partial answer, thinking and tool fragments as visible attempt evidence", async (t) => {
+  const f = await fixture(t, async (input, signal, onDelta, onEvidence) => {
+    onDelta("partial answer");
+    onEvidence({
+      reasoningContent: "unfinished reasoning",
+      toolCalls: [
+        {
+          index: 0,
+          callID: "call",
+          name: "inspect",
+          arguments: '{"incomplete":',
+        },
+      ],
+    });
+    throw Error("stream disconnected");
+  });
+  await f.request("PATCH", "/v1/agents/researcher", {
+    expectedRevision: 1,
+    changes: {
+      mode: "agent-loop",
+      thinking: true,
+      toolIDs: ["runs_transcript"],
+    },
+  });
+  f.state.away = true;
+  await f.app.service.tick();
+  const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
+    message: message(),
+  });
+  assert.equal(submitted.status, 202);
+  const runID = submitted.body.runID;
+  const run = await until(async () => {
+    const r = await f.app.service.storage.read(runID);
+    return r.state === "failed" && r;
+  });
+  assert.equal(run.attempts[0].text, "partial answer");
+  assert.equal(run.attempts[0].reasoningContent, "unfinished reasoning");
+  assert.equal(run.attempts[0].status, "failed");
+  assert.equal(run.error.message, "stream disconnected");
+  const visible = await f.app.service.invokeTool(
+    run,
+    "runs_transcript",
+    JSON.stringify({ runID, limit: 20 }),
+    new AbortController().signal,
+  );
+  assert.equal(
+    visible.find((e) => e.attempt)?.attempt.reasoningContent,
+    "unfinished reasoning",
+  );
+  assert.equal(run.attempts[0].toolCalls[0].arguments, '{"incomplete":');
+  assert.equal(
+    run.messages.some((m) => m.content === "partial answer"),
+    false,
+  );
+  const transcript = f.app.service.transcript(run);
+  assert.equal(
+    transcript.find((e) => e.attempt)?.attempt.text,
+    "partial answer",
+  );
+  const { exportRun, verifyRun } = await import("../dist/runArtifacts.js");
+  const destination = path.join(f.home, "exports", "evidence");
+  const { mkdir } = await import("node:fs/promises");
+  await mkdir(path.dirname(destination));
+  await exportRun(f.app.service, runID, destination, false);
+  assert.equal(
+    (await verifyRun(f.app.service, runID, destination)).valid,
+    true,
+  );
+});
+
+test("storage limit holds a persistent run and delivers one bounded hook with usage", async (t) => {
+  const f = await fixture(t, async () => ({
+    text: "x".repeat(600000),
+    toolCalls: [],
+    usage: { inputTokens: 1, outputTokens: 1 },
+  }));
+  const hookPath = path.join(f.home, "limit-hook");
+  const output = path.join(f.home, "hook.json");
+  await writeFile(hookPath, '#!/bin/sh\ncat > "' + output + '"\n', {
+    mode: 0o700,
+  });
+  const store = structuredClone(f.app.service.storage.store);
+  store.config.hooks = [
+    { event: "run.storageLimit", executablePath: hookPath, timeoutMs: 1000 },
+  ];
+  await f.app.service.storage.exclusive(() =>
+    f.app.service.storage.saveConfig(store),
+  );
+  const patched = await f.request("PATCH", "/v1/agents/researcher", {
+    expectedRevision: 1,
+    changes: { contextMode: "persistent", storageLimitMB: 1 },
+  });
+  assert.equal(patched.status, 200);
+  f.state.away = true;
+  await f.app.service.tick();
+  const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
+    message: message(),
+  });
+  const runID = submitted.body.runID;
+  await until(async () => {
+    const r = await f.app.service.storage.read(runID);
+    return r.pauseReason === "storage_limit";
+  });
+  const rejected = await f.request("POST", "/v1/agents/researcher/runs", {
+    message: message("next"),
+  });
+  assert.equal(rejected.status, 409);
+  await until(async () => {
+    const r = await f.app.service.storage.read(runID);
+    return r.hookReceipts.some((h) => h.status === "succeeded");
+  });
+  const payload = JSON.parse(await readFile(output, "utf8"));
+  assert.equal(payload.event, "run.storageLimit");
+  assert.equal(payload.storage.limitMB, 1);
+  assert.ok(payload.storage.bytes >= 1024 * 1024);
+  await f.request("POST", "/v1/agents/researcher/runs", {
+    message: message("again"),
+  });
+  const held = await f.app.service.storage.read(runID);
+  assert.equal(held.held, true);
+  assert.equal(held.events.filter((e) => e.type === "storageLimit").length, 1);
+  assert.equal(held.hookReceipts.length, 1);
+  await f.restart();
+  assert.equal(
+    (await f.app.service.storage.read(runID)).pauseReason,
+    "storage_limit",
+  );
+  const raised = await f.request("PATCH", "/v1/agents/researcher", {
+    expectedRevision: 2,
+    changes: { storageLimitMB: 2 },
+  });
+  assert.equal(raised.status, 200);
+  const beforeRelease = await f.app.service.storage.read(runID);
+  await f.app.service.queueControl(
+    runID,
+    "release",
+    beforeRelease.revision,
+    false,
+  );
+  const released = await f.app.service.storage.read(runID);
+  assert.equal(released.state, "completed");
+  assert.equal(released.held, false);
+  assert.equal(
+    released.messages.filter((m) => m.role === "assistant").length,
+    1,
+  );
+});
+
+test("cancelled attempts keep partial answers but omit disabled thinking", async (t) => {
+  let started = false;
+  const f = await fixture(t, async (input, signal, delta, evidence) => {
+    delta("interrupted answer");
+    evidence({
+      reasoningContent: "must not retain disabled thinking",
+      toolCalls: [],
+    });
+    started = true;
+    await new Promise((resolve) =>
+      signal.addEventListener("abort", resolve, { once: true }),
+    );
+    signal.throwIfAborted();
+  });
+  const changed = await f.request("PATCH", "/v1/agents/researcher", {
+    expectedRevision: 1,
+    changes: { thinking: false },
+  });
+  assert.equal(changed.status, 200);
+  f.state.away = true;
+  await f.app.service.tick();
+  const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
+    message: message(),
+  });
+  await until(() => started);
+  const runID = submitted.body.runID;
+  await f.request("POST", "/v1/runs/" + runID + "/cancel", {});
+  const run = await until(async () => {
+    const r = await f.app.service.storage.read(runID);
+    return r.attempts[0]?.status === "cancelled" && r;
+  });
+  assert.equal(run.attempts[0].text, "interrupted answer");
+  assert.equal(run.attempts[0].reasoningContent, "");
+  assert.equal(
+    run.messages.some((m) => m.role === "assistant"),
+    false,
+  );
+});
+
+test("agent loops automatically discover and load snapshotted skill files on demand", async (t) => {
+  let turn = 0,
+    f;
+  f = await fixture(t, async (input) => {
+    assert.ok(input.tools.some((tool) => tool.name === "load_skills"));
+    if (turn++ === 0) {
+      assert.ok(input.messages[0].content.includes("Selected review workflow"));
+      assert.ok(!input.messages[0].content.includes("PRIVATE INSTRUCTIONS"));
+      assert.ok(!JSON.stringify(input.messages).includes("REFERENCE CONTENT"));
+      await writeFile(
+        path.join(f.home, "skills", "review", "references", "guide.md"),
+        "CHANGED AFTER ADMISSION",
+      );
+      const reloaded = await f.request("POST", "/v1/operations/skills/reload", {
+        request: {},
+      });
+      assert.equal(reloaded.status, 200);
+      return {
+        text: "",
+        toolCalls: [
+          {
+            callID: "load",
+            name: "load_skills",
+            arguments: JSON.stringify({ skillIDs: ["review"] }),
+          },
+        ],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      };
+    }
+    const output = JSON.parse(input.messages.at(-1).content);
+    if (turn === 2) {
+      assert.equal(output.skills[0].instructions, "PRIVATE INSTRUCTIONS");
+      assert.equal(output.skills[0].files[0].path, "references/guide.md");
+      assert.ok(!JSON.stringify(output).includes("REFERENCE CONTENT"));
+      return {
+        text: "",
+        toolCalls: [
+          {
+            callID: "read",
+            name: "load_skills",
+            arguments: JSON.stringify({
+              files: [{ skillID: "review", path: "references/guide.md" }],
+            }),
+          },
+        ],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      };
+    }
+    assert.equal(output.files[0].content, "REFERENCE CONTENT");
+    return {
+      text: "Reviewed",
+      toolCalls: [],
+      usage: { inputTokens: 1, outputTokens: 1 },
+    };
+  });
+  const { managementClient } = await import("../dist/operations.js");
+  const api = managementClient(f.app.service);
+  const skill = {
+    skillID: "review",
+    name: "Review",
+    description: "Selected review workflow",
+    instructions: "PRIVATE INSTRUCTIONS",
+    toolIDs: [],
+    files: [
+      {
+        path: "references/guide.md",
+        encoding: "utf8",
+        content: "REFERENCE CONTENT",
+      },
+    ],
+  };
+  const created = await api["skills create"]({
+    resourceID: undefined,
+    request: { skill },
+  });
+  const fetched = await api["skills get"]({
+    resourceID: "review",
+    request: {},
+  });
+  assert.equal(created.item.hash, fetched.item.hash);
+  const updated = await api["skills update"]({
+    resourceID: "review",
+    request: {
+      expectedHash: fetched.item.hash,
+      skill: { ...skill, files: undefined },
+    },
+  });
+  assert.equal(updated.item.files.length, 1);
+
+  const changed = await f.request("PATCH", "/v1/agents/researcher", {
+    expectedRevision: 1,
+    changes: { mode: "agent-loop", skillIDs: ["review"] },
+  });
+  assert.equal(changed.status, 200);
+  f.state.away = true;
+  await f.app.service.tick();
+  const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
+    message: message(),
+  });
+  const run = await until(async () => {
+    const r = await f.app.service.storage.read(submitted.body.runID);
+    return ["completed", "failed"].includes(r.state) && r;
+  });
+  assert.equal(run.state, "completed", JSON.stringify(run.error));
+  assert.equal(turn, 3);
+  assert.ok(run.toolSnapshots.some((t) => t.toolID === "load_skills"));
+  assert.deepEqual(run.agent.toolIDs, []);
+  assert.equal(run.skills[0].files[0].content, "REFERENCE CONTENT");
+  const { verifyRun } = await import("../dist/runArtifacts.js");
+  assert.equal((await verifyRun(f.app.service, run.runID)).valid, true);
+});
+
+test("instant chats execute selected skills automatically and return client-owned calls", async (t) => {
+  let step = 0;
+  const f = await fixture(t, async (input) => {
+    assert.ok(input.tools.some((t) => t.name === "load_skills"));
+    assert.ok(input.messages[0].content.includes("Instant selected skill"));
+    assert.ok(!input.messages[0].content.includes("INSTANT INSTRUCTIONS"));
+    if (step === 2) {
+      step++;
+      assert.deepEqual(JSON.parse(input.messages.at(-1).content), { ok: true });
+      return {
+        text: "Finished with client result",
+        toolCalls: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      };
+    }
+    if (step++ === 0)
+      return {
+        text: "",
+        toolCalls: [
+          {
+            callID: "skill",
+            name: "load_skills",
+            arguments: JSON.stringify({ skillIDs: ["instant-skill"] }),
+          },
+        ],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      };
+    assert.equal(
+      JSON.parse(input.messages.at(-1).content).skills[0].instructions,
+      "INSTANT INSTRUCTIONS",
+    );
+    return {
+      text: "",
+      toolCalls: [
+        {
+          callID: "resource",
+          name: "load_skills",
+          arguments: JSON.stringify({
+            files: [{ skillID: "instant-skill", path: "assets/template.txt" }],
+          }),
+        },
+        { callID: "client", name: "client_action", arguments: "{}" },
+      ],
+      usage: { inputTokens: 2, outputTokens: 1 },
+    };
+  });
+  const { managementClient } = await import("../dist/operations.js");
+  await managementClient(f.app.service)["skills create"]({
+    resourceID: undefined,
+    request: {
+      skill: {
+        skillID: "instant-skill",
+        name: "Instant",
+        description: "Instant selected skill",
+        instructions: "INSTANT INSTRUCTIONS",
+        toolIDs: [],
+        files: [
+          {
+            path: "assets/template.txt",
+            encoding: "utf8",
+            content: "TEMPLATE",
+          },
+        ],
+      },
+    },
+  });
+  const input = {
+    ...chat(),
+    skillIDs: ["instant-skill"],
+    tools: [
+      {
+        name: "client_action",
+        description: "Client owned",
+        parameters: { type: "object" },
+      },
+    ],
+  };
+  const submitted = await f.request("POST", "/v1/chat/requests", input);
+  assert.equal(submitted.status, 202);
+  const c = await until(() => {
+    const c = f.app.service.chat(submitted.body.requestID);
+    return ["completed", "failed"].includes(c.state) && c;
+  });
+  assert.equal(c.state, "completed", JSON.stringify(c.error));
+  assert.equal(step, 2);
+  assert.deepEqual(
+    c.result.toolCalls.map((t) => t.name),
+    ["client_action"],
+  );
+  assert.equal(c.result.usage.inputTokens, 3);
+  const retried = await f.request("POST", "/v1/chat/requests", input);
+  assert.equal(retried.body.replayed, true);
+
+  const detail = (await f.request("GET", "/v1/chat/requests/" + c.requestID))
+    .body.request;
+  assert.equal(detail.messages.filter((m) => m.role === "tool").length, 2);
+  assert.equal(
+    JSON.parse(detail.messages.at(-1).content).files[0].content,
+    "TEMPLATE",
+  );
+  const followup = await f.request("POST", "/v1/chat/requests", {
+    ...input,
+    messages: [
+      ...input.messages,
+      ...detail.messages,
+      {
+        messageID: randomUUID(),
+        role: "tool",
+        content: '{"ok":true}',
+        attachments: [],
+        toolCalls: [],
+        toolCallID: "client",
+      },
+    ],
+  });
+  assert.equal(followup.status, 202);
+  const finished = await until(() => {
+    const c = f.app.service.chat(followup.body.requestID);
+    return ["completed", "failed"].includes(c.state) && c;
+  });
+  assert.equal(finished.result?.text, "Finished with client result");
+
+  assert.equal(
+    (
+      await f.request("POST", "/v1/chat/requests", {
+        ...chat(),
+        skillIDs: ["not-configured"],
+      })
+    ).status,
+    404,
+  );
+  assert.equal(
+    (
+      await f.request("POST", "/v1/chat/requests", {
+        ...chat(),
+        tools: [
+          { name: "load_skills", description: "override", parameters: {} },
+        ],
+      })
+    ).status,
+    400,
+  );
 });

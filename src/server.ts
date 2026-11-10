@@ -1,3 +1,5 @@
+import { operationInputs } from "./operationInputs.js";
+import { httpOperationRouter, managementClient } from "./operations.js";
 import { OperationalLog, loggingSchema } from "./logging.js";
 import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
@@ -33,20 +35,14 @@ import {
   pageOutput,
   skillSchema,
 } from "./contracts.js";
-import { Storage, canonical, tokenHash } from "./storage.js";
-import {
-  Service,
-  fail,
-  tools,
-  type Runtime,
-  type Presence,
-} from "./service.js";
+import { Storage, tokenHash } from "./storage.js";
+import { Service, fail, type Runtime, type Presence } from "./service.js";
 import { LlamaRuntime, samplePresence } from "./runtime.js";
 
 const packageVersion = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ).version as string;
-type Context = { request: IncomingMessage };
+type Context = { request: IncomingMessage; service: Service };
 
 const dryRun = z.boolean().default(false);
 const revision = z.number().int().positive();
@@ -56,6 +52,8 @@ const optionalBoolean = z
   .optional();
 const after = z.coerce.number().int().nonnegative().optional();
 export function createRouter(service: Service) {
+  const api = managementClient(service);
+  const noResource = { resourceID: undefined, request: {} };
   const publicRoute = os.$context<Context>();
   const protectedRoute = publicRoute.use(async ({ context, next }) => {
     const header = context.request.headers.authorization;
@@ -186,6 +184,7 @@ export function createRouter(service: Service) {
     body,
   });
   return {
+    operations: httpOperationRouter,
     health: publicRoute
       .route({ method: "GET", path: "/health" })
       .input(z.strictObject({}))
@@ -195,12 +194,16 @@ export function createRouter(service: Service) {
       .route({ method: "GET", path: "/v1/status" })
       .input(z.strictObject({}))
       .output(statusSchema)
-      .handler(() => service.status()),
+      .handler(() => api["daemon status"](noResource)),
     configGet: protectedRoute
       .route({ method: "GET", path: "/v1/config" })
       .input(z.strictObject({}))
       .output(z.object({ config: publicConfigSchema }))
-      .handler(() => ({ config: service.publicConfig() })),
+      .handler(async () => ({
+        config: service.publicConfig(
+          (await api["config get"](noResource)).config,
+        ),
+      })),
     configPatch: protectedRoute
       .route({ method: "PATCH", path: "/v1/config" })
       .input(
@@ -237,20 +240,33 @@ export function createRouter(service: Service) {
           restartRequired: z.boolean(),
         }),
       )
-      .handler(({ input }) =>
-        service.patchConfig(
-          input.expectedRevision,
-          input.changes,
-          input.dryRun,
-        ),
-      ),
+      .handler(async ({ input }) => {
+        const { modelIdlePolicies, ...changes } = input.changes;
+        const models = modelIdlePolicies
+          ? service.storage.store.config.models.map((model) => ({
+              ...model,
+              idleUnloadMs:
+                modelIdlePolicies.find((p) => p.modelID === model.modelID)
+                  ?.idleUnloadMs ?? model.idleUnloadMs,
+            }))
+          : undefined;
+        const result = await api["config update"]({
+          resourceID: undefined,
+          request: {
+            expectedRevision: input.expectedRevision,
+            changes: { ...changes, ...(models ? { models } : {}) },
+          },
+          dryRun: input.dryRun,
+        });
+        return { ...result, config: service.publicConfig(result.config) };
+      }),
     agentsList: protectedRoute
       .route({ method: "GET", path: "/v1/agents" })
       .input(pageSchema.extend({ enabled: optionalBoolean }))
       .output(pageOutput(agentSchema))
       .handler(({ input }) =>
-        page("agents:" + input.enabled, input, () =>
-          service.storage.store.agents.filter(
+        page("agents:" + input.enabled, input, async () =>
+          (await api["agents list"](noResource)).items.filter(
             (a) => input.enabled === undefined || a.enabled === input.enabled,
           ),
         ),
@@ -259,43 +275,42 @@ export function createRouter(service: Service) {
       .route({ method: "POST", path: "/v1/agents" })
       .input(z.strictObject({ agent: agentDraftSchema, dryRun }))
       .output(z.object({ agent: agentSchema, changed: z.boolean() }))
-      .handler(({ input }) => service.createAgent(input.agent, input.dryRun)),
+      .handler(({ input }) =>
+        api["agents create"]({
+          resourceID: undefined,
+          request: { agent: input.agent },
+          dryRun: input.dryRun,
+        }),
+      ),
     agentGet: protectedRoute
       .route({ method: "GET", path: "/v1/agents/{agentID}" })
       .input(z.strictObject({ agentID: id }))
       .output(z.object({ agent: agentSchema }))
-      .handler(({ input }) => ({ agent: service.agent(input.agentID) })),
+      .handler(async ({ input }) => ({
+        agent: (
+          await api["agents get"]({ resourceID: input.agentID, request: {} })
+        ).item,
+      })),
     agentPatch: protectedRoute
       .route({ method: "PATCH", path: "/v1/agents/{agentID}" })
       .input(
         z.strictObject({
           agentID: id,
           expectedRevision: revision,
-          changes: agentSchema
-            .omit({
-              agentID: true,
-              revision: true,
-              createdAt: true,
-              updatedAt: true,
-            })
-            .partial()
-            .extend({
-              thinking: z.boolean().optional(),
-              temperature: z.number().min(0).max(2).optional(),
-              maxOutputTokens: z.number().int().min(1).max(32768).optional(),
-            })
-            .refine((x) => Object.keys(x).length > 0),
+          changes: operationInputs["agents update"].shape.changes,
           dryRun,
         }),
       )
       .output(z.object({ agent: agentSchema, changed: z.boolean() }))
       .handler(({ input }) =>
-        service.patchAgent(
-          input.agentID,
-          input.expectedRevision,
-          input.changes,
-          input.dryRun,
-        ),
+        api["agents update"]({
+          resourceID: input.agentID,
+          request: {
+            expectedRevision: input.expectedRevision,
+            changes: input.changes,
+          },
+          dryRun: input.dryRun,
+        }),
       ),
     runCreate: protectedRoute
       .route({
@@ -309,12 +324,11 @@ export function createRouter(service: Service) {
       .output(accepted(acceptanceSchema))
       .handler(async ({ input }) =>
         reply(
-          await service.submit(
-            input.agentID,
-            input.message,
-            false,
-            input.dryRun,
-          ),
+          await api["agents run"]({
+            resourceID: input.agentID,
+            request: { message: input.message },
+            dryRun: input.dryRun,
+          }),
           input.dryRun,
         ),
       ),
@@ -323,36 +337,39 @@ export function createRouter(service: Service) {
       .input(runFilter)
       .output(pageOutput(runSummarySchema))
       .handler(({ input }) =>
-        page("runs:" + canonical([input.agentID, input.state]), input, () =>
-          service.listRuns(input.agentID, input.state),
-        ),
+        api["runs list"]({ resourceID: undefined, request: input }),
       ),
     runsSearch: protectedRoute
       .route({ method: "GET", path: "/v1/runs/search" })
       .input(runFilter.extend({ query: z.string().min(1).max(200) }))
       .output(pageOutput(searchMatchSchema))
       .handler(({ input }) =>
-        page(
-          "search:" + canonical([input.query, input.agentID, input.state]),
-          input,
-          () => service.search(input.query, input.agentID, input.state),
-        ),
+        api["runs search"]({
+          resourceID: input.query,
+          request: {
+            limit: input.limit,
+            cursor: input.cursor,
+            agentID: input.agentID,
+            state: input.state,
+          },
+        }),
       ),
     runGet: protectedRoute
       .route({ method: "GET", path: "/v1/runs/{runID}" })
       .input(z.strictObject({ runID: id }))
       .output(z.object({ run: runDetailSchema }))
-      .handler(async ({ input }) => ({
-        run: service.detail(await service.run(input.runID)),
-      })),
+      .handler(({ input }) =>
+        api["runs get"]({ resourceID: input.runID, request: {} }),
+      ),
     transcript: protectedRoute
       .route({ method: "GET", path: "/v1/runs/{runID}/transcript" })
       .input(pageSchema.extend({ runID: id }))
       .output(pageOutput(transcriptEntrySchema))
       .handler(({ input }) =>
-        page("transcript:" + input.runID, input, async () =>
-          service.transcript(await service.run(input.runID)),
-        ),
+        api["runs transcript"]({
+          resourceID: input.runID,
+          request: { limit: input.limit, cursor: input.cursor },
+        }),
       ),
     runReply: protectedRoute
       .route({
@@ -364,7 +381,11 @@ export function createRouter(service: Service) {
       .output(accepted(acceptanceSchema))
       .handler(async ({ input }) =>
         reply(
-          await service.submit(input.runID, input.message, true, input.dryRun),
+          await api["runs reply"]({
+            resourceID: input.runID,
+            request: { message: input.message },
+            dryRun: input.dryRun,
+          }),
           input.dryRun,
         ),
       ),
@@ -372,7 +393,13 @@ export function createRouter(service: Service) {
       .route({ method: "POST", path: "/v1/runs/{runID}/cancel" })
       .input(z.strictObject({ runID: id, dryRun }))
       .output(z.object({ runID: id, status: z.string(), changed: z.boolean() }))
-      .handler(({ input }) => service.cancelRun(input.runID, input.dryRun)),
+      .handler(({ input }) =>
+        api["runs cancel"]({
+          resourceID: input.runID,
+          request: {},
+          dryRun: input.dryRun,
+        }),
+      ),
     runEvents: protectedRoute
       .route({ method: "GET", path: "/v1/runs/{runID}/events" })
       .input(z.strictObject({ runID: id, afterEventID: after }))
@@ -385,31 +412,40 @@ export function createRouter(service: Service) {
       .input(pageSchema)
       .output(pageOutput(skillSchema))
       .handler(({ input }) =>
-        page("skills", input, () => [...service.skills.values()]),
+        page(
+          "skills",
+          input,
+          async () => (await api["skills list"](noResource)).items,
+        ),
       ),
     skillGet: protectedRoute
       .route({ method: "GET", path: "/v1/skills/{skillID}" })
       .input(z.strictObject({ skillID: id }))
       .output(z.object({ skill: skillSchema }))
-      .handler(({ input }) => ({
-        skill:
-          service.skills.get(input.skillID) ?? fail("skill_not_found", 404),
+      .handler(async ({ input }) => ({
+        skill: (
+          await api["skills get"]({ resourceID: input.skillID, request: {} })
+        ).item,
       })),
     toolsList: protectedRoute
       .route({ method: "GET", path: "/v1/tools" })
       .input(pageSchema)
       .output(pageOutput(toolSchema))
       .handler(({ input }) =>
-        page("tools", input, () => [...service.tools.values()]),
+        page(
+          "tools",
+          input,
+          async () => (await api["tools list"](noResource)).items,
+        ),
       ),
     toolGet: protectedRoute
       .route({ method: "GET", path: "/v1/tools/{toolID}" })
       .input(z.strictObject({ toolID: id }))
       .output(z.object({ tool: toolSchema }))
-      .handler(({ input }) => ({
-        tool:
-          [...service.tools.values()].find((t) => t.toolID === input.toolID) ??
-          fail("tool_not_found", 404),
+      .handler(async ({ input }) => ({
+        tool: (
+          await api["tools get"]({ resourceID: input.toolID, request: {} })
+        ).item,
       })),
     chatCreate: protectedRoute
       .route({
@@ -420,14 +456,25 @@ export function createRouter(service: Service) {
       .input(chatInputSchema)
       .output(accepted(chatAcceptanceSchema))
       .handler(async ({ input }) =>
-        reply(await service.submitChat(input), false),
+        reply(
+          chatAcceptanceSchema.parse(
+            await api["inference submit"]({
+              resourceID: undefined,
+              request: input,
+            }),
+          ),
+          false,
+        ),
       ),
     chatGet: protectedRoute
       .route({ method: "GET", path: "/v1/chat/requests/{requestID}" })
       .input(z.strictObject({ requestID: id }))
       .output(z.object({ request: chatDetailSchema }))
-      .handler(({ input }) => ({
-        request: service.chatDetail(service.chat(input.requestID)),
+      .handler(async ({ input }) => ({
+        request: await api["inference get"]({
+          resourceID: input.requestID,
+          request: {},
+        }),
       })),
     chatEvents: protectedRoute
       .route({ method: "GET", path: "/v1/chat/requests/{requestID}/events" })
@@ -443,7 +490,11 @@ export function createRouter(service: Service) {
         z.object({ requestID: id, status: z.string(), changed: z.boolean() }),
       )
       .handler(({ input }) =>
-        service.cancelChat(input.requestID, input.dryRun),
+        api["inference cancel"]({
+          resourceID: input.requestID,
+          request: {},
+          dryRun: input.dryRun,
+        }),
       ),
   };
 }
@@ -524,7 +575,7 @@ export async function startServer(options: {
             return;
           }
           const { matched } = await handler.handle(request, response, {
-            context: { request },
+            context: { request, service },
           });
           if (!matched) {
             response.writeHead(404, { "Content-Type": "application/json" });

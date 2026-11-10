@@ -214,7 +214,7 @@ export async function main(argv = process.argv.slice(2)) {
         args.values.request as string | undefined,
         execution,
       );
-      if (command.startsWith("runs ")) {
+      if (command.startsWith("runs ") || command.startsWith("queue ")) {
         for (const [flag, field] of [
           ["limit", "limit"],
           ["cursor", "cursor"],

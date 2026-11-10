@@ -1,3 +1,4 @@
+import { executionSlots, schedulerSchema } from "./scheduler.js";
 import type { OperationalLog } from "./logging.js";
 import { remainingTimeout, executionSignal, checkpoint } from "./execution.js";
 import { NightcrewError } from "./protocol.js";
@@ -13,6 +14,7 @@ import {
   rm,
   mkdir,
   readFile,
+  readdir,
   rename,
   unlink,
 } from "node:fs/promises";
@@ -82,6 +84,18 @@ export class LlamaRuntime implements Runtime {
   private resident = new Map<string, string>();
   private idleTimer?: ReturnType<typeof setTimeout>;
   private busy = false;
+  private warmUntil = 0;
+  keepWarm(until: number) {
+    if (until === this.warmUntil) return;
+    this.warmUntil = until;
+    if (this.loadedModel && !this.used.size)
+      this.scheduleIdle(this.loadedModel);
+  }
+  private used = new Map<string, string>();
+  private owners = new Map<string, string>();
+  private contextEpochs = new Map<string, number>();
+  private transientSlots = new Set<string>();
+  private provisioning: Promise<void> = Promise.resolve();
   private loadedModel?: string;
   isBusy() {
     return this.busy;
@@ -90,7 +104,17 @@ export class LlamaRuntime implements Runtime {
     private config: () => Config,
     private home = path.join(homedir(), ".nightcrew"),
     private logger?: OperationalLog,
-  ) {}
+  ) {
+    const source = this.config;
+    this.config = () => {
+      const config = source();
+      return {
+        ...config,
+        scheduler: config.scheduler ?? schedulerSchema.parse({}),
+        slots: executionSlots(config),
+      };
+    };
+  }
   private snapshotDirectory(modelID: string) {
     const model = this.config().models.find((m) => m.modelID === modelID);
     if (!model?.slotSnapshots?.enabled)
@@ -143,10 +167,36 @@ export class LlamaRuntime implements Runtime {
       )
       .digest("hex");
   }
+  private async eraseSlot(slotID: string, signal: AbortSignal) {
+    const slot = this.config().slots.find((s) => s.slotID === slotID);
+    if (!slot) throw Error("Unknown slot");
+    const response = await fetch(
+      this.baseURL +
+        "/slots/" +
+        slot.index +
+        "?action=erase&model=" +
+        encodeURIComponent(slot.modelID),
+      {
+        method: "POST",
+        headers: this.headers(),
+        body: JSON.stringify({ model: slot.modelID }),
+        signal,
+      },
+    );
+    if (!response.ok)
+      throw new NightcrewError(
+        "runtime.snapshotResetFailed",
+        "Failed to clear slot before context takeover",
+        5,
+      );
+    await response.json();
+  }
   private async slotAction(
     slotID: string,
     action: "save" | "restore",
     signal: AbortSignal,
+    contextID = slotID,
+    contextEpoch = 0,
   ) {
     const slot = this.config().slots.find((s) => s.slotID === slotID)!;
     const status = await fetch(
@@ -154,18 +204,21 @@ export class LlamaRuntime implements Runtime {
       { headers: this.headers(), signal },
     );
     const slots = z
-      .array(z.object({ is_processing: z.boolean() }))
+      .array(
+        z.object({ id: z.number().optional(), is_processing: z.boolean() }),
+      )
       .parse(await status.json());
-    if (!status.ok || !slots.length || slots.some((s) => s.is_processing))
+    const target = slots.find((s) => s.id === slot.index) ?? slots[slot.index];
+    if (!status.ok || !target || target.is_processing)
       throw new NightcrewError(
         "runtime.busy",
         "Wait for model slots to become idle before saving or restoring",
         9,
       );
     const directory = await this.privateDirectory(slot.modelID);
-    const manifest = path.join(directory, slotID + ".json");
+    const manifest = path.join(directory, contextID + ".json");
     const signature = await this.signature(slot.modelID);
-    let filename = slotID + "-" + randomUUID() + ".bin";
+    let filename = contextID + "-" + randomUUID() + ".bin";
     let previous: string | undefined;
     try {
       const info = await lstat(manifest);
@@ -173,13 +226,14 @@ export class LlamaRuntime implements Runtime {
         throw Error("Invalid snapshot manifest");
       const data = z
         .object({
+          contextEpoch: z.number().int().nonnegative().default(0),
           signature: z.string(),
           filename: z.string().regex(/^[a-zA-Z0-9_-]+\.bin$/),
         })
         .parse(JSON.parse(await readFile(manifest, "utf8")));
       previous = data.filename;
       if (action === "restore") {
-        if (data.signature !== signature)
+        if (data.signature !== signature || data.contextEpoch !== contextEpoch)
           throw new NightcrewError(
             "runtime.snapshotIncompatible",
             "Snapshot is incompatible with the current model or runtime settings",
@@ -243,10 +297,14 @@ export class LlamaRuntime implements Runtime {
       if (!info.isFile() || info.isSymbolicLink())
         throw Error("Invalid saved snapshot");
       const temp = manifest + "." + randomUUID() + ".tmp";
-      await writeFile(temp, JSON.stringify({ signature, filename }), {
-        mode: 0o600,
-        flag: "wx",
-      });
+      await writeFile(
+        temp,
+        JSON.stringify({ signature, filename, contextEpoch }),
+        {
+          mode: 0o600,
+          flag: "wx",
+        },
+      );
       signal.throwIfAborted();
       await rename(temp, manifest);
       if (previous && previous !== filename)
@@ -255,6 +313,7 @@ export class LlamaRuntime implements Runtime {
   }
   private async saveLoaded() {
     if (
+      this.config().scheduler.snapshotBudgetMB === 0 ||
       !this.loadedModel ||
       !this.config().models.find((m) => m.modelID === this.loadedModel)
         ?.slotSnapshots?.enabled
@@ -264,8 +323,15 @@ export class LlamaRuntime implements Runtime {
     for (const slot of this.config().slots.filter(
       (s) => s.modelID === this.loadedModel,
     )) {
+      if (this.transientSlots.has(slot.slotID)) continue;
       try {
-        await this.slotAction(slot.slotID, "save", signal);
+        await this.slotAction(
+          slot.slotID,
+          "save",
+          signal,
+          this.owners.get(slot.slotID),
+          this.contextEpochs.get(slot.slotID),
+        );
       } catch {
         this.logger?.emit("slot.snapshotSaveFailed", {
           slotID: slot.slotID,
@@ -325,7 +391,7 @@ export class LlamaRuntime implements Runtime {
       });
   }
   async snapshot(slotID: string, action: "save" | "restore", dryRun = false) {
-    if (this.busy)
+    if (this.busy || this.used.size)
       throw new NightcrewError(
         "runtime.busy",
         "Inference or another slot operation is active",
@@ -358,10 +424,13 @@ export class LlamaRuntime implements Runtime {
     clearTimeout(this.idleTimer);
     this.idleTimer = setTimeout(
       () => {
-        if (!this.busy) void this.close().catch(() => {});
+        if (!this.busy && !this.used.size) void this.close().catch(() => {});
       },
-      this.config().models.find((m) => m.modelID === modelID)?.idleUnloadMs ??
-        0,
+      Math.max(
+        this.config().models.find((m) => m.modelID === modelID)?.idleUnloadMs ??
+          0,
+        this.warmUntil - Date.now(),
+      ),
     );
     this.idleTimer.unref();
   }
@@ -442,8 +511,10 @@ export class LlamaRuntime implements Runtime {
         `kv-unified-per-slot = ${slots[0]!.contextTokens}`,
         "jinja = true",
         "cache-prompt = true",
+        "context-shift = false",
         "load-on-startup = false",
       );
+      if (model.kind === "chat") sections.push("reasoning-format = deepseek");
       if (model.slotSnapshots?.enabled)
         sections.push(
           "slot-save-path = " + (await this.privateDirectory(model.modelID)),
@@ -525,18 +596,140 @@ export class LlamaRuntime implements Runtime {
       "Content-Type": "application/json",
     };
   }
+  private formatMessages(
+    messages: Parameters<Runtime["generate"]>[0]["messages"],
+  ) {
+    return messages.map((m) => ({
+      role: m.role,
+      content:
+        m.content +
+        m.attachments
+          .map(
+            (a) =>
+              `\n\nAttachment ${JSON.stringify(a.name)} (${a.mediaType}):\n${Buffer.from(a.dataBase64, "base64").toString("utf8")}`,
+          )
+          .join(""),
+      ...(m.toolCalls.length
+        ? {
+            tool_calls: m.toolCalls.map((c) => ({
+              id: c.callID,
+              type: "function",
+              function: { name: c.name, arguments: c.arguments },
+            })),
+          }
+        : {}),
+      ...(m.toolCallID ? { tool_call_id: m.toolCallID } : {}),
+    }));
+  }
+  async countTokens(
+    input: Parameters<Runtime["generate"]>[0],
+    signal: AbortSignal,
+  ): Promise<number> {
+    if (
+      this.busy ||
+      this.used.has(input.slotID) ||
+      [...this.used.values()].some((m) => m !== input.modelID)
+    )
+      throw Error("Runtime busy");
+    this.used.set(input.slotID, input.modelID);
+    clearTimeout(this.idleTimer);
+    try {
+      const prepare = this.provisioning.then(() =>
+        this.prepare(input.modelID, signal),
+      );
+      this.provisioning = prepare.catch(() => {});
+      await prepare;
+      const post = async (endpoint: string, body: object) => {
+        const response = await fetch(this.baseURL + endpoint, {
+          method: "POST",
+          headers: this.headers(),
+          signal,
+          body: JSON.stringify({ model: input.modelID, ...body }),
+        });
+        if (!response.ok) throw Error("Context tokenization failed");
+        return response.json();
+      };
+      const template = z.object({ prompt: z.string() }).parse(
+        await post("/apply-template", {
+          messages: this.formatMessages(input.messages),
+          tools: input.tools.map((t) => ({ type: "function", function: t })),
+          add_generation_prompt: true,
+          chat_template_kwargs: { enable_thinking: input.thinking ?? true },
+        }),
+      );
+      const tokens = z.object({ tokens: z.array(z.number()) }).parse(
+        await post("/tokenize", {
+          content: template.prompt,
+          add_special: false,
+          parse_special: true,
+        }),
+      );
+      return tokens.tokens.length;
+    } finally {
+      this.used.delete(input.slotID);
+      if (!this.used.size) this.scheduleIdle(input.modelID);
+    }
+  }
   async generate(
     input: Parameters<Runtime["generate"]>[0],
     signal: AbortSignal,
     onDelta?: (text: string) => void,
+    onEvidence?: Parameters<Runtime["generate"]>[3],
   ): Promise<Result> {
-    if (this.busy)
-      throw new NightcrewError("runtime.busy", "Runtime is busy", 9);
-    this.busy = true;
+    if (
+      this.busy ||
+      this.used.has(input.slotID) ||
+      [...this.used.values()].some((model) => model !== input.modelID)
+    )
+      throw new NightcrewError(
+        "runtime.busy",
+        "Requested model or slot is busy",
+        9,
+      );
+    this.used.set(input.slotID, input.modelID);
     clearTimeout(this.idleTimer);
-    this.resident.set(input.modelID, "starting");
     try {
-      await this.prepare(input.modelID, signal);
+      const prepare = this.provisioning.then(() =>
+        this.prepare(input.modelID, signal),
+      );
+      this.provisioning = prepare.catch(() => {});
+      await prepare;
+      signal.throwIfAborted();
+      if (
+        input.contextID &&
+        (this.owners.get(input.slotID) !== input.contextID ||
+          this.contextEpochs.get(input.slotID) !== (input.contextEpoch ?? 0))
+      ) {
+        await this.eraseSlot(input.slotID, signal);
+        this.owners.delete(input.slotID);
+        if (
+          input.persistContext !== false &&
+          this.config().scheduler.snapshotBudgetMB > 0 &&
+          this.config().models.find((m) => m.modelID === input.modelID)
+            ?.slotSnapshots.enabled
+        ) {
+          try {
+            await this.slotAction(
+              input.slotID,
+              "restore",
+              signal,
+              input.contextID,
+              input.contextEpoch,
+            );
+          } catch (error) {
+            signal.throwIfAborted();
+            if (
+              error instanceof NightcrewError &&
+              error.code === "runtime.snapshotResetFailed"
+            )
+              throw error;
+          }
+        }
+        this.owners.set(input.slotID, input.contextID);
+        this.contextEpochs.set(input.slotID, input.contextEpoch ?? 0);
+      } else if (!input.contextID) this.owners.delete(input.slotID);
+      if (input.persistContext === false) this.transientSlots.add(input.slotID);
+      else this.transientSlots.delete(input.slotID);
       const slot = this.config().slots.find(
         (s) => s.slotID === input.slotID && s.modelID === input.modelID,
       );
@@ -575,27 +768,7 @@ export class LlamaRuntime implements Runtime {
           signal,
         });
       } else {
-        const messages = input.messages.map((m) => ({
-          role: m.role,
-          content:
-            m.content +
-            m.attachments
-              .map(
-                (a) =>
-                  `\n\nAttachment ${JSON.stringify(a.name)} (${a.mediaType}):\n${Buffer.from(a.dataBase64, "base64").toString("utf8")}`,
-              )
-              .join(""),
-          ...(m.toolCalls.length
-            ? {
-                tool_calls: m.toolCalls.map((c) => ({
-                  id: c.callID,
-                  type: "function",
-                  function: { name: c.name, arguments: c.arguments },
-                })),
-              }
-            : {}),
-          ...(m.toolCallID ? { tool_call_id: m.toolCallID } : {}),
-        }));
+        const messages = this.formatMessages(input.messages);
         response = await fetch(this.baseURL + "/v1/chat/completions", {
           method: "POST",
           headers: this.headers(),
@@ -619,7 +792,13 @@ export class LlamaRuntime implements Runtime {
       if (!response.ok) throw Error("Model request failed");
       if (!response.body) throw Error("Empty model response");
       if (model.kind === "chat")
-        return await this.readStream(response, signal, onDelta);
+        return await this.readStream(
+          response,
+          signal,
+          onDelta,
+          input.thinking !== false,
+          onEvidence,
+        );
       const reader = response.body.getReader();
       let bytes = 0;
       const chunks: Uint8Array[] = [];
@@ -643,26 +822,53 @@ export class LlamaRuntime implements Runtime {
       };
     } catch (e) {
       if (signal.aborted) {
-        await this.release(input.modelID);
+        await this.release(input.modelID, input.slotID);
       } else {
-        this.resident.set(input.modelID, "failed");
-        await this.stop();
+        await this.release(input.modelID, input.slotID);
       }
       throw e;
     } finally {
-      this.busy = false;
-      this.scheduleIdle(input.modelID);
+      if (
+        input.contextID &&
+        input.persistContext !== false &&
+        this.owners.get(input.slotID) === input.contextID &&
+        this.config().scheduler.snapshotBudgetMB > 0 &&
+        this.config().models.find((m) => m.modelID === input.modelID)
+          ?.slotSnapshots.enabled &&
+        this.loadedModel === input.modelID
+      ) {
+        try {
+          await this.slotAction(
+            input.slotID,
+            "save",
+            AbortSignal.timeout(5000),
+            input.contextID,
+            input.contextEpoch,
+          );
+          await this.pruneSnapshots();
+        } catch {
+          this.logger?.emit("slot.snapshotSaveFailed", {
+            slotID: input.slotID,
+            reason: "transport",
+          });
+        }
+      }
+      this.used.delete(input.slotID);
+      if (!this.used.size) this.scheduleIdle(input.modelID);
     }
   }
   private async readStream(
     response: Response,
     signal: AbortSignal,
     onDelta?: (text: string) => void,
+    captureThinking = true,
+    onEvidence?: Parameters<Runtime["generate"]>[3],
   ): Promise<Result> {
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
     let buffer = "",
       text = "",
+      reasoningContent = "",
       finish = "";
     let total = 0;
     let ended = false;
@@ -678,6 +884,7 @@ export class LlamaRuntime implements Runtime {
           finish_reason: z.string().nullable().optional(),
           delta: z.object({
             content: z.string().nullable().optional(),
+            reasoning_content: z.string().nullable().optional(),
             tool_calls: z
               .array(
                 z.object({
@@ -723,6 +930,19 @@ export class LlamaRuntime implements Runtime {
           text += choice.delta.content;
           onDelta?.(choice.delta.content);
         }
+        if (captureThinking && choice.delta.reasoning_content) {
+          reasoningContent += choice.delta.reasoning_content;
+          if (Buffer.byteLength(reasoningContent) > 1048576) {
+            onEvidence?.({
+              reasoningContent,
+              toolCalls: [...calls.entries()].map(([index, c]) => ({
+                index,
+                ...c,
+              })),
+            });
+            throw Error("Reasoning output limit");
+          }
+        }
         for (const part of choice.delta.tool_calls ?? []) {
           const call = calls.get(part.index) ?? {
             callID: "",
@@ -734,6 +954,13 @@ export class LlamaRuntime implements Runtime {
           call.arguments += part.function?.arguments ?? "";
           calls.set(part.index, call);
         }
+        onEvidence?.({
+          reasoningContent,
+          toolCalls: [...calls.entries()].map(([index, c]) => ({
+            index,
+            ...c,
+          })),
+        });
       }
     };
     try {
@@ -758,13 +985,15 @@ export class LlamaRuntime implements Runtime {
       throw Error("Incomplete generation");
     return {
       text,
+      ...(captureThinking && reasoningContent ? { reasoningContent } : {}),
       toolCalls: [...calls.entries()]
         .sort(([a], [b]) => a - b)
         .map(([, c]) => toolCallSchema.parse(c)),
       usage,
     };
   }
-  private async release(modelID: string) {
+  private async release(modelID: string, slotID: string) {
+    const index = this.config().slots.find((s) => s.slotID === slotID)?.index;
     // HTTP cancellation alone is insufficient: observe all slots idle before reuse.
     for (let i = 0; i < 20; i++) {
       try {
@@ -777,10 +1006,12 @@ export class LlamaRuntime implements Runtime {
           res.ok &&
           Array.isArray(body) &&
           body.length > 0 &&
-          body.every(
-            (s) =>
+          body.some(
+            (s, i) =>
               s &&
               typeof s === "object" &&
+              (("id" in s && s.id === index) ||
+                (!("id" in s) && i === index)) &&
               "is_processing" in s &&
               s.is_processing === false,
           )
@@ -799,7 +1030,11 @@ export class LlamaRuntime implements Runtime {
   private async stopOwned() {
     clearTimeout(this.idleTimer);
     await this.saveLoaded();
+    await this.pruneSnapshots().catch(() => {});
     this.loadedModel = undefined;
+    this.owners.clear();
+    this.contextEpochs.clear();
+    this.transientSlots.clear();
     const child = this.child;
     this.child = undefined;
     if (child?.pid && child.exitCode === null && child.signalCode === null) {
@@ -831,8 +1066,115 @@ export class LlamaRuntime implements Runtime {
       this.directory = undefined;
     }
   }
+  async contextCache(contextID: string, reset: boolean, dryRun = false) {
+    if (!/^[a-zA-Z0-9_-]+$/.test(contextID))
+      throw Error("Invalid context identity");
+    if (reset && (this.busy || this.used.size))
+      throw new NightcrewError(
+        "runtime.busy",
+        "Wait for inference to settle before resetting caches",
+        9,
+      );
+    if (reset) this.busy = true;
+    try {
+      const items = [];
+      for (const model of this.config().models.filter(
+        (m) => m.slotSnapshots.enabled,
+      )) {
+        const directory = this.snapshotDirectory(model.modelID);
+        const manifest = path.join(directory, contextID + ".json");
+        try {
+          const dir = await lstat(directory),
+            meta = await lstat(manifest);
+          if (
+            !dir.isDirectory() ||
+            dir.isSymbolicLink() ||
+            !meta.isFile() ||
+            meta.isSymbolicLink() ||
+            meta.size > 8192
+          )
+            throw Error("Invalid cache directory or manifest");
+          const data = JSON.parse(await readFile(manifest, "utf8"));
+          if (
+            typeof data.filename !== "string" ||
+            !/^[a-zA-Z0-9_-]+\.bin$/.test(data.filename)
+          )
+            throw Error("Invalid cache filename");
+          const file = path.join(directory, data.filename),
+            stat = await lstat(file);
+          if (!stat.isFile() || stat.isSymbolicLink())
+            throw Error("Invalid cache file");
+          items.push({
+            modelID: model.modelID,
+            bytes: stat.size,
+            updatedAt: meta.mtime.toISOString(),
+          });
+          if (reset && !dryRun) {
+            await unlink(manifest);
+            await unlink(file);
+            for (const [slot, owner] of this.owners)
+              if (owner === contextID) this.owners.delete(slot);
+          }
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        }
+      }
+      return {
+        contextID,
+        items,
+        changed: reset && !dryRun && items.length > 0,
+      };
+    } finally {
+      if (reset) this.busy = false;
+    }
+  }
+  async pruneSnapshots() {
+    const caches: {
+      manifest: string;
+      file: string;
+      bytes: number;
+      mtime: number;
+    }[] = [];
+    for (const model of this.config().models.filter(
+      (m) => m.slotSnapshots.enabled,
+    )) {
+      const directory = await this.privateDirectory(model.modelID);
+      for (const name of await readdir(directory)) {
+        if (!/^[a-zA-Z0-9_-]+\.json$/.test(name)) continue;
+        try {
+          const manifest = path.join(directory, name),
+            meta = await lstat(manifest);
+          if (!meta.isFile() || meta.isSymbolicLink() || meta.size > 8192)
+            continue;
+          const data = JSON.parse(await readFile(manifest, "utf8"));
+          if (
+            typeof data.filename !== "string" ||
+            !/^[a-zA-Z0-9_-]+\.bin$/.test(data.filename)
+          )
+            continue;
+          const file = path.join(directory, data.filename),
+            stat = await lstat(file);
+          if (!stat.isFile() || stat.isSymbolicLink()) continue;
+          caches.push({
+            manifest,
+            file,
+            bytes: stat.size + meta.size,
+            mtime: meta.mtimeMs,
+          });
+        } catch {}
+      }
+    }
+    let bytes = caches.reduce((n, c) => n + c.bytes, 0);
+    for (const cache of caches.sort((a, b) => a.mtime - b.mtime)) {
+      if (bytes <= this.config().scheduler.snapshotBudgetMB * 1024 * 1024)
+        break;
+      await unlink(cache.manifest);
+      await unlink(cache.file).catch(() => {});
+      bytes -= cache.bytes;
+    }
+  }
   async close() {
-    if (this.busy)
+    if (this.busy || this.used.size)
       throw new NightcrewError("runtime.busy", "Runtime is busy", 9);
     this.busy = true;
     try {

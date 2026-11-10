@@ -2,6 +2,19 @@
   "commands": [
     {
       "confirmation": false,
+      "description": "Inspect saved agent KV cache without changing its transcript",
+      "mutates": false,
+      "name": "agents cache",
+      "operand": "required",
+      "options": [
+        "request"
+      ],
+      "requestSchema": "agents.cache.request",
+      "resultSchema": "agents.cache.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
       "description": "create agents",
       "mutates": true,
       "name": "agents create",
@@ -63,7 +76,9 @@
       "mutates": false,
       "name": "agents get",
       "operand": "required",
-      "options": [],
+      "options": [
+        "request"
+      ],
       "requestSchema": "agents.get.request",
       "resultSchema": "agents.get.result",
       "scope": "management"
@@ -74,10 +89,27 @@
       "mutates": false,
       "name": "agents list",
       "operand": "none",
-      "options": [],
+      "options": [
+        "request"
+      ],
       "requestSchema": "agents.list.request",
       "resultSchema": "agents.list.result",
       "scope": "management"
+    },
+    {
+      "confirmation": true,
+      "description": "Discard saved agent KV cache without deleting conversation history",
+      "mutates": true,
+      "name": "agents reset-cache",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run",
+        "yes"
+      ],
+      "requestSchema": "agents.reset-cache.request",
+      "resultSchema": "agents.reset-cache.result",
+      "scope": "daemon"
     },
     {
       "confirmation": false,
@@ -114,6 +146,7 @@
       "name": "auth rotate",
       "operand": "none",
       "options": [
+        "request",
         "dry-run",
         "yes"
       ],
@@ -138,7 +171,9 @@
       "mutates": false,
       "name": "config get",
       "operand": "none",
-      "options": [],
+      "options": [
+        "request"
+      ],
       "requestSchema": "config.get.request",
       "resultSchema": "config.get.result",
       "scope": "management"
@@ -176,7 +211,9 @@
       "mutates": false,
       "name": "daemon status",
       "operand": "none",
-      "options": [],
+      "options": [
+        "request"
+      ],
       "requestSchema": "daemon.status.request",
       "resultSchema": "daemon.status.result",
       "scope": "daemon"
@@ -217,6 +254,47 @@
       "requestSchema": "help.request",
       "resultSchema": "help.result",
       "scope": "static"
+    },
+    {
+      "confirmation": false,
+      "description": "Cancel instant inference",
+      "mutates": true,
+      "name": "inference cancel",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "inference.cancel.request",
+      "resultSchema": "inference.cancel.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "Inspect an instant inference request",
+      "mutates": false,
+      "name": "inference get",
+      "operand": "required",
+      "options": [
+        "request"
+      ],
+      "requestSchema": "inference.get.request",
+      "resultSchema": "inference.get.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "Submit instant inference without executing tools",
+      "mutates": true,
+      "name": "inference submit",
+      "operand": "none",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "inference.submit.request",
+      "resultSchema": "inference.submit.result",
+      "scope": "daemon"
     },
     {
       "confirmation": false,
@@ -267,7 +345,9 @@
       "mutates": false,
       "name": "models get",
       "operand": "required",
-      "options": [],
+      "options": [
+        "request"
+      ],
       "requestSchema": "models.get.request",
       "resultSchema": "models.get.result",
       "scope": "management"
@@ -278,7 +358,9 @@
       "mutates": false,
       "name": "models list",
       "operand": "none",
-      "options": [],
+      "options": [
+        "request"
+      ],
       "requestSchema": "models.list.request",
       "resultSchema": "models.list.result",
       "scope": "management"
@@ -310,13 +392,87 @@
     },
     {
       "confirmation": false,
-      "description": "Inspect the daemon's latest presence sample and interaction cooldown",
+      "description": "Inspect presence and interaction cooldown",
       "mutates": false,
       "name": "presence status",
       "operand": "none",
-      "options": [],
+      "options": [
+        "request"
+      ],
       "requestSchema": "presence.status.request",
       "resultSchema": "presence.status.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "cancel a pending run with a revision check",
+      "mutates": true,
+      "name": "queue cancel",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "queue.cancel.request",
+      "resultSchema": "queue.cancel.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "Inspect a pending run and its trigger snapshot",
+      "mutates": false,
+      "name": "queue get",
+      "operand": "required",
+      "options": [
+        "request"
+      ],
+      "requestSchema": "queue.get.request",
+      "resultSchema": "queue.get.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "hold a pending run with a revision check",
+      "mutates": true,
+      "name": "queue hold",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "queue.hold.request",
+      "resultSchema": "queue.hold.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "List queued and paused runs, including held work",
+      "mutates": false,
+      "name": "queue list",
+      "operand": "none",
+      "options": [
+        "request",
+        "limit",
+        "cursor",
+        "agent",
+        "state"
+      ],
+      "requestSchema": "queue.list.request",
+      "resultSchema": "queue.list.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "release a pending run with a revision check",
+      "mutates": true,
+      "name": "queue release",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "queue.release.request",
+      "resultSchema": "queue.release.result",
       "scope": "daemon"
     },
     {
@@ -326,6 +482,7 @@
       "name": "runs cancel",
       "operand": "required",
       "options": [
+        "request",
         "dry-run"
       ],
       "requestSchema": "runs.cancel.request",
@@ -352,10 +509,12 @@
       "mutates": false,
       "name": "runs get",
       "operand": "required",
-      "options": [],
+      "options": [
+        "request"
+      ],
       "requestSchema": "runs.get.request",
       "resultSchema": "runs.get.result",
-      "scope": "daemon"
+      "scope": "management"
     },
     {
       "confirmation": false,
@@ -372,7 +531,7 @@
       ],
       "requestSchema": "runs.list.request",
       "resultSchema": "runs.list.result",
-      "scope": "daemon"
+      "scope": "management"
     },
     {
       "confirmation": false,
@@ -418,7 +577,7 @@
       ],
       "requestSchema": "runs.transcript.request",
       "resultSchema": "runs.transcript.result",
-      "scope": "daemon"
+      "scope": "management"
     },
     {
       "confirmation": false,
@@ -431,6 +590,59 @@
       ],
       "requestSchema": "runs.verify.request",
       "resultSchema": "runs.verify.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "Evaluate scheduling policy without dispatching work",
+      "mutates": false,
+      "name": "scheduler explain",
+      "operand": "none",
+      "options": [
+        "request"
+      ],
+      "requestSchema": "scheduler.explain.request",
+      "resultSchema": "scheduler.explain.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "Inspect scheduler settings",
+      "mutates": false,
+      "name": "scheduler get",
+      "operand": "none",
+      "options": [
+        "request"
+      ],
+      "requestSchema": "scheduler.get.request",
+      "resultSchema": "scheduler.get.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "Inspect active allocations and the last scheduling decision",
+      "mutates": false,
+      "name": "scheduler status",
+      "operand": "none",
+      "options": [
+        "request"
+      ],
+      "requestSchema": "scheduler.status.request",
+      "resultSchema": "scheduler.status.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "Configure capacity, residency, timers and policy hook",
+      "mutates": true,
+      "name": "scheduler update",
+      "operand": "none",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "scheduler.update.request",
+      "resultSchema": "scheduler.update.result",
       "scope": "management"
     },
     {
@@ -479,7 +691,9 @@
       "mutates": false,
       "name": "skills get",
       "operand": "required",
-      "options": [],
+      "options": [
+        "request"
+      ],
       "requestSchema": "skills.get.request",
       "resultSchema": "skills.get.result",
       "scope": "management"
@@ -490,9 +704,38 @@
       "mutates": false,
       "name": "skills list",
       "operand": "none",
-      "options": [],
+      "options": [
+        "request"
+      ],
       "requestSchema": "skills.list.request",
       "resultSchema": "skills.list.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "Read skill instructions and supporting files on demand",
+      "mutates": false,
+      "name": "skills read",
+      "operand": "none",
+      "options": [
+        "request"
+      ],
+      "requestSchema": "skills.read.request",
+      "resultSchema": "skills.read.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "Reload skill folders and tool definitions",
+      "mutates": true,
+      "name": "skills reload",
+      "operand": "none",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "skills.reload.request",
+      "resultSchema": "skills.reload.result",
       "scope": "management"
     },
     {
@@ -507,97 +750,6 @@
       ],
       "requestSchema": "skills.update.request",
       "resultSchema": "skills.update.result",
-      "scope": "management"
-    },
-    {
-      "confirmation": false,
-      "description": "create slots",
-      "mutates": true,
-      "name": "slots create",
-      "operand": "none",
-      "options": [
-        "request",
-        "dry-run"
-      ],
-      "requestSchema": "slots.create.request",
-      "resultSchema": "slots.create.result",
-      "scope": "management"
-    },
-    {
-      "confirmation": true,
-      "description": "delete slots",
-      "mutates": true,
-      "name": "slots delete",
-      "operand": "required",
-      "options": [
-        "request",
-        "dry-run",
-        "yes"
-      ],
-      "requestSchema": "slots.delete.request",
-      "resultSchema": "slots.delete.result",
-      "scope": "management"
-    },
-    {
-      "confirmation": false,
-      "description": "Inspect one slot",
-      "mutates": false,
-      "name": "slots get",
-      "operand": "required",
-      "options": [],
-      "requestSchema": "slots.get.request",
-      "resultSchema": "slots.get.result",
-      "scope": "management"
-    },
-    {
-      "confirmation": false,
-      "description": "List slots",
-      "mutates": false,
-      "name": "slots list",
-      "operand": "none",
-      "options": [],
-      "requestSchema": "slots.list.request",
-      "resultSchema": "slots.list.result",
-      "scope": "management"
-    },
-    {
-      "confirmation": false,
-      "description": "restore a slot prompt cache on disk",
-      "mutates": true,
-      "name": "slots restore",
-      "operand": "required",
-      "options": [
-        "dry-run"
-      ],
-      "requestSchema": "slots.restore.request",
-      "resultSchema": "slots.restore.result",
-      "scope": "daemon"
-    },
-    {
-      "confirmation": false,
-      "description": "save a slot prompt cache on disk",
-      "mutates": true,
-      "name": "slots save",
-      "operand": "required",
-      "options": [
-        "dry-run"
-      ],
-      "requestSchema": "slots.save.request",
-      "resultSchema": "slots.save.result",
-      "scope": "daemon"
-    },
-    {
-      "confirmation": false,
-      "description": "update slots",
-      "mutates": true,
-      "name": "slots update",
-      "operand": "required",
-      "options": [
-        "request",
-        "dry-run"
-      ],
-      "requestSchema": "slots.update.request",
-      "resultSchema": "slots.update.result",
       "scope": "management"
     },
     {
@@ -727,7 +879,9 @@
       "mutates": false,
       "name": "tools get",
       "operand": "required",
-      "options": [],
+      "options": [
+        "request"
+      ],
       "requestSchema": "tools.get.request",
       "resultSchema": "tools.get.result",
       "scope": "management"
@@ -738,7 +892,9 @@
       "mutates": false,
       "name": "tools list",
       "operand": "none",
-      "options": [],
+      "options": [
+        "request"
+      ],
       "requestSchema": "tools.list.request",
       "resultSchema": "tools.list.result",
       "scope": "management"
@@ -755,6 +911,117 @@
       ],
       "requestSchema": "tools.update.request",
       "resultSchema": "tools.update.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "create a saved trigger",
+      "mutates": true,
+      "name": "triggers create",
+      "operand": "none",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "triggers.create.request",
+      "resultSchema": "triggers.create.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": true,
+      "description": "delete a saved trigger",
+      "mutates": true,
+      "name": "triggers delete",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run",
+        "yes"
+      ],
+      "requestSchema": "triggers.delete.request",
+      "resultSchema": "triggers.delete.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "disable a saved trigger",
+      "mutates": true,
+      "name": "triggers disable",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "triggers.disable.request",
+      "resultSchema": "triggers.disable.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "enable a saved trigger",
+      "mutates": true,
+      "name": "triggers enable",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "triggers.enable.request",
+      "resultSchema": "triggers.enable.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "Manually submit a saved trigger without changing its schedule",
+      "mutates": true,
+      "name": "triggers fire",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "triggers.fire.request",
+      "resultSchema": "triggers.fire.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "Inspect a trigger, next occurrence and admission blockers",
+      "mutates": false,
+      "name": "triggers get",
+      "operand": "required",
+      "options": [
+        "request"
+      ],
+      "requestSchema": "triggers.get.request",
+      "resultSchema": "triggers.get.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "Inspect triggers and future schedule occurrences",
+      "mutates": false,
+      "name": "triggers list",
+      "operand": "none",
+      "options": [
+        "request"
+      ],
+      "requestSchema": "triggers.list.request",
+      "resultSchema": "triggers.list.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "update a saved trigger",
+      "mutates": true,
+      "name": "triggers update",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "triggers.update.request",
+      "resultSchema": "triggers.update.result",
       "scope": "management"
     },
     {
@@ -794,5 +1061,5 @@
     "version": false
   },
   "protocolVersion": 1,
-  "schemaVersion": 9
+  "schemaVersion": 24
 }

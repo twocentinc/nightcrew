@@ -1,0 +1,478 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import path from "node:path";
+import { tmpdir } from "node:os";
+import { randomUUID } from "node:crypto";
+import { setTimeout as delay } from "node:timers/promises";
+import { Storage, initializeHome } from "../dist/storage.js";
+import { Service } from "../dist/service.js";
+import { manage } from "../dist/management.js";
+import {
+  schedulerSchema,
+  executionSlots,
+  defaultPlan,
+  validatePlan,
+  policyPlan,
+} from "../dist/scheduler.js";
+const message = (content) => ({
+  messageID: randomUUID(),
+  content,
+  attachments: [],
+});
+async function until(fn) {
+  for (let i = 0; i < 200; i++) {
+    if (await fn()) return;
+    await delay(10);
+  }
+  throw Error("Condition timed out");
+}
+async function setup(t, generate, settings = {}) {
+  const home = await mkdtemp(path.join(tmpdir(), "nc-scheduler-"));
+  await initializeHome(home, {
+    host: "127.0.0.1",
+    port: 6970,
+    interactionCooldownMs: 0,
+    scheduler: schedulerSchema.parse(settings),
+    models: [
+      {
+        modelID: "q",
+        kind: "chat",
+        weightsPath: "/unused",
+        projectorPath: null,
+        idleUnloadMs: 300000,
+      },
+    ],
+    slots: [],
+    hooks: [],
+  });
+  const state = { away: true };
+  let service;
+  const start = async () => {
+    service = new Service(
+      new Storage(home),
+      { status: () => [], close: async () => {}, generate },
+      async () => ({
+        state: state.away ? "away" : "present",
+        samplingHealthy: true,
+        observedAt: new Date().toISOString(),
+        reason: "test",
+        diagnostic: null,
+      }),
+    );
+    await service.initialize();
+  };
+  await start();
+  t.after(async () => {
+    await service.close();
+    await rm(home, { recursive: true, force: true });
+  });
+  const agent = async (id, extra = {}) => {
+    await service.createAgent({
+      agentID: id,
+      name: id,
+      systemPrompt: "test",
+      modelID: "q",
+      slotID: "auto",
+      mode: "single-turn",
+      skillIDs: [],
+      toolIDs: [],
+      enabled: true,
+      timeoutMs: 30000,
+      ...extra,
+    });
+  };
+  return {
+    home,
+    state,
+    agent,
+    get service() {
+      return service;
+    },
+    restart: async () => {
+      await service.close();
+      await start();
+    },
+  };
+}
+const done = {
+  text: "done",
+  toolCalls: [],
+  usage: { inputTokens: 1, outputTokens: 1 },
+};
+test("scheduler batches resident work, eventually switches, and validates external allocations", async () => {
+  const settings = schedulerSchema.parse({
+    maxConcurrent: 2,
+    minResidencyMs: 1000,
+    maxWaitMs: 5000,
+  });
+  const s = {
+    now: 10000,
+    eligible: true,
+    blockers: [],
+    residentModelID: "q",
+    residentSince: 0,
+    settings,
+    pending: [
+      {
+        runID: "a",
+        modelID: "q",
+        priority: 0,
+        modelPriority: 0,
+        waitingSince: 9000,
+      },
+      {
+        runID: "b",
+        modelID: "g",
+        priority: 10,
+        modelPriority: 10,
+        waitingSince: 9000,
+      },
+    ],
+    active: [],
+    slots: [
+      { slotID: "q1", modelID: "q" },
+      { slotID: "g1", modelID: "g" },
+    ],
+  };
+  assert.equal(defaultPlan(s).start[0].runID, "a");
+  s.pending[1].waitingSince = 0;
+  assert.equal(defaultPlan(s).start[0].runID, "b");
+  s.active = [{ runID: "active", modelID: "q", slotID: "q1" }];
+  assert.deepEqual(defaultPlan(s).pause, ["active"]);
+  assert.throws(
+    () =>
+      validatePlan(s, {
+        start: [{ runID: "b", slotID: "g1" }],
+        pause: [],
+        reason: "bad",
+      }),
+    /one model/,
+  );
+  const blocked = { ...s, eligible: false, blockers: ["presence"] };
+  assert.throws(
+    () =>
+      validatePlan(blocked, {
+        start: [{ runID: "b", slotID: "g1" }],
+        pause: [],
+        reason: "bad",
+      }),
+    /blocked/,
+  );
+  const hook = {
+    executablePath: process.execPath,
+    arguments: [
+      "-e",
+      "process.stdin.resume();process.stdin.on('end',()=>console.log(JSON.stringify({start:[],pause:[],reason:'wait'})))",
+    ],
+    timeoutMs: 1000,
+    failurePolicy: "builtin",
+  };
+  assert.equal(
+    (await policyPlan({ ...s, settings: { ...settings, hook } })).source,
+    "hook",
+  );
+  assert.equal(
+    (
+      await policyPlan({
+        ...s,
+        settings: {
+          ...settings,
+          hook: { ...hook, arguments: ["-e", "console.log('invalid')"] },
+        },
+      })
+    ).source,
+    "fallback",
+  );
+  assert.equal(
+    (
+      await policyPlan({
+        ...s,
+        settings: {
+          ...settings,
+          hook: {
+            ...hook,
+            arguments: ["-e", "setTimeout(()=>{},10000)"],
+            timeoutMs: 100,
+            failurePolicy: "hold",
+          },
+        },
+      })
+    ).source,
+    "hold",
+  );
+});
+test("two background slots run concurrently and instant work waits for both to release", async (t) => {
+  let live = 0,
+    max = 0,
+    released = 0;
+  const seen = [];
+  const f = await setup(
+    t,
+    async (input, signal) => {
+      seen.push(input);
+      live++;
+      max = Math.max(max, live);
+      try {
+        if (input.messages.at(-1).content === "instant") {
+          assert.equal(released, 2);
+          return done;
+        }
+        await new Promise((resolve, reject) =>
+          signal.addEventListener(
+            "abort",
+            () => {
+              setTimeout(() => {
+                released++;
+                reject(Error("aborted"));
+              }, 50);
+            },
+            { once: true },
+          ),
+        );
+        return done;
+      } finally {
+        live--;
+      }
+    },
+    { maxConcurrent: 2 },
+  );
+  await f.agent("a");
+  await f.agent("b");
+  await f.service.submit("a", message("a"));
+  await f.service.submit("b", message("b"));
+  await until(() => seen.length === 2);
+  assert.equal(max, 2);
+  assert.notEqual(seen[0].slotID, seen[1].slotID);
+  f.state.away = false;
+  const accepted = await f.service.submitChat({
+    conversationID: randomUUID(),
+    slotID: "instant",
+    messages: [
+      { ...message("instant"), role: "user", toolCalls: [], toolCallID: null },
+    ],
+    tools: [],
+    timeoutMs: 1000,
+    maxOutputTokens: 20,
+    temperature: 0,
+  });
+  await until(() => f.service.chat(accepted.requestID).state === "completed");
+  assert.equal(max, 2);
+});
+test("persistent agents keep one run across completion, queued input and restart", async (t) => {
+  let release;
+  const inputs = [];
+  const f = await setup(t, async (input, signal) => {
+    inputs.push(input);
+    if (input.messages.at(-1).content === "one")
+      await new Promise((r, reject) => {
+        release = r;
+        signal.addEventListener("abort", () => reject(Error("abort")), {
+          once: true,
+        });
+      });
+    return done;
+  });
+  await f.agent("persistent", { contextMode: "persistent" });
+  const first = await f.service.submit("persistent", message("one"));
+  await until(() => !!release);
+  const secondMessage = message("two");
+  const second = await f.service.submit("persistent", secondMessage);
+  assert.equal(second.runID, first.runID);
+  assert.equal((await f.service.run(first.runID)).pendingInputs.length, 1);
+  assert.equal(
+    (await f.service.submit("persistent", secondMessage)).replayed,
+    true,
+  );
+  release();
+  await until(
+    async () =>
+      inputs.length === 2 &&
+      (await f.service.run(first.runID)).state === "completed",
+  );
+  assert.deepEqual(
+    inputs[1].messages.filter((m) => m.role === "user").map((m) => m.content),
+    ["one", "two"],
+  );
+  await f.restart();
+  const third = await f.service.submit("persistent", message("three"));
+  assert.equal(third.runID, first.runID);
+  await until(
+    async () => (await f.service.run(first.runID)).state === "completed",
+  );
+  const run = await f.service.run(first.runID);
+  assert.equal(run.segment, 2);
+  assert.equal(run.messages.filter((m) => m.role === "user").length, 3);
+  assert.equal(
+    [...f.service.storage.summaries.values()].filter(
+      (r) => r.agentID === "persistent",
+    ).length,
+    1,
+  );
+  assert.ok(inputs.every((i) => i.contextID === inputs[0].contextID));
+});
+test("time slices pause without failing and timer admission has no catch-up", async (t) => {
+  let count = 0;
+  const f = await setup(t, async (input, signal) => {
+    count++;
+    if (count === 1)
+      await new Promise((resolve, reject) =>
+        signal.addEventListener("abort", () => reject(Error("yield")), {
+          once: true,
+        }),
+      );
+    return done;
+  });
+  await f.agent("sliced", { contextMode: "persistent", timeSliceMs: 100 });
+  const accepted = await f.service.submit("sliced", message("work"));
+  await until(
+    async () => (await f.service.run(accepted.runID)).state === "completed",
+  );
+  const run = await f.service.run(accepted.runID);
+  assert.ok(run.events.some((e) => e.type === "paused"));
+  assert.ok(run.activeMs >= 90);
+  assert.equal(run.segment, 0);
+  await manage(f.service, {
+    command: "triggers create",
+    request: {
+      trigger: {
+        triggerID: "timer",
+        name: "timer",
+        agentID: "sliced",
+        enabled: true,
+        schedule: { type: "interval", everyMs: 60000 },
+      },
+    },
+  });
+  await f.service.dispatchTimers();
+  assert.ok(f.service.triggerDue.get("timer").at > Date.now());
+  f.service.triggerDue.set("timer", { revision: 1, at: Date.now() - 100000 });
+  await f.service.dispatchTimers();
+  assert.equal((await f.service.run(run.runID)).segment, 0);
+  f.service.triggerDue.set("timer", { revision: 1, at: Date.now() - 100 });
+  await f.service.dispatchTimers();
+  await until(async () => (await f.service.run(run.runID)).segment === 1);
+  assert.equal(f.service.storage.summaries.size, 1);
+});
+
+test("cancelling a persistent run does not execute its pending inputs", async (t) => {
+  const inputs = [];
+  const f = await setup(t, async (input, signal) => {
+    inputs.push(input);
+    if (input.messages.at(-1).content === "first")
+      await new Promise((resolve, reject) =>
+        signal.addEventListener("abort", () => reject(Error("cancel")), {
+          once: true,
+        }),
+      );
+    return done;
+  });
+  await f.agent("persistent", { contextMode: "persistent" });
+  const first = await f.service.submit("persistent", message("first"));
+  await until(() => inputs.length === 1);
+  const queued = message("cancelled-input");
+  await f.service.submit("persistent", queued);
+  await f.service.cancelRun(first.runID);
+  await delay(30);
+  assert.equal(inputs.length, 1);
+  assert.equal(
+    (await f.service.run(first.runID)).pendingInputs[0].cancelled,
+    true,
+  );
+  assert.equal((await f.service.submit("persistent", queued)).replayed, true);
+  const next = await f.service.submit("persistent", message("new"));
+  assert.equal(next.runID, first.runID);
+  await until(
+    async () => (await f.service.run(first.runID)).state === "completed",
+  );
+  assert.equal(inputs.length, 2);
+  assert.ok(!inputs[1].messages.some((m) => m.content === "cancelled-input"));
+});
+test("scheduler partial updates preserve existing limits and hook configuration", async (t) => {
+  const f = await setup(t, async () => done, {
+    maxConcurrent: 3,
+    contextTokens: 8192,
+    maxWaitMs: 123456,
+  });
+  const { requestSchemas } = await import("../dist/operationInputs.js");
+  const request = requestSchemas["scheduler update"].parse({
+    expectedRevision: f.service.storage.store.config.revision,
+    changes: { timersEnabled: false },
+  });
+  assert.deepEqual(request.changes, { timersEnabled: false });
+  const out = await manage(f.service, { command: "scheduler update", request });
+  assert.equal(out.settings.maxConcurrent, 3);
+  assert.equal(out.settings.contextTokens, 8192);
+  assert.equal(out.settings.maxWaitMs, 123456);
+  const config = requestSchemas["config update"].parse({
+    expectedRevision: 1,
+    changes: { interactionCooldownMs: 0 },
+  });
+  assert.deepEqual(config.changes, { interactionCooldownMs: 0 });
+  const model = requestSchemas["models update"].parse({
+    expectedRevision: 1,
+    changes: { idleUnloadMs: 123 },
+  });
+  assert.deepEqual(model.changes, { idleUnloadMs: 123 });
+});
+
+test("only the designated chat model reserves an instant slot", () => {
+  const config = {
+    scheduler: schedulerSchema.parse({ instantModelID: "b" }),
+    slots: [],
+    models: [
+      { modelID: "a", kind: "chat" },
+      { modelID: "b", kind: "chat" },
+      { modelID: "speech", kind: "audio" },
+    ],
+  };
+  const slots = executionSlots(config);
+  assert.equal(slots.filter((s) => s.modelID === "b").length, 2);
+  assert.deepEqual(
+    slots.filter((s) => s.instant).map((s) => s.modelID),
+    ["b"],
+  );
+  assert.equal(slots.filter((s) => s.modelID === "a").length, 1);
+  assert.equal(slots.filter((s) => s.modelID === "speech").length, 1);
+});
+test("instant inference rejects other models and invalid configuration", async (t) => {
+  const f = await setup(t, async () => ({ content: "ok", toolCalls: [] }));
+  await assert.rejects(
+    f.service.submitChat({ modelID: "other" }),
+    /invalid_instant_model/,
+  );
+  await assert.rejects(
+    manage(f.service, {
+      command: "scheduler update",
+      request: {
+        expectedRevision: f.service.storage.store.config.revision,
+        changes: { instantModelID: "missing" },
+      },
+    }),
+    /Instant model/,
+  );
+});
+
+test("default background agents borrow the same slot serially with fresh run contexts", async (t) => {
+  const seen = [];
+  let active = 0,
+    max = 0;
+  const f = await setup(t, async (input) => {
+    seen.push(input);
+    active++;
+    max = Math.max(max, active);
+    await delay(30);
+    active--;
+    return done;
+  });
+  await f.agent("one");
+  await f.agent("two");
+  const a = await f.service.submit("one", message("one"));
+  const b = await f.service.submit("two", message("two"));
+  await until(() => seen.length === 2 && active === 0);
+  assert.equal(max, 1);
+  assert.equal(seen[0].slotID, seen[1].slotID);
+  assert.notEqual(seen[0].contextID, seen[1].contextID);
+  assert.ok(seen.every((i) => i.persistContext === false));
+  assert.notEqual(a.runID, b.runID);
+});

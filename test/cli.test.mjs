@@ -75,11 +75,9 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
   const external = {
     toolID: "inspect",
     description: "read-only fixture",
-    adapter: "exec",
     executablePath: process.execPath,
-    arguments: ["-e", "process.stdout.write(JSON.stringify({ok:true}))"],
+    argv: ["-e", "process.stdout.write(JSON.stringify({ok:true}))"],
     parameters: { type: "object", additionalProperties: false },
-    readOnly: true,
     timeoutMs: 1000,
   };
   assert.equal(
@@ -94,6 +92,13 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
     toolIDs: ["inspect"],
   };
   assert.equal((await call(home, ["skills", "create"], { skill })).ok, true);
+  const readSkill = await call(home, ["skills", "read"], {
+    skillIDs: ["review"],
+  });
+  assert.equal(readSkill.ok, true);
+  assert.equal(readSkill.result.skills[0].instructions, "Use inspect.");
+  assert.equal((await call(home, ["schema", "get", "skills.read"])).ok, true);
+
   const agent = {
     agentID: "reviewer",
     name: "reviewer",
@@ -106,6 +111,39 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
     enabled: true,
   };
   assert.equal((await call(home, ["agents", "create"], { agent })).ok, true);
+  const trigger = {
+    triggerID: "timer",
+    name: "timer",
+    agentID: "reviewer",
+    enabled: true,
+    schedule: { type: "interval", everyMs: 900000 },
+  };
+  assert.equal(
+    (await call(home, ["triggers", "create"], { trigger })).ok,
+    true,
+  );
+  assert.equal(
+    (await call(home, ["triggers", "get", "timer"])).result.item
+      .automaticDispatchEnabled,
+    true,
+  );
+  assert.equal((await call(home, ["triggers", "list"])).result.items.length, 1);
+  const changedTrigger = await call(home, ["triggers", "update", "timer"], {
+    expectedRevision: 1,
+    changes: { name: "renamed" },
+  });
+  assert.equal(changedTrigger.result.item.enabled, true);
+  assert.equal(changedTrigger.result.item.queuePolicy, "skip");
+  assert.equal((await call(home, ["triggers", "fire", "timer"])).ok, false); // daemon required
+  assert.equal(
+    (
+      await call(home, ["triggers", "delete", "timer", "--yes"], {
+        expectedRevision: 2,
+      })
+    ).ok,
+    true,
+  );
+
   assert.equal(
     (
       await call(home, ["agents", "disable", "reviewer"], {
@@ -210,9 +248,8 @@ test("external tools validate input, isolate environment, bound timeout and retu
   const tool = toolDefinitionSchema.parse({
     toolID: "read",
     description: "fixture",
-    adapter: "exec",
     executablePath: process.execPath,
-    arguments: [
+    argv: [
       "-e",
       'process.stdin.resume();process.stdin.on("end",()=>process.stdout.write(JSON.stringify({secret:process.env.PASSWORD??null,ok:true})));',
     ],
@@ -222,7 +259,6 @@ test("external tools validate input, isolate environment, bound timeout and retu
       required: ["query"],
       additionalProperties: false,
     },
-    readOnly: true,
     timeoutMs: 1000,
   });
   await assert.rejects(
@@ -240,7 +276,7 @@ test("external tools validate input, isolate environment, bound timeout and retu
     executeExternalTool(
       {
         ...tool,
-        arguments: ["-e", "setTimeout(()=>{},10000)"],
+        argv: ["-e", "setTimeout(()=>{},10000)"],
         timeoutMs: 100,
       },
       { query: "hello" },
@@ -386,5 +422,222 @@ test("presence sampling needs no home and status never silently falls back offli
   assert.throws(
     () => parseCLI(["presence", "sample", "--dry-run"]),
     /not supported/,
+  );
+});
+
+test("executable-only tools preserve structured JSON input and reject adapter fields", async () => {
+  const definition = {
+    toolID: "structured",
+    description: "Echo typed JSON input",
+    executablePath: process.execPath,
+    argv: [
+      "-e",
+      'let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>process.stdout.write(JSON.stringify(JSON.parse(s))));',
+    ],
+    parameters: {
+      type: "object",
+      properties: {
+        count: { type: "integer" },
+        enabled: { type: "boolean" },
+        tags: { type: "array", items: { type: "string" } },
+        filter: {
+          type: "object",
+          properties: { nested: { type: "number" } },
+          required: ["nested"],
+          additionalProperties: false,
+        },
+      },
+      required: ["count", "enabled", "tags", "filter"],
+      additionalProperties: false,
+    },
+  };
+  assert.equal(
+    toolDefinitionSchema.safeParse({ ...definition, readOnly: true }).success,
+    false,
+  );
+  assert.equal(
+    toolDefinitionSchema.safeParse({ ...definition, arguments: [] }).success,
+    false,
+  );
+  const tool = toolDefinitionSchema.parse(definition);
+  const input = {
+    count: 3,
+    enabled: false,
+    tags: ["a", "b"],
+    filter: { nested: 1.5 },
+  };
+  assert.deepEqual(
+    await executeExternalTool(tool, input, new AbortController().signal),
+    input,
+  );
+  assert.equal(
+    toolDefinitionSchema.safeParse({ ...definition, adapter: "exec" }).success,
+    false,
+  );
+  assert.equal(
+    toolDefinitionSchema.safeParse({ ...definition, argv: [123] }).success,
+    false,
+  );
+  assert.equal(
+    toolDefinitionSchema.safeParse({ ...definition, executablePath: undefined })
+      .success,
+    false,
+  );
+  const { normalizeStoredTool, builtinTools } =
+    await import("../dist/registry.js");
+  assert.deepEqual(
+    normalizeStoredTool({ ...definition, adapter: "exec" }),
+    tool,
+  );
+  const { argv, ...oldDefinition } = definition;
+  assert.deepEqual(
+    normalizeStoredTool({ ...oldDefinition, arguments: argv, readOnly: true }),
+    tool,
+  );
+  assert.throws(
+    () => normalizeStoredTool({ ...definition, arguments: ["conflict"] }),
+    /Conflicting/,
+  );
+  const legacy = normalizeStoredTool({
+    toolID: "old_history",
+    description: "history",
+    adapter: "runs_list",
+    parameters: { type: "object" },
+  });
+  assert.ok(legacy.executablePath);
+  assert.equal("adapter" in legacy, false);
+  assert.ok(
+    builtinTools.every((t) => t.executablePath && !Object.hasOwn(t, "adapter")),
+  );
+});
+
+test("tool JSON parameters reach Nightcrew CLI through --request -", async (t) => {
+  const home = await mkdtemp(path.join(tmpdir(), "nightcrew-tool-stdin-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  assert.equal((await call(home, ["init"])).ok, true);
+  const definition = toolDefinitionSchema.parse({
+    toolID: "list_runs",
+    description: "List saved runs",
+    executablePath: process.execPath,
+    argv: [cli, "runs", "list", "--home", home, "--request", "-"],
+    parameters: {
+      type: "object",
+      properties: { limit: { type: "integer", minimum: 1, maximum: 100 } },
+      required: ["limit"],
+      additionalProperties: false,
+    },
+  });
+  const response = await executeExternalTool(
+    definition,
+    { limit: 3 },
+    new AbortController().signal,
+  );
+  assert.equal(response.ok, true);
+  assert.equal(response.command, "runs list");
+  assert.deepEqual(response.result.items, []);
+  const viaArgv = await executeExternalTool(
+    {
+      ...definition,
+      argv: [cli, "runs", "list", "--home", home, "--limit", "%limit%"],
+    },
+    { limit: 3 },
+    new AbortController().signal,
+  );
+  assert.equal(viaArgv.ok, true);
+  assert.equal(viaArgv.command, "runs list");
+  assert.deepEqual(viaArgv.result.items, []);
+});
+
+test("argv placeholders preserve boundaries and typed stdin without shell evaluation", async () => {
+  const tool = toolDefinitionSchema.parse({
+    toolID: "argv_echo",
+    description: "Echo argv and stdin",
+    executablePath: process.execPath,
+    argv: [
+      "-e",
+      'let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>process.stdout.write(JSON.stringify({argv:process.argv.slice(1),input:JSON.parse(s)})));',
+      "--",
+      "%position%",
+      "--limit=%limit%",
+      "%enabled%",
+      "%filter.owner%",
+      "%items%",
+      "%items.0%",
+      "%nothing%",
+      "%%position%%",
+      "100%%",
+      "%object%",
+    ],
+    parameters: {
+      type: "object",
+      properties: {
+        position: { type: "string" },
+        limit: { type: "integer", default: 7 },
+        enabled: { type: "boolean" },
+        filter: {
+          type: "object",
+          properties: { owner: { type: "string" } },
+          required: ["owner"],
+        },
+        items: { type: "array", items: { type: "string" } },
+        nothing: { type: "null" },
+        object: { type: "object" },
+      },
+      required: ["position", "enabled", "filter", "items", "nothing", "object"],
+      additionalProperties: false,
+    },
+  });
+  const input = {
+    position: 'a b "$(touch /nope)" ; %limit%',
+    enabled: false,
+    filter: { owner: "andi" },
+    items: ["first", "two words"],
+    nothing: null,
+    object: { a: 2 },
+  };
+  const result = await executeExternalTool(
+    tool,
+    input,
+    new AbortController().signal,
+  );
+  assert.deepEqual(result.argv, [
+    input.position,
+    "--limit=7",
+    "false",
+    "andi",
+    '["first","two words"]',
+    "first",
+    "null",
+    "%position%",
+    "100%",
+    '{"a":2}',
+  ]);
+  assert.deepEqual(result.input, { ...input, limit: 7 });
+  const { resolveToolArgv } = await import("../dist/registry.js");
+  assert.throws(
+    () => resolveToolArgv(["%missing%"], {}),
+    /Missing tool parameter/,
+  );
+  assert.throws(
+    () => resolveToolArgv(["%constructor%"], {}),
+    /Missing tool parameter/,
+  );
+  assert.throws(() => resolveToolArgv(["%x%"], { x: "a\0b" }), /NUL/);
+  assert.throws(
+    () => resolveToolArgv(["%x%"], { x: "x".repeat(4001) }),
+    /4000/,
+  );
+  assert.deepEqual(resolveToolArgv(["%x%", "%x%/%x%", "50%"], { x: "" }), [
+    "",
+    "/",
+    "50%",
+  ]);
+  await assert.rejects(
+    executeExternalTool(
+      { ...tool, argv: ["%missing%"] },
+      input,
+      new AbortController().signal,
+    ),
+    /Missing tool parameter/,
   );
 });

@@ -131,7 +131,7 @@ test("diagnostics report missing configuration without creating a runtime home",
 });
 
 test("bundled examples use ordinary validated commands and remain opt-in", async () => {
-  const { requestSchemas } = await import("../dist/protocol.js");
+  const { requestSchemas } = await import("../dist/operationInputs.js");
   const { readFile } = await import("node:fs/promises");
   const agent = requestSchemas["agents create"].parse(
     JSON.parse(
@@ -156,7 +156,7 @@ test("bundled examples use ordinary validated commands and remain opt-in", async
 });
 
 test("Granite example uses a disabled single-turn audio agent", async () => {
-  const { requestSchemas } = await import("../dist/protocol.js");
+  const { requestSchemas } = await import("../dist/operationInputs.js");
   const request = JSON.parse(
     await readFile(
       new URL("../examples/granite-transcription/agent.json", import.meta.url),

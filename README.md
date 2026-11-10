@@ -61,7 +61,7 @@ initialization. Logs live under `<home>/logs`.
 
 ## Configure resources
 
-Agents, models, slots, skills and tools each provide `list`, `get <ID>`, `create`,
+Agents, models, skills and tools each provide `list`, `get <ID>`, `create`,
 `update <ID>` and `delete <ID>`. Structured writes use `--request`; deletes also
 require `--yes`. Mutations support `--dry-run`.
 
@@ -76,12 +76,10 @@ nightcrew skills list
 nightcrew tools list
 ```
 
-Agent updates use the agent’s `expectedRevision`. Config/model/slot updates use
+Agent updates use the agent’s `expectedRevision`. Config/model updates use
 configuration `expectedRevision`. Skill/tool reads include a content `hash`;
 updates/deletes require `expectedHash`. Model creation accepts its model and
-initial slots in one transaction, so the first model can include the required
-instant slot. `config update` can replace model/slot arrays atomically for
-larger topology changes. Referenced resources cannot be deleted; remove their
+legacy slots for compatibility; new configurations derive slots from scheduler settings. Set `scheduler.instantModelID` to the chat model serving interactive requests. Referenced resources cannot be deleted; remove their
 references first. No command downloads models or deletes model weights.
 
 Edits go through `<home>/control.sock` while the daemon runs. The socket and home
@@ -93,27 +91,41 @@ new runs; historical runs retain their configuration.
 
 `agents enable` / `disable` update eligibility. `agents run`, `runs list`,
 `runs get`, `runs transcript`, `runs reply` and `runs cancel` operate through a
-running daemon. Recurring dispatch policy remains deferred.
+running daemon. Enabled interval and cron triggers dispatch automatically.
 
 ## Skills and tools
 
-Skills use trusted `<home>/skills/<skillID>/SKILL.md` files. The CLI accepts a
-structured skill object and writes bounded frontmatter and Markdown instructions.
+Skills use folders rooted at `<home>/skills/<skillID>/SKILL.md`, with optional
+`references/` and `assets/` trees. The CLI accepts metadata, instructions and
+resource files. See “On-demand skill folders” below.
 Custom tools use `<home>/tools/<toolID>.json`.
 
-Built-in tools are immutable: `load_skills`, `runs_list`, and `runs_transcript`.
-Create named aliases using their adapter names, or custom executable tools with
-`adapter: "exec"`. External tools require an absolute `executablePath`, an
-`arguments` array, an object JSON Schema in `parameters`, `timeoutMs`, and an
-explicit `readOnly: true`. See `schema get tools.create` for the full shape.
+Bundled tools are immutable: `load_skills`, `runs_list`, and
+`runs_transcript`. They are ordinary executable tools. History tools call the CLI;
+load_skills reads selected skill snapshots supplied over a private process pipe. Every tool requires an absolute `executablePath`, an object JSON Schema in
+`parameters`. There are no adapter or readOnly fields.
+See `schema get tools.create` for the full shape.
 
-Nightcrew validates arguments, executes without a shell, sends one JSON input
-on stdin, and expects JSON on stdout. Output is limited to 1 MB; timeouts and
-interruption terminate the owned tool process group. Tools do not inherit the
-HTTP root token or the daemon’s secret environment. The read-only declaration
-is an administrator trust contract, **not an OS sandbox**; only configure
-executables whose implementation honors it. Agents receive only their selected
-tools. Built-in history adapters remain restricted to the same agent.
+`argv` is the process argument template list (strings, default empty).
+The model's arguments are separate JSON sent on stdin: numbers, booleans, arrays,
+nested objects and strings are supported according to `parameters`.
+Nightcrew validates that input, executes without a shell, and expects JSON on
+stdout. Output is limited to 1 MB; timeout and interruption terminate the owned
+process group. `timeoutMs` defaults to 10000, with a 100–60000 range.
+
+Tools receive PATH and the non-secret context variables NIGHTCREW_HOME,
+NIGHTCREW_AGENT_ID and NIGHTCREW_RUN_ID. The skills helper additionally receives its
+selected snapshots over file descriptor 3 (NIGHTCREW_SKILLS_FD). They do not
+inherit the daemon's secret environment or root token. These identities are convenience context, not access
+credentials. Bundled wrappers retain same-agent history and selected-skill checks;
+a trusted custom executable has the local user's permissions. Nightcrew does not
+enforce read-only behavior or provide an OS sandbox.
+
+Historical adapter-based JSON files and run snapshots are converted in memory
+when read, including removal of readOnly and conversion of arguments to argv;
+new create/update requests reject these legacy fields. The files are not silently
+rewritten. `runs list`, `runs get` and `runs transcript` also support read-only
+offline inspection, allowing wrappers to use the CLI without starting inference.
 
 ## HTTP and storage
 
@@ -231,16 +243,10 @@ Nightcrew appends the model ID to keep models separate. Existing models default
 to snapshots disabled. Set this object through `models create` or the `changes`
 object of a revision-checked `models update` request.
 
-```sh
-nightcrew slots save instant
-nightcrew slots restore instant
-```
-
-These commands require the daemon and reject queued/active inference. Save
-requires a loaded model; restore may load the model and evict the previous one.
-Both support `--dry-run`. Snapshots must be enabled for that model. Saves use
-unique cache files and atomically publish a manifest; the previous cache is
-removed only after the new manifest is committed.
+Use `agents cache AGENT_ID` to inspect persistent caches and
+`agents reset-cache AGENT_ID --yes` to discard them without deleting the transcript.
+Physical slots are internal scheduler allocations; slot CRUD/save/restore commands
+are no longer exposed. Snapshots use unique files and atomic manifests.
 
 When enabled, Nightcrew saves slots before a model switch, idle unload, or clean
 shutdown, and attempts restoration when the model next loads. It stops the old
@@ -421,3 +427,362 @@ file read is capped at 1 MB and partial leading lines are dropped. Order is
 Keep `--lines` and `--limit` identical when following a cursor. Any change to the
 selected contents, file inventory or query invalidates the cursor; restart without
 it. Log cursors work without a daemon and do not create snapshot files.
+
+## Triggers and pending work
+
+```sh
+nightcrew triggers list
+nightcrew triggers get TRIGGER_ID
+nightcrew triggers create --request trigger.json
+nightcrew triggers update TRIGGER_ID --request changes.json
+nightcrew triggers enable TRIGGER_ID --request revision.json
+nightcrew triggers disable TRIGGER_ID --request revision.json
+nightcrew triggers delete TRIGGER_ID --request revision.json --yes
+nightcrew triggers fire TRIGGER_ID
+nightcrew queue list --agent AGENT_ID --state queued --limit 20
+nightcrew queue get RUN_ID
+nightcrew queue hold RUN_ID --request revision.json
+nightcrew queue release RUN_ID --request revision.json
+nightcrew queue cancel RUN_ID --request revision.json
+```
+
+A create request contains `trigger`: `{triggerID,name,agentID,enabled,schedule,
+message,queuePolicy}`. Schedule is `{type:"manual"}`, `{type:"interval",everyMs}`
+(minimum one minute), or `{type:"cron",expression,timezone}`. Cron accepts five
+numeric fields with lists/ranges/steps and an explicit timezone, Sunday 0 or 7.
+When both day-of-month and weekday are restricted, either can match. Nonexistent
+DST times are skipped; repeated local times are distinct UTC occurrences. Next
+occurrence lookup is bounded to five years. Intervals use a fixed anchor, reset
+when enabled or their schedule changes. Missed occurrences are never caught up.
+
+Automatic interval/cron dispatch runs while `scheduler.timersEnabled` is true.
+The daemon admits due occurrences within a five-second tick tolerance, skips older
+occurrences, and starts from the next future occurrence after restart. Manual `fire`
+works now and does not shift the schedule. It requires a running daemon and an
+enabled trigger and agent. Definitions can be managed offline. `fire --request`
+accepts `{occurrenceID,message}`: both optional, where message replaces the saved
+initial input and includes content/attachments plus optional thinking. Supply a
+stable UUID as occurrenceID for retry safety; without it each call is a new
+occurrence. Nightcrew uses it as the message UUID. Replays do not submit again;
+changed explicit input under the same accepted UUID is rejected.
+
+Queue policy defaults to `skip` while the same trigger has unfinished work.
+`enqueue` preserves each distinct submission. `coalesce` retains one pending
+input for the same trigger/agent revisions, provided the run has never started;
+it preserves superseded input in the transcript but excludes it from inference.
+Held work is still pending; paused, previously started work is never coalesced.
+Coalesced occurrence history is bounded to 1,000 entries. Trigger edits do not
+rewrite accepted definition snapshots. Disable/delete stops new submissions,
+not existing runs. Dry-run previews create/coalesce/skip without writing.
+
+Update requests use `{expectedRevision,changes}`; enable/disable/delete and queue
+hold/release/cancel use `{expectedRevision}` from current inspection. Holds are
+persisted in existing run state files, survive restart, and block dispatch even
+on instant slots. Queue controls affect only queued or paused work; use `runs
+cancel` for active work. List pagination follows the existing run cursor rules.
+There is no separate queue database.
+
+## Scheduler and persistent agents (0.12)
+
+`scheduler get`, `scheduler update --request FILE`, `scheduler status` and
+`scheduler explain` expose settings, allocations and policy decisions. Updates
+use `{expectedRevision,changes}`. Defaults: `maxConcurrent: 1`,
+`contextTokens: 4096`, `snapshotBudgetMB: 1024`, `minResidencyMs: 60000`,
+`maxWaitMs: 900000`, `timersEnabled: true`, `hook: null`.
+
+Set `instantModelID` to one configured chat model, for example `qwen`. Null uses
+an existing legacy instant-slot model, then the first configured chat model.
+`scheduler status` reports the effective model. Only that model gets an instant
+slot. `inference submit` defaults to it and rejects a different explicit model.
+Use `inference get REQUEST_ID` / `inference cancel REQUEST_ID` to inspect/cancel.
+Instant work pauses background inference, waits for compute to release and keeps
+background work stopped through the configurable interaction cooldown (five
+minutes by default). Changing slot topology requires idle compute and no queued
+interactive requests.
+
+Background agents require healthy desktop-away presence and expired cooldown.
+The scheduler runs compatible work concurrently on distinct slots of one loaded
+model, batches resident-model work, and uses model/agent `priority` (default 0)
+and `maxWaitMs` to balance urgency and fairness. It pauses work before switching
+models; it does not load two models together. The instant model can be unloaded
+for background work after cooldown. The default instant model has two physical slots: one reserved for instant
+requests and one shared by background agents. Other models need only their
+background slots. Increase `maxConcurrent` to opt into additional background
+slots. Physical slots are derived, not created by users. Legacy slot definitions remain readable for migration.
+
+Agents choose `contextMode: "fresh"` (default) or `"persistent"`.
+Fresh agents clear the shared slot when taking it over and do not save a named
+KV checkpoint. Turns within the same fresh run may reuse its in-memory context.
+Persistent agents restore their own named checkpoint into that same shared slot,
+then save it when yielding. Neither mode reserves a permanent physical slot.
+A persistent agent has one stable run ID and transcript. Every accepted invocation
+adds a segment; inputs arriving during execution wait for the current segment.
+Configuration is snapshotted per accepted input. Cancellation also cancels pending
+inputs. Natural completion waits for another invocation. `timeSliceMs` (default
+60 seconds) pauses unfinished work; `timeoutMs` is the hard active-time budget
+per segment. Paused time does not count. Compatible named KV snapshots follow the
+agent across physical slots; missing/incompatible caches rebuild from transcript.
+Persistent chat agents enable model snapshots. The global snapshot budget evicts
+old caches; zero disables saving. Resetting a cache does not reset conversation.
+
+An optional scheduler `hook` config supplies `executablePath`, `arguments`,
+`timeoutMs` (default 2000) and `failurePolicy` (`builtin` or `hold`). The executable
+receives one JSON snapshot on stdin (settings, eligibility/blockers, pending runs,
+active allocations, slots and residency) and returns one JSON plan on stdout:
+`{start:[{runID,slotID}],pause:[runID],reason}`. An empty plan intentionally waits.
+Plans are revalidated against live state; hooks cannot bypass presence, cooldown,
+capacity or model/slot safety. Invalid/timed-out hooks fall back or hold according
+to policy. Hooks run without a shell and with bounded time/output.
+
+### Thinking traces
+
+Completed assistant messages record the effective `thinking` setting. When it is
+true and the model emits reasoning, `reasoningContent` stores that text separately
+from the answer in `content`. Turn overrides take precedence over the agent default.
+Run files, transcript inspection and run exports retain the field. Old messages
+without it remain valid; no reasoning is inferred or reconstructed retroactively.
+
+The llama.cpp chat preset explicitly separates reasoning from answers. Nightcrew
+collects streamed `reasoning_content`, including responses that call tools, and
+bounds each trace to 1 MB. Disabled turns do not retain separate reasoning output.
+Interrupted or failed generations retain partial answers, thinking and tool
+fragments as separate attempt evidence, visible through transcript reads and
+the agent history tool. They are not committed as completed assistant messages
+and incomplete tool calls are never executed. Traces are
+not copied into daemon logs or appended to future user-facing answer content.
+
+## Compaction (0.13)
+
+Models accept `compactionThresholdTokens` (positive integer, or `null` for the
+context-capacity limit). Agents select an optional handler:
+
+```json
+{
+  "compaction": {
+    "handler": { "type": "agent", "agentID": "summarizer" }
+  }
+}
+```
+
+Or use a script:
+
+```json
+{
+  "compaction": {
+    "handler": {
+      "type": "script",
+      "executablePath": "/absolute/path/to/compact",
+      "arguments": [],
+      "timeoutMs": 60000
+    }
+  }
+}
+```
+
+Configure these through the ordinary revision-checked `models update` and
+`agents update` commands (inside `changes`). The summarizer must reference a
+separate single-turn chat agent. Its compaction runs always start fresh, with its
+own model, prompt, thinking setting and output limit; they cannot recursively
+compact. No summarizer is installed or enabled automatically.
+
+Before each managed chat-agent generation, Nightcrew applies llama.cpp's chat
+template and tokenizes the assembled input, including tools and text attachments.
+It compacts at the lower of the model threshold and the slot capacity minus the
+agent's `maxOutputTokens`. Reserve a realistic output budget: a 4096-token output
+limit cannot fit alongside any prompt in a 4096-token slot. Context shifting is
+explicitly disabled. Audio and caller-owned instant inference are not automatically
+compacted.
+
+Both handler types receive this JSON request (on stdin for scripts, as user input
+for compactor agents):
+
+```json
+{
+  "version": 1,
+  "runID": "original-run-id",
+  "requestID": "uuid",
+  "previousSummary": null,
+  "messages": [],
+  "targetTokens": 512
+}
+```
+
+`messages` contains the older transcript portion being compacted, including stored
+thinking and attachments. Treat its contents as data, not new instructions.
+`targetTokens` is the requested summary budget; acceptance is determined by
+recounting the complete reconstructed parent context. Return only
+`{"summary":"nonempty summary text"}`. Scripts have a bounded timeout (default
+60 seconds, maximum ten minutes), a 1 MB stdout limit, minimal environment, no shell,
+and process-group cancellation. Summaries are limited to 262144 characters.
+Scripts may be retried after interruption with the same request ID; make them
+idempotent. Their elapsed execution counts as parent active work.
+
+Nightcrew retains the system prompt and most recent complete turn, or a complete
+recent tool exchange during a long agent loop. It replaces only the model-visible
+older history with a summary. Full transcript messages and thinking traces remain
+unchanged. Each accepted checkpoint records its coverage, summary, token counts,
+and optional child run ID. The same parent run continues. KV snapshots include the
+context checkpoint generation so stale pre-compaction state cannot be restored.
+
+For agent handlers, the parent pauses and releases compute. A fresh linked child
+run gets scheduling precedence over ordinary pending work, while still respecting
+presence, cooldown, instant requests, slot capacity, and model residency. The
+parent's active-time clock stops while waiting. Restart resumes the same child;
+parent cancellation cancels unfinished compactor work. A compactor's own input
+must fit its model; otherwise both it and the parent stop for recovery.
+
+Failures, missing handlers, impossible output reservations, or summaries that
+still exceed the budget leave the parent paused and held with `context_full`.
+Nothing is silently discarded. Inspect `runs get` or `queue get` for the error,
+fix the handler through `agents update`, then use revision-checked
+`queue release RUN_ID --request revision.json` to retry. Release picks up the
+agent's current compaction handler while preserving the run's other snapshots.
+An oversized latest input/tool exchange may require cancellation and revised input
+or larger context capacity; this version does not chunk compactor input.
+
+Checkpoints and pending compaction state appear in run inspection and exports;
+compaction events appear in transcripts. There is no separate compaction queue or
+state database. Runtime adapter tests use local mocks; real-model summary quality
+and throughput require separate validation.
+
+## Shared contracts, evidence and storage (0.14)
+
+Management CLI commands and HTTP operations derive from the same oRPC procedures
+in src/operations.ts, with request schemas in src/operationInputs.ts. The private
+control socket and offline CLI invoke these same procedures. HTTP mounts eligible
+operations at POST /v1/operations/<resource>/<action>; the body contains request,
+optional resourceID, and optional dryRun and yes flags. Legacy HTTP resource
+routes remain compatibility adapters. TypeScript clients can import the
+ManagementRouter type from nightcrew/operations. Local startup/bootstrap and
+filesystem bundle operations remain local.
+
+Agent storageLimitMB defaults to 48 MB (range 1–48). The limit measures serialized
+run state and pauses growth at execution/admission boundaries; one final operation
+may cross the threshold. A storage_limit hold preserves the persistent run ID and
+history. Raise the agent limit and explicitly release the queue entry to continue
+when capacity permits. Exporting does not free space. Automatic transcript pruning
+or replacement at the maximum limit is not implemented.
+
+Configure a run.storageLimit notification in config.hooks with executablePath and
+timeoutMs. Its JSON stdin payload identifies the run, agent, segment, eventSequence
+and storage usage (limitMB, bytes, messages, events, attempts). Delivery is recorded
+once per boundary event/executable. The hook does not automatically release the
+run; stdout is ignored. Context-compaction handlers remain separate and return
+summaries rather than storage notifications.
+
+Failed and interrupted attempts preserve available partial output and thinking,
+including incomplete tool fragments. Successful attempts reference their committed
+message. Checkpoints limit evidence loss on process crashes to unsaved deltas.
+Run exports retain this evidence; agents with runs_transcript can inspect it.
+
+The real-model suite is prepared but has not been run for this milestone.
+See [live validation](docs/live-validation.md) for explicit opt-in instructions.
+Default tests use mock inference.
+
+### Passing tool parameters to a CLI
+
+A tool's argv templates are configured once. For example, a tool that
+invokes Nightcrew can use:
+
+    executablePath: /absolute/path/to/nightcrew
+    argv: ["runs", "list", "--request", "-"]
+
+If the model supplies {"limit": 10}, Nightcrew writes that JSON followed by a
+newline to stdin. The CLI's --request - consumes it using the normal runs.list
+request contract. CLI JSON envelopes become the tool result on stdout. Include
+--home and its absolute value in argv when targeting a nondefault runtime home.
+
+For CLIs with flags or positional operands, use parameter placeholders directly:
+
+    argv: ["runs", "transcript", "%runID%", "--limit", "%limit%"]
+
+A model call with {"runID":"example-run","limit":10} launches the executable with
+the run ID and limit in their configured positions, preserving each argument's
+boundary. No wrapper is needed for this mapping. Only explicitly configured
+placeholders become command-line arguments; JSON stdin is still supplied.
+
+Placeholder rules:
+
+- %name% selects a top-level parameter. %filter.owner% and %items.0% select
+  nested own properties or array elements. Names use letters, digits, underscores
+  or hyphens; the first segment must start with a letter or underscore.
+- Placeholders may occupy a whole argument or part of one, such as --limit=%limit%.
+- Strings are passed unchanged. Numbers, booleans, null, arrays and objects use
+  compact JSON text. Arrays do not expand into multiple arguments.
+- Missing values fail before launch. Mark parameters required, or provide schema
+  defaults, when a template needs them. Optional flags are not automatically omitted.
+- %% produces a literal percent; %%name%% passes the literal text %name%.
+  Unmatched percent signs stay literal. Substituted values are never expanded again.
+- Each expanded argument must be at most 4000 characters and contain no NUL.
+  Spaces, quotes, percent signs and shell syntax inside values remain ordinary
+  argument text. Nightcrew never invokes a shell to expand templates.
+
+The parameters schema describes model-supplied JSON. The executable must still
+return JSON on stdout. Wrappers remain useful for conditional flags, repeated
+arguments, or converting non-JSON command output.
+
+## On-demand skill folders (0.18)
+
+An agent-loop run automatically receives the load_skills tool, even when toolIDs
+is empty. Its initial model context includes only names and descriptions for the
+agent's configured skillIDs. The skill body and resources enter context only
+when the model requests them. Single-turn and audio agents remain tool-free.
+
+The tool accepts these JSON requests:
+
+    {}
+    {"skillIDs":["review"]}
+    {"files":[{"skillID":"review","path":"references/guide.md"}]}
+
+The first discovers available skills. The second returns instructions and a file
+manifest, without resource contents. The third reads a selected resource. Results
+contain available, skills and files arrays. Requests can combine skillIDs and files;
+unselected skill IDs and missing files are rejected. No script is executed merely
+because it belongs to a skill folder.
+
+A folder can look like this:
+
+    ~/.nightcrew/skills/review/
+      SKILL.md
+      references/guide.md
+      assets/template.json
+
+After editing files directly, run nightcrew skills reload (or restart the daemon).
+Reload validates the registry before replacing it. Existing admitted runs keep
+their snapshots; subsequent submissions use the reloaded definitions.
+
+For CLI/API creation, add a files array to the skill object:
+
+    "files": [
+      {"path":"references/guide.md","encoding":"utf8","content":"Review guidance"},
+      {"path":"assets/template.json","encoding":"utf8","content":"{}"}
+    ]
+
+The existing skills create/update commands write the complete folder. Updates
+that omit files retain current resources; an explicit files array replaces them.
+Unrelated files in the folder are retained on update. Paths must stay within
+references/ or assets/; symlinks and traversal are rejected. Each resource is at
+most 128 KB, with at most 64 files and 512 KB of serialized resource data per skill.
+Valid text is represented as UTF-8; binary assets use canonical base64. The API
+normalizes encodings and path order so returned hashes match subsequent reads.
+
+nightcrew skills read --request FILE reads configured skills through the same
+on-demand contract. Add runID to read an admitted run's snapshots rather than
+current definitions. Without runID this is an administrator read of the registry.
+Run exports include snapshotted resources.
+
+Instant chat requests accept skillIDs as well. Nightcrew advertises load_skills,
+executes those calls, and continues inference within the same request deadline.
+There are at most 16 model rounds and 4 MB of generated conversation messages;
+the existing 6 MB admission limit includes the selected skill snapshots.
+Client-defined tools are never executed by Nightcrew. In mixed batches it executes
+skill calls and returns the remaining client calls. load_skills is a reserved
+client tool name.
+
+Inference get returns messages containing the generated assistant/tool exchanges.
+Append those messages to client history (then any client tool results) before
+submitting the next turn, so skill reads and tool-call pairing survive. Usage
+aggregates all model rounds. Message and toolResult SSE events expose these
+exchanges too. Instant snapshots remain memory-only and expire with the request;
+they are not persisted request state.
+

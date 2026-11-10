@@ -1,21 +1,7 @@
-import { loggingSchema } from "./logging.js";
 import { z } from "zod";
 import { readFileSync } from "node:fs";
-import {
-  agentDraftSchema,
-  agentSchema,
-  configSchema,
-  modelSchema,
-  slotSchema,
-  skillSchema,
-  userMessageSchema,
-  pageSchema,
-  id,
-  runState,
-} from "./contracts.js";
-import { toolDefinitionSchema } from "./registry.js";
 export const PROTOCOL_VERSION = 1;
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 24;
 export const packageVersion = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ).version as string;
@@ -195,83 +181,3 @@ export function normalizeError(
     { outcomeUnknown: mutation },
   );
 }
-const revision = z.number().int().positive();
-const object = z.strictObject({});
-export const requestSchemas: Record<string, z.ZodType> = {
-  "runs list": pageSchema.extend({
-    agentID: id.optional(),
-    state: runState.optional(),
-  }),
-  "runs transcript": pageSchema,
-  "runs search": pageSchema.extend({
-    agentID: id.optional(),
-    state: runState.optional(),
-  }),
-  "runs export": z.strictObject({ destination: z.string().min(1).max(4096) }),
-  "runs verify": z.strictObject({
-    bundle: z.string().min(1).max(4096).optional(),
-  }),
-  init: configSchema
-    .omit({ rootTokenHash: true, revision: true })
-    .partial()
-    .extend({
-      host: configSchema.shape.host.default("127.0.0.1"),
-      port: configSchema.shape.port.default(6970),
-      interactionCooldownMs:
-        configSchema.shape.interactionCooldownMs.default(300000),
-      models: configSchema.shape.models.default([]),
-      slots: configSchema.shape.slots.default([]),
-      hooks: configSchema.shape.hooks.default([]),
-    }),
-  "config update": z.strictObject({
-    expectedRevision: revision,
-    changes: configSchema
-      .omit({ rootTokenHash: true, revision: true })
-      .partial()
-      .extend({ logging: loggingSchema.optional() }),
-  }),
-  "agents create": z.strictObject({ agent: agentDraftSchema }),
-  "agents update": z.strictObject({
-    expectedRevision: revision,
-    changes: agentSchema
-      .omit({ agentID: true, revision: true, createdAt: true, updatedAt: true })
-      .partial()
-      .extend({
-        thinking: z.boolean().optional(),
-        temperature: z.number().min(0).max(2).optional(),
-        maxOutputTokens: z.number().int().min(1).max(32768).optional(),
-      }),
-  }),
-  "agents enable": z.strictObject({ expectedRevision: revision }),
-  "agents disable": z.strictObject({ expectedRevision: revision }),
-  "agents delete": z.strictObject({ expectedRevision: revision }),
-  "models create": z.strictObject({
-    model: modelSchema,
-    slots: z.array(slotSchema).max(32),
-  }),
-  "models update": z.strictObject({
-    expectedRevision: revision,
-    changes: modelSchema.omit({ modelID: true }).partial(),
-  }),
-  "models delete": z.strictObject({ expectedRevision: revision }),
-  "slots create": z.strictObject({ slot: slotSchema }),
-  "slots update": z.strictObject({
-    expectedRevision: revision,
-    changes: slotSchema.omit({ slotID: true }).partial(),
-  }),
-  "slots delete": z.strictObject({ expectedRevision: revision }),
-  "skills create": z.strictObject({ skill: skillSchema }),
-  "skills update": z.strictObject({
-    expectedHash: z.string(),
-    skill: skillSchema,
-  }),
-  "skills delete": z.strictObject({ expectedHash: z.string() }),
-  "tools create": z.strictObject({ tool: toolDefinitionSchema }),
-  "tools update": z.strictObject({
-    expectedHash: z.string(),
-    tool: toolDefinitionSchema,
-  }),
-  "tools delete": z.strictObject({ expectedHash: z.string() }),
-};
-requestSchemas["agents run"] = z.strictObject({ message: userMessageSchema });
-requestSchemas["runs reply"] = z.strictObject({ message: userMessageSchema });

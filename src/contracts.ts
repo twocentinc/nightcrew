@@ -1,3 +1,10 @@
+import {
+  compactionSchema,
+  compactionStateSchema,
+  checkpointSchema,
+} from "./compaction.js";
+import { executionSlots, schedulerSchema } from "./scheduler.js";
+import { scheduleSchema } from "./triggers.js";
 import { loggingSchema } from "./logging.js";
 import { z } from "zod";
 
@@ -24,6 +31,7 @@ export const toolCallSchema = z.strictObject({
 export const messageSchema = z.strictObject({
   messageID: uuid,
   thinking: z.boolean().optional(),
+  reasoningContent: z.string().max(1048576).optional(),
   role: z.enum(["system", "user", "assistant", "tool"]),
   content: z.string().max(1048576),
   attachments: z.array(attachmentSchema).max(16),
@@ -39,6 +47,14 @@ export const slotSchema = z.strictObject({
 });
 export const modelSchema = z.strictObject({
   modelID: id,
+  compactionThresholdTokens: z
+    .number()
+    .int()
+    .min(1)
+    .max(262144)
+    .nullable()
+    .default(null),
+  priority: z.number().int().min(-100).max(100).default(0),
   kind: z.enum(["chat", "audio"]),
   weightsPath: z.string().max(4096),
   projectorPath: z.string().max(4096).nullable(),
@@ -61,11 +77,13 @@ export const hookSchema = z.strictObject({
     "run.failed",
     "run.timedOut",
     "run.cancelled",
+    "run.storageLimit",
   ]),
   executablePath: z.string().max(4096),
   timeoutMs: z.number().int().min(100).max(60000),
 });
 export const configSchema = z.strictObject({
+  scheduler: schedulerSchema.default(() => schedulerSchema.parse({})),
   revision: z.number().int().positive().max(2147483647),
   host: z.enum(["127.0.0.1", "::1"]),
   port: z.number().int().min(1024).max(65535),
@@ -81,13 +99,18 @@ export const configSchema = z.strictObject({
   hooks: z.array(hookSchema).max(16),
 });
 export const agentSchema = z.strictObject({
+  storageLimitMB: z.number().int().min(1).max(48).default(48),
+  compaction: compactionSchema.nullable().default(null),
+  contextMode: z.enum(["fresh", "persistent"]).default("fresh"),
+  priority: z.number().int().min(-100).max(100).default(0),
+  timeSliceMs: z.number().int().min(100).max(3600000).default(60000),
   agentID: id,
   revision: z.number().int().positive().max(2147483647),
   name: z.string().min(1).max(200),
   systemPrompt: z.string().max(64000),
   mode: z.enum(["single-turn", "agent-loop"]),
   modelID: id,
-  slotID: id,
+  slotID: id.default("auto"),
   skillIDs: z.array(id).max(40),
   toolIDs: z.array(toolID).max(64),
   thinking: z.boolean().default(true),
@@ -103,12 +126,115 @@ export const agentDraftSchema = agentSchema
   .extend({
     timeoutMs: z.number().int().min(1000).max(86400000).default(1800000),
   });
-export const skillSchema = z.strictObject({
+export const skillFileSchema = z
+  .strictObject({
+    path: z
+      .string()
+      .min(1)
+      .max(512)
+      .refine(
+        (value) =>
+          /^(references|assets)\//.test(value) &&
+          value
+            .split("/")
+            .every((part) => part !== "" && part !== "." && part !== "..") &&
+          !/[\\\x00-\x1f]/.test(value),
+        "Expected a relative references/ or assets/ file path",
+      ),
+    encoding: z.enum(["utf8", "base64"]).default("utf8"),
+    content: z.string().max(180000),
+  })
+  .superRefine((value, ctx) => {
+    const bytes = Buffer.from(
+      value.content,
+      value.encoding === "base64" ? "base64" : "utf8",
+    );
+    if (
+      bytes.length > 128 * 1024 ||
+      (value.encoding === "base64" &&
+        bytes.toString("base64") !== value.content)
+    )
+      ctx.addIssue({
+        code: "custom",
+        message: "Invalid encoding or file exceeds 128 KB",
+      });
+  });
+export const skillSchema = z
+  .strictObject({
+    skillID: id,
+    name: z.string().max(200),
+    description: z.string().max(2000),
+    instructions: z.string().max(16000),
+    toolIDs: z.array(toolID).max(64),
+    files: z.array(skillFileSchema).max(64).default([]),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      new Set(value.files.map((f) => f.path)).size !== value.files.length ||
+      Buffer.byteLength(JSON.stringify(value.files)) > 512 * 1024
+    )
+      ctx.addIssue({
+        code: "custom",
+        message: "Duplicate paths or skill files exceed 512 KB",
+      });
+  });
+export const skillLoadInputSchema = z.strictObject({
+  skillIDs: z.array(id).max(40).default([]),
+  files: z
+    .array(z.strictObject({ skillID: id, path: skillFileSchema.shape.path }))
+    .max(4)
+    .default([]),
+});
+export const skillMetadataSchema = z.strictObject({
   skillID: id,
-  name: z.string().max(200),
-  description: z.string().max(2000),
-  instructions: z.string().max(16000),
-  toolIDs: z.array(toolID).max(64),
+  name: skillSchema.shape.name,
+  description: skillSchema.shape.description,
+});
+export const skillLoadResultSchema = z.strictObject({
+  available: z.array(skillMetadataSchema),
+  skills: z.array(
+    z.strictObject({
+      ...skillSchema.shape,
+      files: z.array(
+        z.strictObject({
+          path: z.string(),
+          encoding: z.enum(["utf8", "base64"]),
+          bytes: z.number().int().nonnegative(),
+        }),
+      ),
+    }),
+  ),
+  files: z.array(skillFileSchema.safeExtend({ skillID: id })),
+});
+export const triggerDraftSchema = z.strictObject({
+  triggerID: id,
+  name: z.string().min(1).max(200),
+  agentID: id,
+  enabled: z.boolean().default(false),
+  schedule: scheduleSchema,
+  message: userMessageSchema
+    .omit({ messageID: true })
+    .default({ content: "", attachments: [] }),
+  queuePolicy: z.enum(["skip", "enqueue", "coalesce"]).default("skip"),
+});
+export const triggerSchema = triggerDraftSchema.extend({
+  revision: z.number().int().positive(),
+  createdAt: timestamp,
+  updatedAt: timestamp,
+  anchorAt: timestamp,
+});
+export const triggerSourceSchema = z.strictObject({
+  definition: triggerSchema,
+  admission: z.enum(["manual", "timer"]).default("manual"),
+  occurrences: z
+    .array(
+      z.strictObject({
+        occurrenceID: uuid,
+        inputHash: z.string().regex(/^[a-f0-9]{64}$/),
+      }),
+    )
+    .min(1)
+    .max(1000),
 });
 export const eventSchema = z.strictObject({
   sequence: z.number().int().positive().max(2147483647),
@@ -126,6 +252,15 @@ export const eventSchema = z.strictObject({
     "timedOut",
     "interrupted",
     "hookResult",
+    "held",
+    "released",
+    "coalesced",
+    "pendingInput",
+    "attempt",
+    "storageLimit",
+    "compactionRequested",
+    "compacted",
+    "compactionFailed",
   ]),
   segment: z.number().int().nonnegative(),
   data: z.json(),
@@ -139,9 +274,60 @@ export const runState = z.enum([
   "cancelled",
   "timedOut",
 ]);
+export const attemptSchema = z.strictObject({
+  attemptID: uuid,
+  segment: z.number().int().nonnegative(),
+  startedAt: timestamp,
+  updatedAt: timestamp,
+  status: z.enum([
+    "running",
+    "completed",
+    "failed",
+    "interrupted",
+    "cancelled",
+    "timedOut",
+  ]),
+  reason: z.string().max(128).nullable(),
+  thinking: z.boolean(),
+  text: z.string().max(1048576),
+  reasoningContent: z.string().max(1048576),
+  toolCalls: z
+    .array(
+      z.strictObject({
+        index: z.number().int().min(0).max(31),
+        callID: z.string().max(128),
+        name: z.string().max(128),
+        arguments: z.string().max(64000),
+      }),
+    )
+    .max(32),
+  truncated: z.boolean(),
+  messageID: uuid.nullable(),
+});
 export const runSchema = z.strictObject({
+  attempts: z.array(attemptSchema).max(10000).default([]),
+  compactions: z.array(checkpointSchema).max(1000).default([]),
+  compaction: compactionStateSchema.nullable().default(null),
+  parentRunID: id.nullable().default(null),
   version: z.union([z.literal(1), z.literal(2)]),
-  toolSnapshots: z.array(z.json()).max(64).default([]),
+  toolSnapshots: z.array(z.json()).max(65).default([]),
+  held: z.boolean().default(false),
+  interactive: z.boolean().nullable().default(null),
+  pendingInputs: z
+    .array(
+      z.strictObject({
+        message: userMessageSchema,
+        cancelled: z.boolean().default(false),
+        source: triggerSourceSchema.nullable(),
+        agent: agentSchema.optional(),
+        skills: z.array(skillSchema).optional(),
+        tools: z.array(z.json()).optional(),
+      }),
+    )
+    .max(1000)
+    .default([]),
+  triggerHistory: z.array(triggerSourceSchema).max(1000).default([]),
+  triggerSource: triggerSourceSchema.nullable().default(null),
   runID: id,
   revision: z.number().int().positive().max(2147483647),
   createdAt: timestamp,
@@ -151,7 +337,18 @@ export const runSchema = z.strictObject({
   segment: z.number().int().nonnegative().max(2147483647),
   state: runState,
   pauseReason: z
-    .enum(["presence", "cooldown", "instant", "restart", "manualStop"])
+    .enum([
+      "presence",
+      "cooldown",
+      "instant",
+      "restart",
+      "manualStop",
+      "timeSlice",
+      "scheduler",
+      "compaction",
+      "context_full",
+      "storage_limit",
+    ])
     .nullable(),
   activeMs: z.number().int().min(0).max(86400000),
   messages: z.array(messageSchema).max(10000),
@@ -181,6 +378,7 @@ export const storeSchema = z.strictObject({
   version: z.literal(2),
   config: configSchema,
   agents: z.array(agentSchema).max(1000),
+  triggers: z.array(triggerSchema).max(1000).default([]),
   cooldownUntil: timestamp.nullable(),
 });
 export const pageSchema = z.strictObject({
@@ -193,9 +391,10 @@ export const functionToolSchema = z.strictObject({
   parameters: z.record(z.string(), z.json()),
 });
 export const chatInputSchema = z.strictObject({
+  skillIDs: z.array(id).max(40).default([]),
   conversationID: id,
-  modelID: id,
-  slotID: id,
+  modelID: id.optional(),
+  slotID: id.default("instant"),
   messages: z.array(messageSchema).min(1).max(1000),
   tools: z.array(functionToolSchema).max(64).default([]),
   timeoutMs: z.number().int().min(1000).max(600000).default(120000),
@@ -286,21 +485,43 @@ export function validateAttachments(
 }
 export function validateConfig(store: Store) {
   const { config, agents } = store;
+  if (
+    config.scheduler.instantModelID &&
+    !config.models.some(
+      (m) => m.modelID === config.scheduler.instantModelID && m.kind === "chat",
+    )
+  )
+    throw new Error("Instant model must reference a configured chat model");
+  const triggers = store.triggers ?? [];
+  if (
+    new Set(triggers.map((t) => t.triggerID)).size !== triggers.length ||
+    triggers.some((t) => !agents.some((a) => a.agentID === t.agentID))
+  )
+    throw new Error("Invalid trigger agent reference or duplicate identity");
   for (const xs of [
     config.models.map((x) => x.modelID),
     config.slots.map((x) => x.slotID),
     agents.map((x) => x.agentID),
   ])
     if (new Set(xs).size !== xs.length) throw new Error("Duplicate identity");
-  if (
-    config.models.length &&
-    config.slots.filter((x) => x.instant).length !== 1
-  )
+  if (config.slots.length && config.slots.filter((x) => x.instant).length !== 1)
     throw new Error("Configure exactly one instant slot");
   for (const slot of config.slots)
     if (!config.models.some((x) => x.modelID === slot.modelID))
       throw new Error("Unknown slot model");
   for (const model of config.models) {
+    if (
+      model.compactionThresholdTokens &&
+      (model.kind !== "chat" ||
+        executionSlots(config).some(
+          (s) =>
+            s.modelID === model.modelID &&
+            model.compactionThresholdTokens! > s.contextTokens,
+        ))
+    )
+      throw Error(
+        "Compaction threshold must fit the chat model context capacity",
+      );
     const slots = config.slots
       .filter((x) => x.modelID === model.modelID)
       .sort((a, b) => a.index - b.index);
@@ -314,9 +535,25 @@ export function validateConfig(store: Store) {
       );
   }
   for (const a of agents) {
+    if (a.compaction?.handler.type === "agent") {
+      const handler = a.compaction.handler;
+      const compactor = agents.find((c) => c.agentID === handler.agentID);
+      if (
+        !compactor ||
+        compactor.agentID === a.agentID ||
+        compactor.mode !== "single-turn" ||
+        !config.models.some(
+          (m) => m.modelID === compactor.modelID && m.kind === "chat",
+        )
+      )
+        throw Error("Compactor must reference another single-turn chat agent");
+    }
     const slot = config.slots.find((x) => x.slotID === a.slotID);
     const model = config.models.find((x) => x.modelID === a.modelID);
-    if (!slot || !model || slot.modelID !== a.modelID)
+    if (
+      !model ||
+      (a.slotID !== "auto" && (!slot || slot.modelID !== a.modelID))
+    )
       throw new Error("Invalid agent model or slot");
     if (a.mode === "single-turn" && (a.toolIDs.length || a.skillIDs.length))
       throw new Error("Single-turn agents do not use tools or skills");
@@ -340,6 +577,7 @@ export const publicConfigSchema = configSchema
   });
 export const runSummarySchema = runSchema
   .pick({
+    held: true,
     runID: true,
     revision: true,
     createdAt: true,
@@ -351,7 +589,12 @@ export const runSummarySchema = runSchema
   })
   .extend({ agentID: id, remainingMs: z.number().nonnegative() });
 export const runDetailSchema = runSummarySchema.extend({
+  compactions: runSchema.shape.compactions,
+  compaction: runSchema.shape.compaction,
+  parentRunID: runSchema.shape.parentRunID,
   agent: agentSchema,
+  triggerSource: triggerSourceSchema.nullable(),
+  pendingInputs: runSchema.shape.pendingInputs,
   skills: z.array(skillSchema),
   result: runSchema.shape.result,
   error: runSchema.shape.error,
@@ -360,10 +603,12 @@ export const runDetailSchema = runSummarySchema.extend({
   ),
 });
 export const transcriptEntrySchema = eventSchema.extend({
+  attempt: attemptSchema.nullable().default(null),
   message: messageSchema.nullable(),
 });
 export const resultSchema = z.object({
   text: z.string(),
+  reasoningContent: z.string().max(1048576).optional(),
   toolCalls: z.array(toolCallSchema),
   usage: z.object({
     inputTokens: z.number().nonnegative(),
@@ -373,10 +618,11 @@ export const resultSchema = z.object({
 export const chatDetailSchema = z.object({
   requestID: id,
   conversationID: id,
-  modelID: id,
+  modelID: id.optional(),
   state: z.string(),
   createdAt: timestamp,
   updatedAt: timestamp,
+  messages: z.array(messageSchema).default([]),
   result: resultSchema.nullable(),
   error: runSchema.shape.error,
 });
@@ -384,7 +630,6 @@ export const toolSchema = z.object({
   toolID: id,
   description: z.string(),
   parameters: z.record(z.string(), z.json()),
-  readOnly: z.boolean(),
 });
 export const statusSchema = z.object({
   presence: z.object({

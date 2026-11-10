@@ -5,7 +5,6 @@
     "systemPrompt": "Respond with exactly: Hello world! Do not explain or use tools.",
     "mode": "single-turn",
     "modelID": "qwen",
-    "slotID": "instant",
     "skillIDs": [],
     "toolIDs": [],
     "thinking": false,

@@ -5,7 +5,6 @@
     "systemPrompt": "",
     "mode": "single-turn",
     "modelID": "granite",
-    "slotID": "granite",
     "skillIDs": [],
     "toolIDs": [],
     "thinking": false,

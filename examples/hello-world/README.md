@@ -1,10 +1,7 @@
 # Hello world
 
 Prerequisites: initialize Nightcrew, run its daemon, and register a chat model
-and an instant slot. No model files are bundled or downloaded. Edit `modelID`
-and `slotID` in a copy of `agent.json` to match `nightcrew models list` and
-`nightcrew slots list`. The names `qwen` and `instant` are examples, not required
-installation defaults. No skills or tools are needed.
+with matching `modelID` in `agent.json`. No model files are bundled or downloaded. No skills or tools are needed.
 
 ```sh
 nightcrew agents create --request agent.json
@@ -22,10 +19,9 @@ node -e 'const fs=require("node:fs"),{randomUUID}=require("node:crypto");const r
 ```
 
 Use the returned run ID with `nightcrew runs get <runID>` or `nightcrew runs
-transcript <runID>`. An instant-slot agent runs while the desktop is present and
-during the interaction cooldown, preempting background runs after compute is
-released. It extends the cooldown when finished. A background-slot agent waits
-for desktop-away and cooldown expiry.
+transcript <runID>`. This background agent waits for desktop-away and cooldown
+expiry. For interactive requests use `nightcrew inference submit`; its model
+defaults to `scheduler.instantModelID` and its slot is managed automatically.
 
 `turn.json` omits thinking and inherits the agent's false default.
 `turn-thinking.json` sets it to true for just that turn. Before comparing thinking,

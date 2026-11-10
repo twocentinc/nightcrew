@@ -1,3 +1,9 @@
+import {
+  canonicalSkill,
+  loadSkillContent,
+  writeSkillFolder,
+} from "./skills.js";
+import { nextFireAt } from "./triggers.js";
 import { exportRun, verifyRun } from "./runArtifacts.js";
 import { checkpoint } from "./execution.js";
 import {
@@ -12,6 +18,9 @@ import path from "node:path";
 import { randomUUID, createHash, randomBytes } from "node:crypto";
 import { z } from "zod";
 import {
+  storeSchema,
+  triggerDraftSchema,
+  triggerSchema,
   agentDraftSchema,
   agentSchema,
   configSchema,
@@ -23,6 +32,7 @@ import {
   terminal,
   validateConfig,
   type Store,
+  type Run,
 } from "./contracts.js";
 import { Service, fail } from "./service.js";
 import { atomicJSON, canonical, tokenHash } from "./storage.js";
@@ -31,7 +41,7 @@ import {
   validateRegistry,
   builtinTools,
 } from "./registry.js";
-import { requestSchemas } from "./protocol.js";
+import { requestSchemas } from "./operationInputs.js";
 export type ManagementInput = {
   command: string;
   resourceID?: string;
@@ -65,6 +75,259 @@ export async function manage(
       ? undefined
       : id.parse(resourceID);
   const raw = input.request ?? {};
+  if (command === "skills reload")
+    return { changed: !dryRun, ...(await service.reloadRegistry(dryRun)) };
+  if (command === "skills read") {
+    const request = requestSchemas[command]!.parse(raw) as { runID?: string };
+    if (request.runID) await service.storage.reconcile();
+    const skills = request.runID
+      ? (await service.run(request.runID)).skills
+      : [...service.skills.values()];
+    const { runID, ...selection } = request;
+    return loadSkillContent(skills, selection);
+  }
+  if (command === "presence status")
+    return {
+      presence: service.presence,
+      cooldownUntil: service.storage.store.cooldownUntil,
+    };
+  if (command === "agents cache" || command === "agents reset-cache") {
+    service.agent(name ?? fail("missing_id"));
+    if (!service.runtime.contextCache)
+      fail("cache_management_unavailable", 503);
+    if (command === "agents reset-cache" && !yes && !dryRun)
+      fail("confirmation_required");
+    return service.runtime.contextCache!(
+      "agent-" + createHash("sha256").update(name!).digest("hex"),
+      command === "agents reset-cache",
+      dryRun,
+    );
+  }
+  if (resource === "inference") {
+    if (action === "submit") {
+      if (dryRun)
+        return { changed: false, request: requestSchemas[command]!.parse(raw) };
+      return service.submitChat(
+        requestSchemas[command]!.parse(
+          raw,
+        ) as import("./contracts.js").ChatInput,
+      );
+    }
+    if (action === "get") {
+      return service.chatDetail(service.chat(name ?? fail("missing_id")));
+    }
+    if (action === "cancel")
+      return service.cancelChat(name ?? fail("missing_id"), dryRun);
+  }
+  if (resource === "scheduler") {
+    if (action === "get")
+      return {
+        configRevision: service.storage.store.config.revision,
+        settings: service.storage.store.config.scheduler,
+      };
+    if (action === "status") return service.schedulerStatus();
+    if (action === "explain") return service.explainScheduler();
+    if (action === "update")
+      return service.storage.exclusive(async () => {
+        const input = requestSchemas[command]!.parse(raw) as {
+          expectedRevision: number;
+          changes: Partial<import("./scheduler.js").SchedulerConfig>;
+        };
+        const next = structuredClone(service.storage.store);
+        if (next.config.revision !== input.expectedRevision)
+          fail("revision_conflict", 409);
+        const resizing =
+          input.changes.maxConcurrent !== undefined ||
+          input.changes.contextTokens !== undefined ||
+          input.changes.instantModelID !== undefined;
+        if (
+          resizing &&
+          (service.schedulerStatus().active.length ||
+            [...service.chats.values()].some((c) => c.state === "queued"))
+        )
+          fail("runtime_busy", 409);
+        next.config.scheduler = { ...next.config.scheduler, ...input.changes };
+        next.config.revision++;
+        if (input.changes.contextTokens !== undefined)
+          next.config.slots = next.config.slots.map((s) => ({
+            ...s,
+            contextTokens: input.changes.contextTokens!,
+          }));
+        storeSchema.parse(next);
+        validateConfig(next);
+        if (!dryRun) {
+          if (resizing) await service.runtime.close();
+          await service.storage.saveConfig(next);
+        }
+        return {
+          changed: !dryRun,
+          configRevision: next.config.revision,
+          settings: next.config.scheduler,
+        };
+      });
+  }
+  if (resource === "triggers") {
+    if (action === "fire") {
+      const value = requestSchemas[command]!.parse(raw) as {
+        occurrenceID?: string;
+        message?: Omit<import("./contracts.js").UserMessage, "messageID">;
+      };
+      return service.fireTrigger(
+        name ?? fail("missing_id"),
+        value.occurrenceID ?? randomUUID(),
+        value.message,
+        dryRun,
+      );
+    }
+    if (action === "list" || action === "get") {
+      await service.storage.reconcile();
+      const runs: Run[] = [];
+      for (const summary of service.storage.summaries.values())
+        if (!terminal(summary.state))
+          runs.push(await service.run(summary.runID));
+      const inspect = (trigger: z.infer<typeof triggerSchema>) => {
+        const blockers: string[] = [];
+        if (!trigger.enabled) blockers.push("trigger_disabled");
+        if (!service.agent(trigger.agentID).enabled)
+          blockers.push("agent_disabled");
+        if (
+          trigger.schedule.type !== "manual" &&
+          !service.storage.store.config.scheduler.timersEnabled
+        )
+          blockers.push("timers_disabled");
+        if (
+          trigger.queuePolicy === "skip" &&
+          runs.some(
+            (r) => r.triggerSource?.definition.triggerID === trigger.triggerID,
+          )
+        )
+          blockers.push("unfinished_trigger_run");
+        return {
+          ...trigger,
+          nextFireAt: trigger.enabled
+            ? nextFireAt(
+                trigger.schedule,
+                trigger.anchorAt,
+                Date.now(),
+                checkpoint,
+              )
+            : null,
+          automaticDispatchEnabled:
+            service.storage.store.config.scheduler.timersEnabled,
+          blockers,
+        };
+      };
+      const triggers = service.storage.store.triggers;
+      if (action === "list")
+        return {
+          items: triggers
+            .map(inspect)
+            .sort((a, b) => a.triggerID.localeCompare(b.triggerID)),
+        };
+      return {
+        item: inspect(
+          triggers.find((t) => t.triggerID === name) ??
+            fail("trigger_not_found", 404),
+        ),
+      };
+    }
+    return service.storage.exclusive(async () => {
+      const value = requestSchemas[command]?.parse(raw) as
+        | {
+            trigger?: z.infer<typeof triggerDraftSchema>;
+            expectedRevision?: number;
+            changes?: Partial<z.infer<typeof triggerDraftSchema>>;
+          }
+        | undefined;
+      if (!value) fail("unknown_command");
+      const next = structuredClone(service.storage.store);
+      const at = now();
+      let item: z.infer<typeof triggerSchema> | null;
+      if (action === "create") {
+        const draft = value!.trigger!;
+        if (next.triggers.some((t) => t.triggerID === draft.triggerID))
+          fail("trigger_exists", 409);
+        item = triggerSchema.parse({
+          ...draft,
+          revision: 1,
+          createdAt: at,
+          updatedAt: at,
+          anchorAt: at,
+        });
+        next.triggers.push(item);
+      } else {
+        const index = next.triggers.findIndex((t) => t.triggerID === name);
+        if (index < 0) fail("trigger_not_found", 404);
+        const current = next.triggers[index]!;
+        if (current.revision !== value!.expectedRevision)
+          fail("revision_conflict", 409);
+        if (action === "delete") {
+          if (!yes && !dryRun) fail("confirmation_required");
+          next.triggers.splice(index, 1);
+          item = null;
+        } else {
+          const changes =
+            action === "update"
+              ? value!.changes!
+              : { enabled: action === "enable" };
+          const reset =
+            (changes.enabled === true && !current.enabled) ||
+            (changes.schedule !== undefined &&
+              canonical(changes.schedule) !== canonical(current.schedule));
+          item = triggerSchema.parse({
+            ...current,
+            ...changes,
+            anchorAt: reset ? at : current.anchorAt,
+            revision: current.revision + 1,
+            updatedAt: at,
+          });
+          next.triggers[index] = item;
+        }
+      }
+      storeSchema.parse(next);
+      validateConfig(next);
+      if (Buffer.byteLength(JSON.stringify(next)) > 8 * 1024 * 1024)
+        fail("config_capacity", 413);
+      if (!dryRun) await service.storage.saveConfig(next);
+      return { item, changed: !dryRun };
+    });
+  }
+  if (resource === "queue") {
+    if (action === "list") {
+      const input = requestSchemas[command]!.parse(raw) as {
+        limit: number;
+        cursor?: string;
+        agentID?: string;
+        state?: string;
+      };
+      return service.page(
+        "queue:" + canonical([input.agentID ?? null, input.state ?? null]),
+        input,
+        async () =>
+          (await service.listRuns(input.agentID, input.state)).filter(
+            (r) => r.state === "queued" || r.state === "paused",
+          ),
+      );
+    }
+    if (action === "get") {
+      const run = await service.run(name ?? fail("missing_id"));
+      if (run.state !== "queued" && run.state !== "paused")
+        fail("run_not_pending", 409);
+      return { run: service.detail(run) };
+    }
+    if (action === "hold" || action === "release" || action === "cancel") {
+      const value = requestSchemas[command]!.parse(raw) as {
+        expectedRevision: number;
+      };
+      return service.queueControl(
+        name ?? fail("missing_id"),
+        action,
+        value.expectedRevision,
+        dryRun,
+      );
+    }
+    fail("unknown_command");
+  }
   if (command === "slots save" || command === "slots restore") {
     if (!name) fail("slot_required");
     if (service.status().queue.length) fail("runtime_busy", 409);
@@ -235,10 +498,12 @@ export async function manage(
         next.config.revision !== value.expectedRevision
       )
         fail("revision_conflict", 409);
-      const loggingOnly =
+      const liveSettingsOnly =
         resource === "config" &&
-        Object.keys(value.changes as object).every((k) => k === "logging");
-      if (!loggingOnly && service.status().queue.length)
+        Object.keys(value.changes as object).every((k) =>
+          ["logging", "interactionCooldownMs"].includes(k),
+        );
+      if (!liveSettingsOnly && service.status().queue.length)
         fail("runtime_busy", 409);
       if (resource === "config") {
         const changes = value.changes as Partial<typeof next.config>;
@@ -286,14 +551,18 @@ export async function manage(
         }
       }
       next.config.revision++;
-      await verifyModels(next);
+      if (
+        resource !== "config" ||
+        (value.changes as Record<string, unknown>).models !== undefined
+      )
+        await verifyModels(next);
     } else if (resource === "skills" || resource === "tools") {
       const isSkill = resource === "skills";
-      const item =
+      let item =
         action === "delete"
           ? null
           : isSkill
-            ? skillSchema.parse(value.skill)
+            ? canonicalSkill(skillSchema.parse(value.skill))
             : toolDefinitionSchema.parse(value.tool);
       const itemID = item
         ? "skillID" in item
@@ -306,6 +575,17 @@ export async function manage(
       const current = isSkill
         ? registry.skills.get(itemID)
         : registry.tools.get(itemID);
+      if (
+        isSkill &&
+        action === "update" &&
+        item &&
+        current &&
+        !(value.skill as { files?: unknown }).files
+      )
+        item = skillSchema.parse({
+          ...item,
+          files: (current as import("./contracts.js").Skill).files,
+        });
       if (action === "create" && current) fail("already_exists", 409);
       if (action !== "create" && !current) fail("not_found", 404);
       if (action !== "create" && fingerprint(current) !== value.expectedHash)
@@ -323,34 +603,11 @@ export async function manage(
         const root = path.join(service.storage.home, resource!);
         await mkdir(root, { recursive: true, mode: 0o700 });
         if (isSkill) {
-          const folder = path.join(root, itemID);
-          const file = path.join(folder, "SKILL.md");
-          if (item) {
-            const skill = skillSchema.parse(item);
-            await mkdir(folder, { recursive: true, mode: 0o700 });
-            const temp = path.join(folder, "." + randomUUID() + ".tmp");
-            await writeFile(
-              temp,
-              "---\nname: " +
-                JSON.stringify(skill.name) +
-                "\ndescription: " +
-                JSON.stringify(skill.description) +
-                "\ntools:\n" +
-                skill.toolIDs.map((t) => "  - " + t + "\n").join("") +
-                "---\n" +
-                skill.instructions,
-              { mode: 0o600, flag: "wx" },
-            );
-            try {
-              checkpoint();
-              await rename(temp, file);
-            } finally {
-              await unlink(temp).catch(() => {});
-            }
-          } else {
-            checkpoint();
-            await unlink(file);
-          }
+          await writeSkillFolder(
+            root,
+            item ? skillSchema.parse(item) : null,
+            itemID,
+          );
         } else {
           const file = path.join(root, itemID + ".json");
           if (item) await atomicJSON(file, item, 128 * 1024);
@@ -369,10 +626,13 @@ export async function manage(
     validateConfig(next);
     validateRegistry(next.agents, registry.skills, registry.tools);
     if (!dryRun) {
-      const loggingOnly =
+      const liveSettingsOnly =
         resource === "config" &&
-        Object.keys(value.changes as object).every((k) => k === "logging");
-      if (resource !== "agents" && !loggingOnly) await service.runtime.close();
+        Object.keys(value.changes as object).every((k) =>
+          ["logging", "interactionCooldownMs"].includes(k),
+        );
+      if (resource !== "agents" && !liveSettingsOnly)
+        await service.runtime.close();
       await service.storage.saveConfig(next);
     }
     return {

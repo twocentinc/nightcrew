@@ -1,3 +1,4 @@
+import { callOperation } from "./operations.js";
 import {
   Execution,
   currentExecution,
@@ -15,7 +16,7 @@ import { createServer, createConnection } from "node:net";
 import path from "node:path";
 import { lstat, chmod, unlink } from "node:fs/promises";
 import { z } from "zod";
-import { manage, type ManagementInput } from "./management.js";
+import { type ManagementInput } from "./management.js";
 import { startServer } from "./server.js";
 const controlSchema = z.strictObject({
   command: z.string(),
@@ -204,7 +205,7 @@ export async function runDaemon(home: string, quiet = false) {
           const execution = new Execution(input.timeoutMs ?? 90000, mutation);
           const result = await execution.run(async () => {
             input.request = definition.request.parse(input.request ?? {});
-            const output = await manage(app.service, input);
+            const output = await callOperation(app.service, input);
             try {
               return definition.result.parse(output);
             } catch {

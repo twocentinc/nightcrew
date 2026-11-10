@@ -11,3 +11,8 @@ or skills. It demonstrates model/slot selection and a per-turn thinking override
 
 [Granite transcription](granite-transcription/README.md) demonstrates a
 single-turn audio agent and WAV attachments, with no bundled private recordings.
+
+[Run summarizer](summarizer/README.md) provides a compaction agent with no tools,
+a researched handoff prompt, and a synthetic evaluation turn. It can be referenced
+by another agent's compaction handler without adding a recurring trigger.
+

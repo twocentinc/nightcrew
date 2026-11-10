@@ -4,11 +4,10 @@ A single-turn, manually invoked audio agent using the existing transcription
 adapter. No recordings, transcripts or model weights are bundled.
 
 Register a model with `kind: "audio"`, the local Granite GGUF `weightsPath`, its
-matching `projectorPath`, and a slot (8192 context tokens is the tested setup).
-Use absolute regular-file paths; resolve downloaded asset symlinks first.
-The model and slot IDs in `agent.json` are examples—edit them to match your
-configuration. Keep the existing instant slot on your chat model. This example's
-non-instant slot obeys desktop-away and cooldown requirements.
+matching `projectorPath`. Set scheduler context capacity to 8192 for the tested
+setup. Use absolute regular-file paths; resolve asset symlinks first. Edit the
+example `modelID` to match your configuration. Slots are allocated automatically.
+This background agent obeys desktop-away and cooldown requirements.
 
 ```sh
 nightcrew agents create --request agent.json

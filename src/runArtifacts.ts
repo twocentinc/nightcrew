@@ -1,3 +1,4 @@
+import { validateCompactionState } from "./compaction.js";
 import path from "node:path";
 import { constants } from "node:fs";
 import { createHash } from "node:crypto";
@@ -11,8 +12,14 @@ import {
   rmdir,
 } from "node:fs/promises";
 import { z } from "zod";
-import { toolDefinitionSchema } from "./registry.js";
-import { runSchema, type Run } from "./contracts.js";
+import { normalizeStoredTool } from "./registry.js";
+import {
+  agentSchema,
+  skillSchema,
+  runSchema,
+  transcriptEntrySchema,
+  type Run,
+} from "./contracts.js";
 import { type Service } from "./service.js";
 import { canonical } from "./storage.js";
 import { checkpoint } from "./execution.js";
@@ -70,8 +77,18 @@ function attachments(run: Run) {
 }
 function validate(run: Run, runID: string) {
   if (run.runID !== runID) throw Error("Run identity mismatch");
-  const messages = new Map(run.messages.map((m) => [m.messageID, m]));
-  if (messages.size !== run.messages.length)
+  const messages = new Map(
+    [
+      ...run.messages,
+      ...run.pendingInputs.map((p) => ({
+        ...p.message,
+        role: "user" as const,
+        toolCalls: [],
+        toolCallID: null,
+      })),
+    ].map((m) => [m.messageID, m]),
+  );
+  if (messages.size !== run.messages.length + run.pendingInputs.length)
     throw Error("Duplicate message UUID");
   const calls = new Set<string>(),
     results = new Set<string>();
@@ -94,6 +111,25 @@ function validate(run: Run, runID: string) {
       results.add(message.toolCallID);
     } else if (message.toolCallID)
       throw Error("Unexpected tool result reference");
+  }
+  const attemptIDs = new Set<string>();
+  for (const attempt of run.attempts) {
+    if (attemptIDs.has(attempt.attemptID) || attempt.segment > run.segment)
+      throw Error("Invalid attempt identity or segment");
+    attemptIDs.add(attempt.attemptID);
+    if (attempt.messageID && !messages.has(attempt.messageID))
+      throw Error("Missing attempt message reference");
+    if (attempt.status === "completed" && !attempt.messageID)
+      throw Error("Completed attempt has no message");
+    if (
+      !run.events.some(
+        (e) =>
+          e.type === "attempt" &&
+          (e.data as { attemptID?: string } | null)?.attemptID ===
+            attempt.attemptID,
+      )
+    )
+      throw Error("Attempt has no transcript event");
   }
   const referenced = new Set<string>();
   for (const [i, event] of run.events.entries()) {
@@ -133,15 +169,14 @@ function validate(run: Run, runID: string) {
   )
     throw Error("Missing or duplicate skill snapshot");
   if (run.version === 2) {
-    const tools = run.toolSnapshots.map((tool) =>
-      toolDefinitionSchema.parse(tool),
-    );
+    const tools = run.toolSnapshots.map((tool) => normalizeStoredTool(tool));
     if (
       new Set(tools.map((t) => t.toolID)).size !== tools.length ||
       run.agent.toolIDs.some((id) => !tools.some((t) => t.toolID === id))
     )
       throw Error("Missing or duplicate tool snapshot");
   }
+  validateCompactionState(run);
   attachments(run);
 }
 function documents(service: Service, run: Run) {
@@ -283,6 +318,18 @@ export async function verifyRun(
       }
       checks.push("fileChecksums");
       run = runSchema.parse(docs["run.json"]);
+      const configuration = docs["configuration.json"] as {
+        agent?: unknown;
+        skills?: unknown;
+      };
+      if (configuration?.agent)
+        configuration.agent = agentSchema.parse(configuration.agent);
+      if (configuration?.skills)
+        configuration.skills = z.array(skillSchema).parse(configuration.skills);
+      docs["transcript.json"] = z
+        .array(transcriptEntrySchema)
+        .parse(docs["transcript.json"]);
+      docs["run.json"] = run; // Normalize additive defaults in older exported runs.
       if (
         run.revision !== manifest.revision ||
         (run.events.at(-1)?.sequence ?? 0) !== manifest.lastEventSequence
