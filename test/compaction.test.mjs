@@ -381,3 +381,141 @@ test("compaction normalizes JSON strings and fenced JSON without accepting arbit
   ])
     assert.throws(() => parseCompactionSummary(value));
 });
+
+test("compaction projects evidence without thinking or base64 and preserves originals", async () => {
+  const { compactionRequest } = await import("../dist/compaction.js");
+  const run = {
+    runID: "parent",
+    compactions: [],
+    compaction: { requestID: "request", coveredThrough: 2, targetTokens: 100 },
+    messages: [
+      { role: "system", content: "policy" },
+      {
+        messageID: "user",
+        role: "user",
+        content: "Review this",
+        attachments: [
+          {
+            name: "notes.txt",
+            mediaType: "text/plain",
+            dataBase64: Buffer.from("exact evidence 123").toString("base64"),
+          },
+          { name: "audio.wav", mediaType: "audio/wav", dataBase64: "AQID" },
+        ],
+        toolCalls: [],
+        toolCallID: null,
+      },
+      {
+        messageID: "answer",
+        role: "assistant",
+        content: "Unverified plan",
+        reasoningContent: "invented date",
+        attachments: [],
+        toolCalls: [],
+        toolCallID: null,
+      },
+    ],
+  };
+  const before = structuredClone(run);
+  const request = compactionRequest(run);
+  assert.match(request.messages[0].content, /exact evidence 123/);
+  assert.match(request.messages[0].content, /Binary content omitted/);
+  assert(!JSON.stringify(request).includes("invented date"));
+  assert(!JSON.stringify(request).includes("AQID"));
+  assert.deepEqual(request.messages[0].attachments, []);
+  assert.deepEqual(run, before);
+});
+
+test("summary budget reserves retained context and bounds the child output reservation", async (t) => {
+  const f = await fixture(t, { type: "agent", agentID: "summarizer" });
+  await f.service.patchAgent(
+    "summarizer",
+    f.service.agent("summarizer").revision,
+    { maxOutputTokens: 1536 },
+  );
+  const original = f.runtime.countTokens;
+  f.runtime.countTokens = async (input) =>
+    input.messages.some((m) =>
+      m.content.startsWith("Previous conversation summary"),
+    )
+      ? 340
+      : original(input);
+  await f.service.submit("worker", message("b".repeat(600)));
+  const done = await until(async () => {
+    const r = await f.service.run(f.runID);
+    return r.state === "completed" && r.compactions.length && r;
+  });
+  const child = await f.service.run(done.compactions[0].childRunID);
+  assert.equal(JSON.parse(child.messages[1].content).targetTokens, 28);
+  assert.equal(child.agent.maxOutputTokens, 156);
+  assert.equal(f.service.agent("summarizer").maxOutputTokens, 1536);
+});
+
+test("unsupported summary quantities hold the parent without replacing source context", async (t) => {
+  const f = await fixture(
+    t,
+    script(`console.log(JSON.stringify({summary:'98% approved (215/217)'}))`),
+  );
+  await f.service.submit("worker", message("b".repeat(600)));
+  const held = await until(async () => {
+    const r = await f.service.run(f.runID);
+    return r.pauseReason === "context_full" && r;
+  });
+  assert.equal(held.compactions.length, 0);
+  assert.match(held.error.message, /unsupported numeric/);
+  assert.deepEqual(
+    held.messages.slice(0, f.original.messages.length),
+    f.original.messages,
+  );
+  assert.equal(f.service.detail(held).outcome.needsReview, true);
+});
+
+test("compaction retains per-turn output constraints when replacing context", async (t) => {
+  const f = await fixture(
+    t,
+    script(`console.log(JSON.stringify({summary:'Short summary'}))`),
+  );
+  const a = f.service.agent("worker");
+  await manage(f.service, {
+    command: "agents update",
+    resourceID: "worker",
+    request: {
+      expectedRevision: a.revision,
+      changes: {
+        outputValidation: {
+          validator: {
+            type: "json-schema",
+            schema: {
+              type: "object",
+              properties: { answer: { type: "string" } },
+              required: ["answer"],
+            },
+          },
+          repairAttempts: 0,
+        },
+      },
+    },
+  });
+  f.runtime.countTokens = async (input) =>
+    input.messages.some((m) => m.content === "a".repeat(1200)) ? 500 : 100;
+  const generated = [];
+  f.runtime.generate = async (input) => {
+    generated.push(input);
+    return {
+      text: '{"answer":"done"}',
+      toolCalls: [],
+      usage: { inputTokens: 1, outputTokens: 1 },
+    };
+  };
+  await f.service.submit("worker", message("Continue with required JSON."));
+  const done = await until(async () => {
+    const r = await f.service.run(f.runID);
+    return r.state === "completed" && r.compactions.length && r;
+  });
+  assert.equal(done.validations.at(-1).status, "passed");
+  assert.ok(
+    generated[0].messages.some((m) =>
+      m.content.includes("Final output must be JSON matching this schema"),
+    ),
+  );
+});

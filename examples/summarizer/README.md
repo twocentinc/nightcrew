@@ -43,15 +43,17 @@ still invoke it. No recurring trigger is needed. Choose the model's
 
 Thinking is disabled to keep the output budget available for the summary; this is
 an initial latency/budget choice, not a demonstrated quality advantage. Temperature
-0.7 follows Qwen3.5's general non-thinking temperature recommendation. Nightcrew
-does not currently expose the model card's full sampling preset.
+0.1 and neutral repetition penalties favor faithful copying over variation. These
+are task-specific settings, not a claim that the model cannot hallucinate.
 
-The 1536-token output limit allows a summary targeting at most 1024 tokens plus JSON
-overhead. The complete summarizer input must also fit: its system prompt, serialized
+The configured 1536-token output limit is a ceiling. Linked compactor runs reserve
+at most their requested summary target plus 128 tokens for JSON. The target accounts
+for the parent’s retained context and tokenization slack, capped at 1024 tokens. The complete summarizer input must also fit: its system prompt, serialized
 source messages, earlier summary, and reserved output all consume context. A parent
 threshold close to a 4096-token slot's limit may leave too much input for this
-summarizer. Compact earlier or configure more context. Source thinking traces and
-JSON serialization can make the compactor request larger than the parent's input.
+summarizer. Compact earlier or configure more context. The handler request excludes stored thinking traces and base64 payloads; text
+attachments are decoded and binary attachments are identified without guessing
+their contents. JSON serialization can still expand the compactor input.
 Nightcrew pauses on overflow; this example does not add chunking.
 
 ## Try the synthetic example

@@ -351,6 +351,50 @@ export async function manage(
       return { changed: !dryRun, ...(!dryRun ? { token } : {}) };
     });
   }
+  if (command === "fleet status") {
+    const runs = [...service.storage.summaries.values()].sort(
+      (a, b) =>
+        b.updatedAt.localeCompare(a.updatedAt) ||
+        a.runID.localeCompare(b.runID),
+    );
+    const review = runs.filter((r) => r.outcome.needsReview);
+    const triggerInfo = (await manage(service, {
+      command: "triggers list",
+    })) as {
+      items: (z.infer<typeof triggerSchema> & {
+        nextFireAt: string | null;
+        automaticDispatchEnabled: boolean;
+        blockers: string[];
+      })[];
+    };
+    return {
+      observedAt: now(),
+      runtime: service.status(),
+      totals: {
+        runs: runs.length,
+        needsReview: review.length,
+        activeMs: runs.reduce((n, r) => n + r.activeMs, 0),
+      },
+      agents: service.storage.store.agents.map((agent) => {
+        const own = runs.filter((r) => r.agentID === agent.agentID);
+        return {
+          agentID: agent.agentID,
+          name: agent.name,
+          enabled: agent.enabled,
+          modelID: agent.modelID,
+          latestRun: own[0] ?? null,
+          activeRuns: own.filter((r) => !terminal(r.state)).length,
+          needsReview: own.filter((r) => r.outcome.needsReview).length,
+          activeMs: own.reduce((n, r) => n + r.activeMs, 0),
+          triggers: triggerInfo.items.filter(
+            (t) => t.agentID === agent.agentID,
+          ),
+        };
+      }),
+      review: review.slice(0, 100),
+      reviewTruncated: review.length > 100,
+    };
+  }
   if (command === "daemon status")
     return { pid: process.pid, ...service.status() };
   if (command === "config get")

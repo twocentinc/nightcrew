@@ -1765,3 +1765,19 @@ for (const emptyAgain of [false, true])
       ),
     );
   });
+
+test("fleet overview HTTP uses the same authenticated outcome contract as the CLI", async (t) => {
+  const f = await fixture(t);
+  const route = "/v1/operations/fleet/status";
+  assert.equal(
+    (await f.request("POST", route, { request: {} }, false)).status,
+    401,
+  );
+  const result = await f.request("POST", route, { request: {} });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.agents[0].agentID, "researcher");
+  assert.equal(result.body.agents[0].latestRun, null);
+  assert.deepEqual(result.body.review, []);
+  const schema = await f.request("GET", "/openapi.json");
+  assert.ok(schema.body.paths[route]);
+});

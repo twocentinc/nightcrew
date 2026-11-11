@@ -192,6 +192,38 @@ export const operations = {
     "none",
     true,
   ),
+  "fleet status": defineOperation(
+    "fleet status",
+    "Inspect agents, schedules, recent outcomes and runs needing review",
+    z.object({
+      observedAt: z.string(),
+      runtime: statusSchema,
+      totals: z.object({
+        runs: z.number(),
+        needsReview: z.number(),
+        activeMs: z.number(),
+      }),
+      agents: z.array(
+        z.object({
+          agentID: z.string(),
+          name: z.string(),
+          enabled: z.boolean(),
+          modelID: z.string(),
+          latestRun: runSummarySchema.nullable(),
+          activeRuns: z.number(),
+          needsReview: z.number(),
+          activeMs: z.number(),
+          triggers: z.array(triggerInfo),
+        }),
+      ),
+      review: z.array(runSummarySchema),
+      reviewTruncated: z.boolean(),
+    }),
+    false,
+    "none",
+    false,
+    "daemon",
+  ),
   "daemon status": defineOperation(
     "daemon status",
     "Inspect current daemon and scheduler state",

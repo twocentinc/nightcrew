@@ -100,6 +100,10 @@ export const operationInputs = {
       .omit({ agentID: true, revision: true, createdAt: true, updatedAt: true })
       .partial()
       .extend({
+        outputValidation: agentSchema.shape.outputValidation
+          .unwrap()
+          .optional(),
+        loopPolicy: agentSchema.shape.loopPolicy.unwrap().optional(),
         compaction: agentSchema.shape.compaction.unwrap().optional(),
         storageLimitMB: agentSchema.shape.storageLimitMB.unwrap().optional(),
         contextMode: z.enum(["fresh", "persistent"]).optional(),

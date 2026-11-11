@@ -78,8 +78,6 @@ retains its boundary, has a 4000-character expanded limit and rejects NUL.
 Substitution is nonrecursive and does not invoke a shell. Structured input is
 still supplied on stdin; arrays do not spread and optional flags are not omitted.
 
-
-
 Models define chat or audio behavior, paths, idle unloading, priority, optional KV
 snapshots, and compactionThresholdTokens. Configuration schemas in src/contracts.ts,
 src/scheduler.ts, src/triggers.ts and src/compaction.ts define limits and defaults.
@@ -207,7 +205,11 @@ An agent can select a script handler or a single-turn summarizer agent.
 Compaction preserves the parent run and original messages. A checkpoint stores
 the summary, inclusive coverage boundary, token counts and optional child run ID.
 Coverage ends at a complete turn/tool-exchange boundary. Later model input consists
-of instructions, the summary and remaining messages.
+of instructions, the summary and remaining messages. Handler requests exclude stored
+thinking traces, decode text attachments, and identify omitted binary attachments
+without sending base64. Original transcript evidence remains unchanged. Summary
+targets reserve the retained context plus tokenizer slack; child output reservations
+are capped to that target plus JSON overhead, within the configured output limit.
 
 A summarizer executes as a separate linked fresh run with its own model, prompt
 and output settings. The waiting parent consumes no active-time budget. Child work
@@ -297,7 +299,6 @@ Compaction also normalizes a JSON string or an exact fenced JSON value before
 validating the summary. Arbitrary prose is not extracted as JSON. Invalid tool arguments return bounded schema-validation details so
 the model can correct fields and enum values without guessing.
 
-
 ## Agent sampling controls
 
 Agents optionally configure `sampling` with `topP` (0–1), `topK` (integer 0–1000),
@@ -308,7 +309,6 @@ Settings are captured in the run snapshot and forwarded to llama.cpp;
 apply to chat-agent inference, not audio models or client-owned instant requests. Temperature
 remains the existing separate agent property. Schema version 25 adds these
 optional controls without changing existing agent defaults.
-
 
 Agents may also set `maxToolCalls` (1–1000, omitted means no tool-call cap).
 It counts attempted calls since the latest user message, including builtin tools
@@ -324,3 +324,75 @@ empty visible answer receives one tool-free, thinking-disabled finalization
 attempt. If that is also empty, the run fails explicitly instead of completing
 with an empty report. Thinking remains in the transcript as evidence; it is never
 promoted into the final answer. Single-turn/audio behavior is unchanged.
+
+## Supervision and outcome reporting
+
+`runs get` and run summaries expose `outcome`: execution state, output validation,
+task review status, delivery and lifecycle-hook status, reasons and a next action.
+Execution `completed` means generation ended; it does not mean the answer is
+correct or delivered. Without a validator the task is `unverified`. `validated`
+means only the configured validator passed. Failed execution, invalid output,
+exhausted recovery, failed/uncertain hooks, and context/storage holds need review.
+Historical runs are not retroactively validated. Persistent runs report the
+current segment; prior validation records and hook receipts remain inspectable.
+
+Agents may configure `outputValidation` (null by default):
+
+```json
+{
+  "validator": {
+    "type": "json-schema",
+    "schema": {
+      "type": "object",
+      "properties": {"answer": {"type": "string"}},
+      "required": ["answer"],
+      "additionalProperties": false
+    }
+  },
+  "repairAttempts": 1
+}
+```
+
+Alternatively the validator is `{type:"hook", executablePath, argv, timeoutMs}`.
+It is a trusted, side-effect-free executable using the existing bounded tool
+runner. JSON stdin contains runID, segment and text; stdout must be
+`{"valid":true,"reason":"what was checked"}` (or valid:false). It gets the
+normal limited tool environment, no shell, at most 1 MB stdout, and a bounded
+100–60000 ms deadline. Infrastructure errors do not trigger model repair or
+automatic hook retries. Interrupted checks can execute again on resume, so the
+validator must not deliver messages or mutate external state.
+
+Invalid output allows zero to two repair completions (default one), without
+tools or thinking. Originals and verdicts stay in the transcript/state; limits
+survive restart and reset per persistent segment. Validation errors are not
+promoted to factual claims. Repair instructions and output schemas survive
+context replacement. Lifecycle delivery hooks have explicit `purpose:delivery`;
+other/legacy hooks default to notification. Delivery hooks are not dispatched
+when configured output validation failed or errored. Unknown delivery after a
+restart is never blindly retried. Hook success denotes successful hook execution,
+not independently confirmed receipt by an external recipient.
+
+`loopPolicy` defaults to consecutiveErrors:3 and repeatedCalls:3. Nightcrew
+examines committed tool results, including tools returning ok:false with exit
+zero. Repeated unchanged requests, consecutive errors and exhausted tool budgets
+trigger a recorded recovery opportunity. A further tool failure or repeated loop
+ends tool use and requests a constrained final answer. The global tool limit
+also forces finalization. No hidden retry re-executes a failed external action.
+Exhausted recovery remains visible as needsReview even if final formatting passes.
+
+Compaction receives explicit instructions to separate facts, hypotheses, failed
+attempts and remaining work. A deterministic source check rejects newly invented
+numeric literals and evidence IDs before accepting a checkpoint. It does not
+prove relationships, units or causal interpretations are correct, nor require
+all source facts in a bounded summary. Exact source context remains recoverable;
+a rejected checkpoint holds the parent at context_full. After compaction the
+model receives authoritative Nightcrew tool counters and recovery state, instead
+of relying on the summarizer's arithmetic. Existing checkpoints are not rewritten.
+
+`fleet status` uses the same oRPC operation for CLI and HTTP and requires the
+daemon for current runtime state. It shows each configured agent, its schedules,
+latest run activity/outcome, active run count, review count and recorded active
+milliseconds, plus current presence/cooldown, model/slot status and the newest
+100 runs needing review. Totals cover all retained run summaries; active time
+for persistent runs is the current segment's stored counter, not lifetime CPU
+usage. No new index, queue database, or inferred memory/token telemetry is stored.

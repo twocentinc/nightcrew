@@ -1,3 +1,5 @@
+import { runOutcome, type outcomeSchema } from "./supervision.js";
+import type { z } from "zod";
 import { validateCompactionState } from "./compaction.js";
 import type { OperationalLog } from "./logging.js";
 import { NightcrewError } from "./protocol.js";
@@ -50,8 +52,13 @@ export type Summary = Pick<
   | "activeMs"
   | "pauseReason"
   | "held"
-> & { agentID: string; remainingMs: number };
+> & {
+  agentID: string;
+  remainingMs: number;
+  outcome: z.infer<typeof outcomeSchema>;
+};
 export const summarize = (r: Run): Summary => ({
+  outcome: runOutcome(r),
   runID: r.runID,
   agentID: r.agent.agentID,
   revision: r.revision,

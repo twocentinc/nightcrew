@@ -1,4 +1,11 @@
 import {
+  outputValidationSchema,
+  loopPolicySchema,
+  validationRecordSchema,
+  recoverySchema,
+  outcomeSchema,
+} from "./supervision.js";
+import {
   compactionSchema,
   compactionStateSchema,
   checkpointSchema,
@@ -72,6 +79,7 @@ export const modelSchema = z.strictObject({
     .default({ enabled: false, directory: null }),
 });
 export const hookSchema = z.strictObject({
+  purpose: z.enum(["notification", "delivery"]).default("notification"),
   event: z.enum([
     "run.completed",
     "run.failed",
@@ -99,6 +107,8 @@ export const configSchema = z.strictObject({
   hooks: z.array(hookSchema).max(16),
 });
 export const agentSchema = z.strictObject({
+  outputValidation: outputValidationSchema.nullable().default(null),
+  loopPolicy: loopPolicySchema.default(() => loopPolicySchema.parse({})),
   storageLimitMB: z.number().int().min(1).max(48).default(48),
   compaction: compactionSchema.nullable().default(null),
   contextMode: z.enum(["fresh", "persistent"]).default("fresh"),
@@ -272,6 +282,8 @@ export const eventSchema = z.strictObject({
     "compactionRequested",
     "compacted",
     "compactionFailed",
+    "outputValidation",
+    "loopRecovery",
   ]),
   segment: z.number().int().nonnegative(),
   data: z.json(),
@@ -316,6 +328,9 @@ export const attemptSchema = z.strictObject({
   messageID: uuid.nullable(),
 });
 export const runSchema = z.strictObject({
+  deliveryExpected: z.boolean().default(false),
+  validations: z.array(validationRecordSchema).max(10000).default([]),
+  recovery: recoverySchema.nullable().default(null),
   attempts: z.array(attemptSchema).max(10000).default([]),
   compactions: z.array(checkpointSchema).max(1000).default([]),
   compaction: compactionStateSchema.nullable().default(null),
@@ -372,6 +387,7 @@ export const runSchema = z.strictObject({
     .array(
       z.strictObject({
         eventSequence: z.number().int().positive().max(2147483647),
+        purpose: z.enum(["notification", "delivery"]).default("notification"),
         executablePath: z.string().max(4096),
         status: z.enum([
           "pending",
@@ -598,8 +614,14 @@ export const runSummarySchema = runSchema
     activeMs: true,
     pauseReason: true,
   })
-  .extend({ agentID: id, remainingMs: z.number().nonnegative() });
+  .extend({
+    agentID: id,
+    remainingMs: z.number().nonnegative(),
+    outcome: outcomeSchema,
+  });
 export const runDetailSchema = runSummarySchema.extend({
+  validations: runSchema.shape.validations,
+  recovery: runSchema.shape.recovery,
   compactions: runSchema.shape.compactions,
   compaction: runSchema.shape.compaction,
   parentRunID: runSchema.shape.parentRunID,

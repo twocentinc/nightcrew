@@ -246,6 +246,19 @@
     },
     {
       "confirmation": false,
+      "description": "Inspect agents, schedules, recent outcomes and runs needing review",
+      "mutates": false,
+      "name": "fleet status",
+      "operand": "none",
+      "options": [
+        "request"
+      ],
+      "requestSchema": "fleet.status.request",
+      "resultSchema": "fleet.status.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
       "description": "Discover commands and their contracts",
       "mutates": false,
       "name": "help",
@@ -1061,5 +1074,5 @@
     "version": false
   },
   "protocolVersion": 1,
-  "schemaVersion": 25
+  "schemaVersion": 26
 }

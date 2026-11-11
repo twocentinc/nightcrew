@@ -851,3 +851,19 @@ empty visible answer receives one tool-free, thinking-disabled finalization
 attempt. If that is also empty, the run fails explicitly instead of completing
 with an empty report. Thinking remains in the transcript as evidence; it is never
 promoted into the final answer. Single-turn/audio behavior is unchanged.
+
+## Supervising results
+
+Use `nightcrew fleet status` for agent schedules, latest outcomes, runs needing
+review, active execution time, presence/cooldown and model/slot state. Drill down
+with `nightcrew runs get RUN_ID` and `nightcrew runs transcript RUN_ID`.
+A completed run can still have invalid output or failed delivery; `outcome`
+reports these separately. A passed validator is not a guarantee of factual truth.
+
+Agents support optional `outputValidation` with a JSON Schema or a side-effect-free
+executable validator, and zero to two tool-free repair attempts (default one).
+`loopPolicy` controls repeated-call and consecutive-error thresholds. Lifecycle
+hooks use `purpose: "delivery"` when they actually deliver output; ordinary hooks
+remain notifications. Delivery is suppressed after failed output validation.
+See [the spec](docs/spec.md#supervision-and-outcome-reporting) for contracts,
+recovery behavior and compaction verification limits.

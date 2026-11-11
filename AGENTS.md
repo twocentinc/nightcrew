@@ -21,6 +21,9 @@ projection and bounded script execution. The service schedules linked compactor
 runs; the runtime counts templated tokens and validates KV checkpoint generations.
 Runs carry holds, pending inputs, compaction checkpoints, configuration and trigger
 occurrence snapshots.
+`src/supervision.ts` owns output-validation configuration/execution, loop detection
+and derived run outcomes. Keep validation evidence durable and never equate schema
+validation or hook execution with factual correctness or confirmed external delivery.
 `src/diagnostics.ts` owns capability and readiness reporting.
 `src/runArtifacts.ts` owns create-only run bundles, checksum manifests and
 read-only run/bundle integrity verification.
