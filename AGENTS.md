@@ -22,7 +22,7 @@ runs; the runtime counts templated tokens and validates KV checkpoint generation
 Runs carry holds, pending inputs, compaction checkpoints, configuration and trigger
 occurrence snapshots.
 `src/supervision.ts` owns output-validation configuration/execution, loop detection
-and derived run outcomes. Keep validation evidence durable and never equate schema
+and derived run outcomes, review fingerprints and effective hook retry chains. Keep validation evidence durable and never equate schema
 validation or hook execution with factual correctness or confirmed external delivery.
 `src/diagnostics.ts` owns capability and readiness reporting.
 `src/runArtifacts.ts` owns create-only run bundles, checksum manifests and

@@ -562,6 +562,64 @@
     },
     {
       "confirmation": false,
+      "description": "Explicitly release a paused or held run",
+      "mutates": true,
+      "name": "runs resume",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "runs.resume.request",
+      "resultSchema": "runs.resume.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": true,
+      "description": "Retry the last input in the same transcript with a new message UUID",
+      "mutates": true,
+      "name": "runs retry",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run",
+        "yes"
+      ],
+      "requestSchema": "runs.retry.request",
+      "resultSchema": "runs.retry.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": true,
+      "description": "Explicitly retry a failed hook with a durable attempt and request UUID",
+      "mutates": true,
+      "name": "runs retry-hook",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run",
+        "yes"
+      ],
+      "requestSchema": "runs.retry-hook.request",
+      "resultSchema": "runs.retry-hook.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "Acknowledge, resolve or reopen a run review with a durable note",
+      "mutates": true,
+      "name": "runs review",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "runs.review.request",
+      "resultSchema": "runs.review.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
       "description": "Search saved messages, attachments and results with bounded excerpts",
       "mutates": false,
       "name": "runs search",
@@ -1074,5 +1132,5 @@
     "version": false
   },
   "protocolVersion": 1,
-  "schemaVersion": 26
+  "schemaVersion": 28
 }

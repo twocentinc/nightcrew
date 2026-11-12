@@ -1,6 +1,6 @@
 # Nightcrew specification
 
-Status: implemented contract through 0.18, with validation limits listed below.
+Status: implemented contract through 0.23.0 (schema 28), with validation limits listed below.
 Runtime schemas and registered procedures are authoritative; this document
 explains behavior rather than maintaining another endpoint inventory.
 
@@ -218,8 +218,13 @@ is disallowed. A script receives the versioned request and returns a nonempty
 summary JSON object. Both paths validate the resulting parent context before
 committing and invalidate incompatible KV generations.
 
-Missing handlers, invalid summaries, oversized retained input, or handler failure
-hold the parent with context_full. Explicit queue release retries with the current
+Agent summary failures get up to compaction.maxRetries retries (default 1, range
+0–2), each with half the summary token target and a new linked child run. Prior
+children and failure events remain durable across restart. Script handlers do not
+automatically retry. Missing handlers, oversized retained input, or exhausted
+summary retries hold the parent with context_full. Context preparation/runtime
+errors instead hold at runtime_error with their actual error; resuming the parent
+releases its blocked compactor without consuming a summary retry. Explicit queue release retries with the current
 handler. Restart retains dependencies; cancellation cancels unfinished child work.
 Instant request compaction and automatic multi-stage chunking remain deferred.
 
@@ -234,14 +239,15 @@ limitMB, bytes and message/event/attempt counts captured at the boundary.
 A storage hook runs after the hold is persisted and does not unpause the run.
 It can notify a supervisor or use the CLI to export/review the run. Hook stdout
 is ignored; it is not a summary protocol. Explicit queue release is still required.
-One delivery attempt is recorded per event sequence and executable. Repeated
+One automatic delivery attempt is recorded per event sequence and executable;
+explicit supervisor retries append linked receipts without replacing old ones. Repeated
 submissions to the same held run do not create new storage-limit events.
 A later release and subsequent limit crossing can produce a new event.
 
 Hooks have bounded time and minimal environment. Delivery receipts and results
 are durable; uncertain in-flight deliveries after restart are marked unknown
-and are not automatically retried. This is at-most-once attempted delivery, not
-a guarantee of external side-effect completion. Scheduler and compaction hooks
+and are not automatically retried. Automatic dispatch is at-most-once attempted delivery, not a guarantee of external
+side-effect completion. Explicit retries can repeat side effects. Scheduler and compaction hooks
 have their separate typed request/result protocols described above.
 
 ## Operations and validation
@@ -396,3 +402,37 @@ milliseconds, plus current presence/cooldown, model/slot status and the newest
 100 runs needing review. Totals cover all retained run summaries; active time
 for persistent runs is the current segment's stored counter, not lifetime CPU
 usage. No new index, queue database, or inferred memory/token telemetry is stored.
+
+Context preparation failures (template rendering, tokenization or unavailable
+runtime) hold a run with `runtime_error` and `context_preparation_failed`, rather
+than claiming its context is full. HTTP failures retain the endpoint, status and
+bounded response body in run evidence, not daemon logs. Explicit queue release
+clears the hold after the underlying cause is corrected. Output-schema guidance
+is merged into the leading system prompt, including when compaction rebuilds the
+context; model templates need not support later system messages.
+
+
+## Supervisor review and recovery
+
+`runs review` takes expectedRevision, status (open/acknowledged/resolved) and a
+required note. Reviews are append-only, segment-scoped and fingerprint the issue
+state. Resolution removes fleet attention while preserving failure evidence and
+separate execution/output/delivery outcomes. New failures invalidate resolution.
+
+`runs resume` shares queue release semantics. `runs retry` takes expectedRevision,
+a new client messageID UUID and note; it requires a terminal non-compactor run
+without pending inputs and repeats the last user input, attachments and thinking
+override in a new segment of the same transcript. It uses ordinary reply snapshot
+rules. Previous messages and attempts remain visible. Both retries below require
+explicit confirmation (`--yes` in CLI), and all commands support dry-run.
+
+`runs retry-hook` takes expectedRevision, zero-based receiptIndex, a new requestID
+UUID and note. The selected failed/unknown receipt must be from the current
+segment of a terminal run and have no successor retry. Unknown results require
+acceptUnknown. The handler must still be registered for the same event/purpose;
+optional hookPath selects a corrected registration. Symlink resolution supports
+relocated handlers. The new receipt is durably reserved before execution and
+records retryOf; pending/started work becomes unknown after restart. Successful
+retry supersedes earlier failure in derived outcomes, but every receipt remains.
+Replaying either retry UUID does not execute work again. Delivery output validation
+still applies. No automatic recovery sends messages or retries external effects.

@@ -1,4 +1,8 @@
-import { loopProblem, validateOutput } from "./supervision.js";
+import {
+  loopProblem,
+  validateOutput,
+  reviewFingerprint,
+} from "./supervision.js";
 import {
   compactionInstructions,
   validateSummaryEvidence,
@@ -30,7 +34,7 @@ import {
 } from "./registry.js";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { lstat, readFile, readdir } from "node:fs/promises";
+import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import { ORPCError } from "@orpc/server";
 import { z } from "zod";
@@ -274,6 +278,7 @@ export class Service {
             r.state = "paused";
             if (
               r.pauseReason !== "storage_limit" &&
+              r.pauseReason !== "runtime_error" &&
               r.pauseReason !== "context_full"
             )
               r.pauseReason = "restart";
@@ -393,6 +398,7 @@ export class Service {
   detail(r: Run) {
     return {
       ...summarize(r),
+      reviews: r.reviews,
       validations: r.validations,
       recovery: r.recovery,
       compactions: r.compactions,
@@ -708,6 +714,7 @@ export class Service {
     reply: boolean,
     dryRun: boolean,
     source: z.infer<typeof triggerSourceSchema> | null = null,
+    retryNote?: string,
   ) {
     await this.storage.reconcile();
     if (this.storage.unreadable.length) fail("run_index_unavailable", 503);
@@ -817,10 +824,12 @@ export class Service {
     if (
       previous &&
       a.contextMode !== "persistent" &&
-      previous.state !== "completed"
+      previous.state !== "completed" &&
+      !retryNote
     )
       fail("run_not_completed", 409);
     const r: Run = previous ?? {
+      reviews: [],
       deliveryExpected: false,
       validations: [],
       recovery: null,
@@ -878,6 +887,15 @@ export class Service {
       if (source) r.triggerHistory.push(source);
       r.deliveryExpected = false;
       r.segment++;
+      if (retryNote) {
+        r.held = false;
+        r.compaction = null;
+        this.event(r, "retried", {
+          previousSegment: r.segment - 1,
+          messageID: message.messageID,
+          note: retryNote,
+        });
+      }
       r.activeMs = 0;
       r.result = null;
       r.error = null;
@@ -1064,6 +1082,175 @@ export class Service {
     if (!dryRun && outcome.changed) this.wake();
     return outcome;
   }
+  async reviewRun(
+    runID: string,
+    input: {
+      expectedRevision: number;
+      status: "open" | "acknowledged" | "resolved";
+      note: string;
+    },
+    dryRun: boolean,
+  ) {
+    return this.storage.exclusive(async () => {
+      const run = await this.run(runID);
+      if (run.revision !== input.expectedRevision)
+        fail("revision_conflict", 409);
+      if (this.activities.has(runID)) fail("run_active", 409);
+      if (run.reviews.length >= 1000) fail("review_capacity", 409);
+      if (!dryRun) {
+        run.reviews.push({
+          segment: run.segment,
+          status: input.status,
+          note: input.note,
+          at: now(),
+          fingerprint: reviewFingerprint(run),
+        });
+        this.event(run, "reviewed", { status: input.status, note: input.note });
+        await this.save(run);
+      }
+      return { run: this.detail(run), changed: !dryRun };
+    });
+  }
+  async retryRun(
+    runID: string,
+    input: { expectedRevision: number; messageID: string; note: string },
+    dryRun: boolean,
+  ) {
+    const result = await this.storage.exclusive(async () => {
+      const run = await this.run(runID);
+      const prior = run.events.find(
+        (e) =>
+          e.type === "retried" &&
+          (e.data as { messageID?: string })?.messageID === input.messageID,
+      );
+      if (prior) {
+        if ((prior.data as { note: string }).note !== input.note)
+          fail("message_conflict", 409);
+        return this.acceptance(run, true);
+      }
+      if (run.revision !== input.expectedRevision)
+        fail("revision_conflict", 409);
+      if (!terminal(run.state) || this.activities.has(runID))
+        fail("run_not_terminal", 409);
+      if (run.parentRunID) fail("compactor_retry_requires_parent", 409);
+      if (run.pendingInputs.some((p) => !p.cancelled))
+        fail("pending_inputs_exist", 409);
+      const previous = run.messages.filter((m) => m.role === "user").at(-1);
+      if (!previous) fail("message_missing", 409);
+      return this.submitLocked(
+        runID,
+        {
+          messageID: input.messageID,
+          content: previous.content,
+          attachments: previous.attachments,
+          ...(previous.thinking === undefined
+            ? {}
+            : { thinking: previous.thinking }),
+        },
+        true,
+        dryRun,
+        null,
+        input.note,
+      );
+    });
+    if (!dryRun) this.wake();
+    return result;
+  }
+  async retryHook(
+    runID: string,
+    input: {
+      expectedRevision: number;
+      receiptIndex: number;
+      requestID: string;
+      note: string;
+      acceptUnknown: boolean;
+      hookPath?: string;
+    },
+    dryRun: boolean,
+  ) {
+    const result = await this.storage.exclusive(async () => {
+      const run = await this.run(runID);
+      const prior = run.hookReceipts.find(
+        (h) => h.requestID === input.requestID,
+      );
+      if (prior) {
+        if (
+          prior.retryOf !== input.receiptIndex ||
+          prior.note !== input.note ||
+          (input.hookPath && prior.executablePath !== input.hookPath)
+        )
+          fail("request_conflict", 409);
+        return { run: this.detail(run), changed: false, index: null };
+      }
+      if (run.revision !== input.expectedRevision)
+        fail("revision_conflict", 409);
+      if (!terminal(run.state) || this.activities.has(runID))
+        fail("run_not_terminal", 409);
+      const receipt = run.hookReceipts[input.receiptIndex];
+      if (!receipt || !["failed", "unknown"].includes(receipt.status))
+        fail("hook_not_retryable", 409);
+      if (run.hookReceipts.some((h) => h.retryOf === input.receiptIndex))
+        fail("hook_already_retried", 409);
+      if (receipt.status === "unknown" && !input.acceptUnknown)
+        fail("hook_outcome_unknown", 409);
+      const event = run.events.find(
+        (e) => e.sequence === receipt.eventSequence,
+      );
+      if (!event || event.segment !== run.segment)
+        fail("hook_segment_changed", 409);
+      const original = await realpath(receipt.executablePath).catch(
+        () => receipt.executablePath,
+      );
+      const candidates = this.storage.store.config.hooks.filter(
+        (h) => h.event === `run.${event.type}` && h.purpose === receipt.purpose,
+      );
+      let hook;
+      for (const candidate of candidates) {
+        if (
+          input.hookPath
+            ? candidate.executablePath === input.hookPath
+            : (await realpath(candidate.executablePath).catch(
+                () => candidate.executablePath,
+              )) === original
+        ) {
+          hook = candidate;
+          break;
+        }
+      }
+      if (!hook) fail("hook_not_registered", 409);
+      if (run.hookReceipts.length >= 1000) fail("hook_receipt_capacity", 409);
+      const index = run.hookReceipts.length;
+      if (!dryRun) {
+        run.hookReceipts.push({
+          ...receipt,
+          executablePath: hook.executablePath,
+          requestID: input.requestID,
+          retryOf: input.receiptIndex,
+          note: input.note,
+          status: "pending",
+          diagnostic: null,
+        });
+        await this.save(run);
+      }
+      return {
+        run: this.detail(run),
+        changed: !dryRun,
+        index: dryRun ? null : index,
+      };
+    });
+    if (result.index !== null) {
+      const work = withoutExecution(async () =>
+        this.deliverHooks(await this.run(runID), undefined, result.index!),
+      );
+      this.hookWork.add(work);
+      try {
+        await work;
+      } finally {
+        this.hookWork.delete(work);
+      }
+    }
+    return { run: this.detail(await this.run(runID)), changed: result.changed };
+  }
   async queueControl(
     runID: string,
     action: "hold" | "release" | "cancel",
@@ -1112,6 +1299,20 @@ export class Service {
             run.agent.compaction = structuredClone(
               this.agent(run.agent.agentID).compaction,
             );
+            run.error = null;
+            run.pauseReason = null;
+          }
+          if (action === "release" && run.pauseReason === "runtime_error") {
+            if (run.compaction?.childRunID) {
+              const child = await this.run(run.compaction.childRunID);
+              if (child.pauseReason === "runtime_error") {
+                child.held = false;
+                child.pauseReason = null;
+                child.error = null;
+                this.event(child, "released", { parentRunID: run.runID });
+                await this.save(child);
+              }
+            }
             run.error = null;
             run.pauseReason = null;
           }
@@ -1850,9 +2051,37 @@ export class Service {
     run.state = "paused";
     run.pauseReason = "context_full";
     run.held = true;
-    run.error = { code: "context_full", message };
+    run.error = { code: "context_full", message: message.slice(0, 2000) };
     if (run.compaction) run.compaction.status = "failed";
     this.event(run, "compactionFailed", { message });
+  }
+  private retryCompaction(run: Run, message: string) {
+    const pending = run.compaction;
+    if (
+      !pending ||
+      pending.handler?.type !== "agent" ||
+      pending.retries >= (run.agent.compaction?.maxRetries ?? 1)
+    ) {
+      this.compactionFailure(run, message);
+      return;
+    }
+    this.event(run, "compactionRetry", {
+      message,
+      requestID: pending.requestID,
+      childRunID: pending.childRunID,
+      targetTokens: pending.targetTokens,
+      attempt: pending.retries + 1,
+    });
+    pending.retries++;
+    pending.requestID = randomUUID();
+    pending.childRunID = pending.requestID;
+    pending.targetTokens = Math.max(1, Math.floor(pending.targetTokens / 2));
+    pending.summary = null;
+    pending.status = "waiting";
+    run.state = "paused";
+    run.pauseReason = "compaction";
+    run.held = false;
+    run.error = null;
   }
   private async prepareContext(
     run: Run,
@@ -1890,6 +2119,17 @@ export class Service {
       const executionInstructions = input.messages.filter(
         (m) => !baseIDs.has(m.messageID),
       );
+      const preparedMessages = (
+        checkpoint: Parameters<typeof contextMessages>[1],
+      ) => {
+        const rebuilt = this.runMessages(run, checkpoint);
+        if (
+          rebuilt[0]?.role === "system" &&
+          input.messages[0]?.role === "system"
+        )
+          rebuilt[0] = { ...rebuilt[0], content: input.messages[0].content };
+        return [...rebuilt, ...executionInstructions];
+      };
       const count = await this.runtime.countTokens(input, signal);
       if (run.compaction?.status === "ready") {
         const pending = run.compaction;
@@ -1905,10 +2145,7 @@ export class Service {
         };
         const candidate = {
           ...input,
-          messages: [
-            ...this.runMessages(run, checkpoint),
-            ...executionInstructions,
-          ],
+          messages: preparedMessages(checkpoint),
         };
         const tokens = await this.runtime.countTokens(candidate, signal);
         if (tokens >= threshold || tokens >= count)
@@ -1949,18 +2186,15 @@ export class Service {
         const retainedTokens = await this.runtime.countTokens(
           {
             ...input,
-            messages: [
-              ...this.runMessages(run, {
-                checkpointID: randomUUID(),
-                at: now(),
-                coveredThrough,
-                summary: "",
-                inputTokens: count,
-                outputTokens: 0,
-                childRunID: null,
-              }),
-              ...executionInstructions,
-            ],
+            messages: preparedMessages({
+              checkpointID: randomUUID(),
+              at: now(),
+              coveredThrough,
+              summary: "",
+              inputTokens: count,
+              outputTokens: 0,
+              childRunID: null,
+            }),
           },
           signal,
         );
@@ -1970,6 +2204,7 @@ export class Service {
             "Retained context leaves no room for a summary; latest input or tool result is too large",
           );
         run.compaction = {
+          retries: 0,
           requestID: randomUUID(),
           coveredThrough,
           targetTokens: Math.max(
@@ -2014,7 +2249,18 @@ export class Service {
       return this.prepareContext(run, input, capacity, signal);
     } catch (error) {
       if (signal.aborted) throw error;
-      this.compactionFailure(
+      if (error instanceof Error && error.name === "ContextPreparationError") {
+        run.state = "paused";
+        run.held = true;
+        run.pauseReason = "runtime_error";
+        run.error = {
+          code: "context_preparation_failed",
+          message: error.message.slice(0, 2000),
+        };
+        this.event(run, "paused", { reason: "runtime_error", ...run.error });
+        return false;
+      }
+      this.retryCompaction(
         run,
         error instanceof Error
           ? error.message.slice(0, 1000)
@@ -2079,6 +2325,7 @@ export class Service {
               revision: 1,
               createdAt: now(),
               updatedAt: now(),
+              reviews: [],
               attempts: [],
               deliveryExpected: false,
               validations: [],
@@ -2106,7 +2353,11 @@ export class Service {
                 {
                   messageID: randomUUID(),
                   role: "system",
-                  content: agent.systemPrompt + "\n" + compactionInstructions,
+                  content:
+                    agent.systemPrompt +
+                    "\n" +
+                    compactionInstructions +
+                    ` Keep the summary under ${Math.max(8, Math.min(180, Math.floor(pending.targetTokens / 3)))} words. Return complete JSON before the output limit.`,
                   attachments: [],
                   toolCalls: [],
                   toolCallID: null,
@@ -2140,21 +2391,45 @@ export class Service {
         if (this.activities.has(child.runID)) continue;
         if (child.state === "completed") {
           try {
+            if (
+              child.validations.some((v) => v.segment === child.segment) &&
+              child.validations
+                .filter((v) => v.segment === child.segment)
+                .at(-1)?.status !== "passed"
+            )
+              throw Error("Compactor output validation failed");
             pending.summary = parseCompactionSummary(child.result ?? "");
             pending.status = "ready";
             parent.pauseReason = "compaction";
           } catch {
-            this.compactionFailure(
+            this.retryCompaction(
               parent,
               "Compactor did not return a valid summary object",
             );
           }
           await this.save(parent);
+        } else if (child.pauseReason === "runtime_error") {
+          parent.state = "paused";
+          parent.held = true;
+          parent.pauseReason = "runtime_error";
+          parent.error = {
+            code: "context_preparation_failed",
+            message: (
+              "Compactor runtime: " +
+              (child.error?.message ?? "Context preparation failed")
+            ).slice(0, 2000),
+          };
+          this.event(parent, "paused", {
+            reason: "runtime_error",
+            childRunID: child.runID,
+            ...parent.error,
+          });
+          await this.save(parent);
         } else if (
           terminal(child.state) ||
           child.pauseReason === "context_full"
         ) {
-          this.compactionFailure(
+          this.retryCompaction(
             parent,
             "Compactor did not complete: " +
               (child.error?.message ?? child.state),
@@ -2394,17 +2669,26 @@ export class Service {
           : ([...r.messages].reverse().find((m) => m.role === "user")
               ?.thinking ?? r.agent.thinking);
         const messages = this.runMessages(r);
-        if (r.agent.outputValidation?.validator.type === "json-schema")
-          messages.push({
-            messageID: randomUUID(),
-            role: "system",
-            content:
-              "Final output must be JSON matching this schema: " +
-              JSON.stringify(r.agent.outputValidation.validator.schema),
-            attachments: [],
-            toolCalls: [],
-            toolCallID: null,
-          });
+        if (r.agent.outputValidation?.validator.type === "json-schema") {
+          const instruction =
+            "Final output must be JSON matching this schema: " +
+            JSON.stringify(r.agent.outputValidation.validator.schema);
+          const system = messages[0];
+          if (system?.role === "system")
+            messages[0] = {
+              ...system,
+              content: system.content + "\n\n" + instruction,
+            };
+          else
+            messages.unshift({
+              messageID: randomUUID(),
+              role: "system",
+              content: instruction,
+              attachments: [],
+              toolCalls: [],
+              toolCallID: null,
+            });
+        }
         if (
           r.recovery?.segment === r.segment &&
           !r.recovery.finalizing &&
@@ -2679,44 +2963,65 @@ export class Service {
     });
   }
 
-  private async deliverHooks(r: Run, selectedEvent?: string) {
+  private async deliverHooks(
+    r: Run,
+    selectedEvent?: string,
+    retryIndex?: number,
+  ) {
+    const retry = retryIndex === undefined ? null : r.hookReceipts[retryIndex];
+    const retryEvent = retry
+      ? r.events.find((e) => e.sequence === retry.eventSequence)
+      : null;
     const eventType =
+      retryEvent?.type ??
       selectedEvent ??
       (r.pauseReason === "storage_limit" ? "storageLimit" : r.state);
     const eventName = `run.${eventType}`;
-    const event = [...r.events].reverse().find((e) => e.type === eventType);
+    const event =
+      retryEvent ?? [...r.events].reverse().find((e) => e.type === eventType);
     if (!event) return;
     for (const hook of this.storage.store.config.hooks.filter(
-      (h) => h.event === eventName,
+      (h) =>
+        h.event === eventName &&
+        (!retry || h.executablePath === retry.executablePath),
     )) {
       const accepted = await this.storage.exclusive(async () => {
         const current = this.liveRuns.get(r.runID) ?? (await this.run(r.runID));
-        if (
+        if (retryIndex !== undefined) {
+          const receipt = current.hookReceipts[retryIndex];
+          if (!receipt || receipt.status !== "pending") return -1;
+        } else if (
           current.hookReceipts.some(
             (h) =>
               h.eventSequence === event.sequence &&
               h.executablePath === hook.executablePath,
           )
         )
-          return false;
+          return -1;
         const blocked =
           hook.purpose === "delivery" &&
           r.validations.some((v) => v.segment === event.segment) &&
           r.validations.filter((v) => v.segment === event.segment).at(-1)
             ?.status !== "passed";
-        current.hookReceipts.push({
+        const index = retryIndex ?? current.hookReceipts.length;
+        const updated = {
+          requestID: retry?.requestID ?? null,
+          retryOf: retry?.retryOf ?? null,
+          note: retry?.note ?? null,
           eventSequence: event.sequence,
           executablePath: hook.executablePath,
           purpose: hook.purpose,
-          status: blocked ? "failed" : "started",
+          status: blocked ? ("failed" as const) : ("started" as const),
           diagnostic: blocked
             ? "Delivery not dispatched: output validation did not pass"
             : null,
-        });
+        };
+        if (retryIndex === undefined) current.hookReceipts.push(updated);
+        else current.hookReceipts[index] = updated;
         await this.save(current);
-        return !blocked;
+        return blocked ? -1 : index;
       });
-      if (!accepted) continue;
+      if (accepted < 0) continue;
       const hookResult = await new Promise<{
         ok: boolean;
         diagnostic: string | null;
@@ -2767,11 +3072,7 @@ export class Service {
       });
       await this.storage.exclusive(async () => {
         const current = this.liveRuns.get(r.runID) ?? (await this.run(r.runID));
-        const receipt = current.hookReceipts.find(
-          (h) =>
-            h.eventSequence === event.sequence &&
-            h.executablePath === hook.executablePath,
-        )!;
+        const receipt = current.hookReceipts[accepted]!;
         receipt.status = hookResult.ok ? "succeeded" : "failed";
         receipt.diagnostic = hookResult.diagnostic;
         // Delivery may settle after a follow-up begins; retain its originating segment.

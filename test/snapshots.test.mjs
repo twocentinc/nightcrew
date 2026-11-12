@@ -137,6 +137,8 @@ test("named KV contexts move between concurrent live slots and respect the disk 
  const dir=preset.split('\\n').find(x=>x.startsWith('slot-save-path = ')).slice(17);const busy=[false,false,false];
  http.createServer((req,res)=>{const url=new URL(req.url,'http://local');let text='';req.on('data',c=>text+=c);req.on('end',()=>{const body=text?JSON.parse(text):{};
  if(url.pathname==='/health'||url.pathname==='/models/load'){res.end('{}');return;}
+ if(url.pathname==='/apply-template'&&body.messages.some(m=>m.content==='template-error')){res.writeHead(500);res.end(JSON.stringify({error:{message:'System message must be at the beginning.'}}));return;}
+ if(url.pathname==='/tokenize'&&body.content.includes('tokenize-error')){res.writeHead(422);res.end(JSON.stringify({error:{message:'Invalid tokenization request'}}));return;}
  if(url.pathname==='/apply-template'){fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({template:body})+'\\n');res.end(JSON.stringify({prompt:JSON.stringify(body)}));return;}
  if(url.pathname==='/tokenize'){fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({tokenize:body})+'\\n');res.end(JSON.stringify({tokens:[1,2,3,4]}));return;}
  if(url.pathname==='/slots'){res.end(JSON.stringify(busy.map((is_processing,id)=>({id,is_processing}))));return;}
@@ -234,6 +236,30 @@ test("named KV contexts move between concurrent live slots and respect the disk 
   assert.equal(counted[0].template.tools[0].function.name, "inspect");
   assert.equal(counted[0].template.chat_template_kwargs.enable_thinking, true);
   assert.equal(counted[1].tokenize.parse_special, true);
+  for (const [content, endpoint, status] of [
+    ["template-error", "/apply-template", 500],
+    ["tokenize-error", "/tokenize", 422],
+  ]) {
+    await assert.rejects(
+      runtime.countTokens(
+        {
+          ...input,
+          messages: [{ ...input.messages[0], content, attachments: [] }],
+        },
+        new AbortController().signal,
+      ),
+      (error) =>
+        error.name === "ContextPreparationError" &&
+        error.message.includes(endpoint) &&
+        error.message.includes(`HTTP ${status}`) &&
+        error.message.includes(
+          content === "template-error"
+            ? "System message must be at the beginning"
+            : "Invalid tokenization request",
+        ),
+    );
+  }
+
   await Promise.all([generate("s1", "alpha"), generate("s2", "beta")]);
   assert.ok((await readFile(log, "utf8")).includes('"concurrent":2'));
   assert.ok(

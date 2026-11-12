@@ -646,7 +646,26 @@ export class LlamaRuntime implements Runtime {
           signal,
           body: JSON.stringify({ model: input.modelID, ...body }),
         });
-        if (!response.ok) throw Error("Context tokenization failed");
+        if (!response.ok) {
+          const reader = response.body?.getReader();
+          let detail = "";
+          if (reader) {
+            try {
+              while (detail.length < 4000) {
+                const chunk = await reader.read();
+                if (chunk.done) break;
+                detail += Buffer.from(chunk.value).toString("utf8");
+              }
+            } finally {
+              await reader.cancel().catch(() => {});
+            }
+          }
+          const error = new Error(
+            `Context preparation ${endpoint} returned HTTP ${response.status}: ${detail.slice(0, 1500) || response.statusText}`,
+          );
+          error.name = "ContextPreparationError";
+          throw error;
+        }
         return response.json();
       };
       const template = z.object({ prompt: z.string() }).parse(
@@ -668,6 +687,11 @@ export class LlamaRuntime implements Runtime {
         }),
       );
       return tokens.tokens.length;
+    } catch (cause) {
+      signal.throwIfAborted();
+      const error = cause instanceof Error ? cause : new Error(String(cause));
+      error.name = "ContextPreparationError";
+      throw error;
     } finally {
       this.used.delete(input.slotID);
       if (!this.used.size) this.scheduleIdle(input.modelID);

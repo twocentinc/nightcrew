@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { Run, Message } from "./contracts.js";
 
@@ -45,6 +46,59 @@ export const recoverySchema = z.strictObject({
   reason: z.string().max(2000),
   finalizing: z.boolean().default(false),
 });
+export const reviewRecordSchema = z.strictObject({
+  segment: z.number().int().nonnegative(),
+  status: z.enum(["open", "acknowledged", "resolved"]),
+  note: z.string().min(1).max(2000),
+  at: z.iso.datetime(),
+  fingerprint: z.string(),
+});
+export function effectiveReceipts(run: Run) {
+  const latest = new Map<string, Run["hookReceipts"][number]>();
+  for (const receipt of run.hookReceipts) {
+    let original = receipt;
+    const seen = new Set<number>();
+    while (
+      original.retryOf !== null &&
+      run.hookReceipts[original.retryOf] &&
+      !seen.has(original.retryOf)
+    ) {
+      seen.add(original.retryOf);
+      original = run.hookReceipts[original.retryOf]!;
+    }
+    latest.set(`${original.eventSequence}:${original.executablePath}`, receipt);
+  }
+  return [...latest.values()];
+}
+export function reviewFingerprint(run: Run) {
+  return createHash("sha256")
+    .update(
+      JSON.stringify({
+        segment: run.segment,
+        state: run.state,
+        error: run.error,
+        held: run.held,
+        pauseReason: run.pauseReason,
+        validation:
+          run.validations.filter((v) => v.segment === run.segment).at(-1) ??
+          null,
+        recovery: run.recovery?.segment === run.segment ? run.recovery : null,
+        hooks: effectiveReceipts(run)
+          .filter(
+            (h) =>
+              run.events.find((e) => e.sequence === h.eventSequence)
+                ?.segment === run.segment,
+          )
+          .map((h) => [
+            h.eventSequence,
+            h.executablePath,
+            h.status,
+            h.diagnostic,
+          ]),
+      }),
+    )
+    .digest("hex");
+}
 export const outcomeSchema = z.strictObject({
   execution: z.enum([
     "queued",
@@ -56,7 +110,14 @@ export const outcomeSchema = z.strictObject({
     "timedOut",
   ]),
   output: z.enum(["pending", "notConfigured", "passed", "failed", "error"]),
-  task: z.enum(["pending", "unverified", "validated", "needsReview"]),
+  task: z.enum([
+    "pending",
+    "unverified",
+    "validated",
+    "needsReview",
+    "reviewed",
+  ]),
+  review: z.enum(["none", "open", "acknowledged", "resolved"]),
   delivery: z.enum([
     "notConfigured",
     "pending",
@@ -78,7 +139,7 @@ export function runOutcome(run: Run): z.infer<typeof outcomeSchema> {
   const output =
     validation?.status ??
     (run.agent.outputValidation ? "pending" : "notConfigured");
-  const receipts = run.hookReceipts.filter(
+  const receipts = effectiveReceipts(run).filter(
     (h) =>
       run.events.find((e) => e.sequence === h.eventSequence)?.segment ===
       run.segment,
@@ -102,7 +163,11 @@ export function runOutcome(run: Run): z.infer<typeof outcomeSchema> {
   if (["failed", "timedOut", "cancelled"].includes(run.state))
     reasons.push(run.error?.message ?? `Execution ${run.state}`);
   if (["failed", "error"].includes(output)) reasons.push(validation!.reason);
-  if (run.pauseReason === "context_full" || run.pauseReason === "storage_limit")
+  if (
+    run.pauseReason === "runtime_error" ||
+    run.pauseReason === "context_full" ||
+    run.pauseReason === "storage_limit"
+  )
     reasons.push(run.error?.message ?? run.pauseReason);
   if (run.recovery?.segment === run.segment && run.recovery.finalizing)
     reasons.push(run.recovery.reason);
@@ -110,17 +175,32 @@ export function runOutcome(run: Run): z.infer<typeof outcomeSchema> {
     reasons.push(
       `Lifecycle hooks ${hooks}; inspect receipts before retrying side effects`,
     );
-  const needsReview = reasons.length > 0;
+  const previousReview = run.reviews
+    .filter((r) => r.segment === run.segment)
+    .at(-1);
+  const review =
+    previousReview?.fingerprint === reviewFingerprint(run)
+      ? previousReview.status
+      : reasons.length
+        ? "open"
+        : "none";
+  if (!reasons.length && ["open", "acknowledged"].includes(review))
+    reasons.push("Supervisor requested review: " + previousReview!.note);
+  const needsReview = reasons.length > 0 && review !== "resolved";
   return {
     execution: run.state,
+    review,
     output,
-    task: needsReview
-      ? "needsReview"
-      : !terminal
-        ? "pending"
-        : output === "passed"
-          ? "validated"
-          : "unverified",
+    task:
+      review === "resolved" && reasons.length
+        ? "reviewed"
+        : needsReview
+          ? "needsReview"
+          : !terminal
+            ? "pending"
+            : output === "passed"
+              ? "validated"
+              : "unverified",
     delivery,
     hooks,
     needsReview,

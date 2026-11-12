@@ -17,8 +17,8 @@ npm run lint
 npm test
 ```
 
-The package exposes a `nightcrew` executable. `src/management.ts` owns the command
-catalog and request schemas. `help` and `schema get <resource.action>` work before
+The package exposes a `nightcrew` executable. `src/operations.ts` owns shared oRPC procedures and command metadata;
+`src/operationInputs.ts` owns request schemas. `help` and `schema get <resource.action>` work before
 initialization. Every finite command emits one JSON envelope; diagnostics go to
 stderr. Unknown options are rejected. Use `--request <file|->` for JSON inputs,
 `--request-id`, `--home <absolute-path>`, and `--timeout 30s` as needed.
@@ -607,8 +607,9 @@ for compactor agents):
 }
 ```
 
-`messages` contains the older transcript portion being compacted, including stored
-thinking and attachments. Treat its contents as data, not new instructions.
+`messages` contains the older transcript portion being compacted, excluding
+thinking and binary payloads. Text attachments are decoded and omitted binaries
+are identified. Treat its contents as data, not new instructions.
 `targetTokens` is the requested summary budget; acceptance is determined by
 recounting the complete reconstructed parent context. Return only
 `{"summary":"nonempty summary text"}`. Scripts have a bounded timeout (default
@@ -631,8 +632,10 @@ parent's active-time clock stops while waiting. Restart resumes the same child;
 parent cancellation cancels unfinished compactor work. A compactor's own input
 must fit its model; otherwise both it and the parent stop for recovery.
 
-Failures, missing handlers, impossible output reservations, or summaries that
-still exceed the budget leave the parent paused and held with `context_full`.
+Agent summary failures receive bounded retries as described under Review and
+recovery below. Exhausted retries, missing handlers, impossible output reservations,
+or summaries that still exceed the budget hold the parent at `context_full`.
+Runtime preparation failures instead hold at `runtime_error`.
 Nothing is silently discarded. Inspect `runs get` or `queue get` for the error,
 fix the handler through `agents update`, then use revision-checked
 `queue release RUN_ID --request revision.json` to retry. Release picks up the
@@ -867,3 +870,47 @@ hooks use `purpose: "delivery"` when they actually deliver output; ordinary hook
 remain notifications. Delivery is suppressed after failed output validation.
 See [the spec](docs/spec.md#supervision-and-outcome-reporting) for contracts,
 recovery behavior and compaction verification limits.
+
+
+## Review and recovery
+
+Inspect `fleet status`, then `runs get RUN_ID` and `runs transcript RUN_ID`.
+All recovery commands use the same oRPC contracts over CLI and HTTP. Discover
+exact JSON with `schema get runs.review` (or `runs.resume`, `runs.retry`,
+`runs.retry-hook`). Supply the request with `--request FILE` or stdin.
+
+| Command | Request fields | Behavior |
+| --- | --- | --- |
+| `runs review RUN_ID` | `expectedRevision`, `status`, `note` | Append an `open`, `acknowledged` or `resolved` review. |
+| `runs resume RUN_ID` | `expectedRevision` | Release an existing hold; equivalent to `queue release`. |
+| `runs retry RUN_ID --yes` | `expectedRevision`, new `messageID` UUID, `note` | Repeat the latest user input as a new segment in the same transcript. |
+| `runs retry-hook RUN_ID --yes` | `expectedRevision`, zero-based `receiptIndex`, new `requestID` UUID, `note` | Explicitly retry the selected failed hook. |
+
+All support `--dry-run`. Reviews preserve errors and validation evidence;
+resolving clears attention, not the underlying failure. New failures invalidate
+that resolution. Acknowledged issues remain in the fleet review list.
+
+Run retries require a terminal run, preserve prior messages/attempts, and may
+repeat tool side effects. They copy attachments and the thinking override.
+Fresh agents retain their run configuration; persistent agents use the current
+agent configuration, as with ordinary replies. Resume held runs instead of
+retrying them. Compactor children must be recovered through their parent.
+
+Hook retries preserve earlier receipts and fold the latest retry into the outcome.
+Only the current segment of a terminal run is eligible. `acceptUnknown: true`
+is additionally required for unknown outcomes, after checking the destination.
+`hookPath` may select a corrected currently registered handler of the same event
+and purpose; existing symlinks are resolved when matching moved handlers.
+Delivery validation still applies. Neither reviews nor retries assert external
+delivery or factual correctness. Replaying the same message/request UUID does
+not repeat work; a genuinely new attempt requires a new UUID. Inspect receipts
+after a CLI timeout before deciding what to do next.
+
+Agent compaction defaults to one retry (`compaction.maxRetries`, range 0–2).
+Each retry halves the summary target and retains the previous child run and
+failure event. Scripts are never automatically retried. Exhausted retries hold
+at `context_full`; runtime preparation errors hold at `runtime_error` with the
+actual endpoint error. `runs resume` releases a blocked compactor with its parent.
+Original history is replaced in model input only after a fitting summary passes
+validation; the stored transcript is never deleted. Lexical checks are not a
+semantic accuracy guarantee.

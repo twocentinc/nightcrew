@@ -519,3 +519,132 @@ test("compaction retains per-turn output constraints when replacing context", as
     ),
   );
 });
+
+test("template failures are held as runtime errors and retain the actual cause", async (t) => {
+  const f = await fixture(t, null);
+  f.runtime.countTokens = async () => {
+    const e = new Error(
+      "Context preparation /apply-template returned HTTP 500: System message must be at the beginning.",
+    );
+    e.name = "ContextPreparationError";
+    throw e;
+  };
+  await f.service.submit("worker", message("continue"));
+  const held = await until(async () => {
+    const r = await f.service.run(f.runID);
+    return r.pauseReason === "runtime_error" && r;
+  });
+  assert.equal(held.error.code, "context_preparation_failed");
+  assert.match(held.error.message, /HTTP 500/);
+  assert.equal(held.compaction, null);
+  assert.equal(held.held, true);
+  await f.restart();
+  const restored = await f.service.run(f.runID);
+  assert.equal(restored.pauseReason, "runtime_error");
+  f.runtime.countTokens = async () => 10;
+  await f.service.queueControl(f.runID, "release", restored.revision, false);
+  await until(async () => (await f.service.run(f.runID)).state === "completed");
+});
+
+test("bad agent summary retries with a smaller target, preserves failed child and resumes", async (t) => {
+  const f = await fixture(t, { type: "agent", agentID: "summarizer" });
+  const generate = f.runtime.generate;
+  let summaries = 0;
+  const targets = [];
+  f.runtime.generate = async (input) => {
+    if (input.messages[0].content.includes("Summarize the supplied")) {
+      targets.push(JSON.parse(input.messages[1].content).targetTokens);
+      if (++summaries === 1)
+        return {
+          text: '{"summary":"invented 987654"}',
+          toolCalls: [],
+          usage: { inputTokens: 1, outputTokens: 1 },
+        };
+    }
+    return generate(input);
+  };
+  await f.service.submit("worker", message("b".repeat(600)));
+  const done = await until(async () => {
+    const r = await f.service.run(f.runID);
+    return r.state === "completed" && r.compactions.length && r;
+  });
+  assert.equal(summaries, 2);
+  assert.ok(targets[1] < targets[0]);
+  const retry = done.events.find((e) => e.type === "compactionRetry");
+  assert.match(retry.data.message, /unsupported numeric/);
+  const first = await f.service.run(retry.data.childRunID);
+  assert.match(first.result, /987654/);
+  assert.notEqual(first.runID, done.compactions[0].childRunID);
+  assert.deepEqual(
+    done.messages.slice(0, f.original.messages.length),
+    f.original.messages,
+  );
+});
+
+test("agent compaction retries are bounded and remain exhausted across restart", async (t) => {
+  const f = await fixture(
+    t,
+    { type: "agent", agentID: "summarizer" },
+    "invented 987654",
+  );
+  await f.service.submit("worker", message("b".repeat(600)));
+  const held = await until(async () => {
+    const r = await f.service.run(f.runID);
+    return r.held && r;
+  });
+  assert.equal(held.compaction.retries, 1);
+  assert.equal(held.compactions.length, 0);
+  assert.equal(
+    held.events.filter((e) => e.type === "compactionRetry").length,
+    1,
+  );
+  const children = (await f.service.listRuns()).filter(
+    (r) => r.agentID === "summarizer",
+  );
+  assert.equal(children.length, 2);
+  await f.restart();
+  await delay(100);
+  assert.equal((await f.service.run(f.runID)).held, true);
+  assert.equal(
+    (await f.service.listRuns()).filter((r) => r.agentID === "summarizer")
+      .length,
+    2,
+  );
+});
+
+test("compactor runtime errors hold the parent without summary retry and resume together", async (t) => {
+  const f = await fixture(t, { type: "agent", agentID: "summarizer" });
+  const count = f.runtime.countTokens;
+  let broken = true;
+  f.runtime.countTokens = async (input) => {
+    if (
+      broken &&
+      input.messages[0].content.includes("Summarize the supplied")
+    ) {
+      const error = Error("apply-template HTTP 500: fixture template failure");
+      error.name = "ContextPreparationError";
+      throw error;
+    }
+    return count(input);
+  };
+  await f.service.submit("worker", message("b".repeat(600)));
+  const held = await until(async () => {
+    const r = await f.service.run(f.runID);
+    return r.held && r;
+  });
+  assert.equal(held.pauseReason, "runtime_error");
+  assert.equal(held.compaction.retries, 0);
+  assert.match(held.error.message, /HTTP 500/);
+  broken = false;
+  await manage(f.service, {
+    command: "runs resume",
+    resourceID: f.runID,
+    request: { expectedRevision: held.revision },
+  });
+  const done = await until(async () => {
+    const r = await f.service.run(f.runID);
+    return r.state === "completed" && r;
+  });
+  assert.equal(done.compactions.length, 1);
+  assert.equal(done.compactions[0].childRunID, held.compaction.childRunID);
+});

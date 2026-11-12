@@ -1,4 +1,5 @@
 import {
+  reviewRecordSchema,
   outputValidationSchema,
   loopPolicySchema,
   validationRecordSchema,
@@ -284,6 +285,9 @@ export const eventSchema = z.strictObject({
     "compactionFailed",
     "outputValidation",
     "loopRecovery",
+    "reviewed",
+    "retried",
+    "compactionRetry",
   ]),
   segment: z.number().int().nonnegative(),
   data: z.json(),
@@ -328,6 +332,7 @@ export const attemptSchema = z.strictObject({
   messageID: uuid.nullable(),
 });
 export const runSchema = z.strictObject({
+  reviews: z.array(reviewRecordSchema).max(1000).default([]),
   deliveryExpected: z.boolean().default(false),
   validations: z.array(validationRecordSchema).max(10000).default([]),
   recovery: recoverySchema.nullable().default(null),
@@ -373,6 +378,7 @@ export const runSchema = z.strictObject({
       "scheduler",
       "compaction",
       "context_full",
+      "runtime_error",
       "storage_limit",
     ])
     .nullable(),
@@ -386,6 +392,9 @@ export const runSchema = z.strictObject({
   hookReceipts: z
     .array(
       z.strictObject({
+        requestID: z.uuid().nullable().default(null),
+        retryOf: z.number().int().nonnegative().nullable().default(null),
+        note: z.string().max(2000).nullable().default(null),
         eventSequence: z.number().int().positive().max(2147483647),
         purpose: z.enum(["notification", "delivery"]).default("notification"),
         executablePath: z.string().max(4096),
@@ -620,6 +629,7 @@ export const runSummarySchema = runSchema
     outcome: outcomeSchema,
   });
 export const runDetailSchema = runSummarySchema.extend({
+  reviews: runSchema.shape.reviews,
   validations: runSchema.shape.validations,
   recovery: runSchema.shape.recovery,
   compactions: runSchema.shape.compactions,

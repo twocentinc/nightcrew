@@ -184,6 +184,42 @@ function defineOperation<N extends string, O extends z.ZodType>(
   };
 }
 export const operations = {
+  "runs review": defineOperation(
+    "runs review",
+    "Acknowledge, resolve or reopen a run review with a durable note",
+    z.object({ run: runDetailSchema, changed: z.boolean() }),
+    true,
+    "required",
+    false,
+    "daemon",
+  ),
+  "runs resume": defineOperation(
+    "runs resume",
+    "Explicitly release a paused or held run",
+    z.object({ run: runDetailSchema, changed: z.boolean() }),
+    true,
+    "required",
+    false,
+    "daemon",
+  ),
+  "runs retry": defineOperation(
+    "runs retry",
+    "Retry the last input in the same transcript with a new message UUID",
+    acceptanceSchema,
+    true,
+    "required",
+    true,
+    "daemon",
+  ),
+  "runs retry-hook": defineOperation(
+    "runs retry-hook",
+    "Explicitly retry a failed hook with a durable attempt and request UUID",
+    z.object({ run: runDetailSchema, changed: z.boolean() }),
+    true,
+    "required",
+    true,
+    "daemon",
+  ),
   "auth rotate": defineOperation(
     "auth rotate",
     "Replace the HTTP root token and return it once",

@@ -19,6 +19,25 @@ import {
 import { toolDefinitionSchema } from "./registry.js";
 const revision = z.number().int().positive();
 export const operationInputs = {
+  "runs review": z.strictObject({
+    expectedRevision: revision,
+    status: z.enum(["open", "acknowledged", "resolved"]),
+    note: z.string().trim().min(1).max(2000),
+  }),
+  "runs resume": z.strictObject({ expectedRevision: revision }),
+  "runs retry": z.strictObject({
+    expectedRevision: revision,
+    messageID: uuid,
+    note: z.string().trim().min(1).max(2000),
+  }),
+  "runs retry-hook": z.strictObject({
+    expectedRevision: revision,
+    receiptIndex: z.number().int().nonnegative(),
+    requestID: uuid,
+    note: z.string().trim().min(1).max(2000),
+    acceptUnknown: z.boolean().default(false),
+    hookPath: z.string().max(4096).optional(),
+  }),
   "agents run": z.strictObject({ message: userMessageSchema }),
   "runs reply": z.strictObject({ message: userMessageSchema }),
   "inference submit": chatInputSchema,

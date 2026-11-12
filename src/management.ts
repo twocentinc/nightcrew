@@ -1,3 +1,4 @@
+import { operationInputs } from "./operationInputs.js";
 import {
   canonicalSkill,
   loadSkillContent,
@@ -421,6 +422,31 @@ export async function manage(
       dryRun,
     );
   }
+  if (command === "runs review")
+    return service.reviewRun(
+      name ?? fail("missing_id"),
+      operationInputs[command].parse(raw),
+      dryRun,
+    );
+  if (command === "runs retry")
+    return service.retryRun(
+      name ?? fail("missing_id"),
+      operationInputs[command].parse(raw),
+      dryRun,
+    );
+  if (command === "runs retry-hook")
+    return service.retryHook(
+      name ?? fail("missing_id"),
+      operationInputs[command].parse(raw),
+      dryRun,
+    );
+  if (command === "runs resume")
+    return service.queueControl(
+      name ?? fail("missing_id"),
+      "release",
+      operationInputs[command].parse(raw).expectedRevision,
+      dryRun,
+    );
   if (resource === "runs" || command === "agents run") {
     const { userMessageSchema } = await import("./contracts.js");
     if (action === "run" || action === "reply") {
