@@ -268,3 +268,52 @@ test("log pagination is bounded, replayable, and rejects rotation or changed que
   await assert.rejects(startupLogs(root, 100, 0), /limit/);
   await assert.rejects(startupLogs(root, 100, 2, "bad"), /Invalid log cursor/);
 });
+
+test('idle scheduling does not reread archived transcripts', async t => {
+  const {storage,service,makeRun} = await fixture(t);
+  await makeRun(randomUUID());
+  let reads=0;
+  const original=storage.read.bind(storage);
+  storage.read=async (...args)=>{reads++;return original(...args)};
+  await service.reconcileCompactions();
+  await service.activatePending();
+  assert.equal(reads,0);
+});
+
+test('pending work index survives reload and clears after cancellation', async t => {
+  const {storage,home,makeRun}=await fixture(t);
+  const run=await makeRun(randomUUID());
+  run.pendingInputs.push({message:{messageID:randomUUID(),content:'next',attachments:[]},source:null});
+  await storage.write(run);
+  assert.ok(storage.pendingRunIDs.has(run.runID));
+  await storage.close();
+  const reopened=new Storage(home);await reopened.initialize();
+  try {assert.ok(reopened.pendingRunIDs.has(run.runID));}
+  finally {await reopened.close();}
+  run.pendingInputs[0].cancelled=true;
+  await storage.write(run);
+  assert.equal(storage.pendingRunIDs.has(run.runID),false);
+});
+
+test('a stalled read releases the serialization queue without accepting late results', async t => {
+  const {boundedRead}=await import('../dist/storage.js');
+  const {storage}=await fixture(t);
+  let finish,committed=false;
+  const stalled=storage.exclusive(async()=>{
+    await boundedRead(()=>new Promise(resolve=>{finish=resolve}),20);
+    committed=true;
+  });
+  const next=storage.exclusive(async()=> 'queue recovered');
+  await assert.rejects(stalled,e=>e.code==='storage.readTimeout');
+  assert.equal(await next,'queue recovered');
+  finish('late');await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(committed,false);
+  await storage.close();
+});
+
+test('run read boundary times out an unresolved filesystem read', {timeout:15000}, async t => {
+  const {storage}=await fixture(t);
+  storage.readRun=()=>new Promise(()=>{});
+  await assert.rejects(storage.exclusive(()=>storage.read(randomUUID())), e=>e.code==='storage.readTimeout');
+  assert.equal(await storage.exclusive(async()=>true),true);
+});

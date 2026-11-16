@@ -305,13 +305,7 @@ export class Service {
       await this.tick();
       this.timer = setInterval(() => {
         void this.tick().catch(() => {
-          this.presence = {
-            state: "present",
-            reason: "samplingFailure",
-            samplingHealthy: false,
-            observedAt: now(),
-            diagnostic: "Presence sampling failed",
-          };
+          this.logger?.emit("scheduler.tickFailed", { reason: "process" });
         });
       }, 1000);
       this.timer.unref();
@@ -1551,14 +1545,7 @@ export class Service {
   private wake() {
     if (!this.closed)
       void withoutExecution(() => this.pump()).catch(() => {
-        this.presence = {
-          state: "present",
-          reason: "samplingFailure",
-          samplingHealthy: false,
-          observedAt: now(),
-          diagnostic:
-            "Execution or durable checkpoint failed; inspect the run before retrying",
-        };
+        this.logger?.emit("scheduler.pumpFailed", { reason: "process" });
       });
   }
   private async tick() {
@@ -1803,7 +1790,8 @@ export class Service {
   }
   private async activatePending() {
     await this.storage.exclusive(async () => {
-      for (const summary of this.storage.summaries.values()) {
+      for (const runID of [...this.storage.pendingRunIDs]) {
+        const summary = this.storage.summaries.get(runID)!;
         if (!terminal(summary.state) || this.activities.has(summary.runID))
           continue;
         const r = await this.run(summary.runID);
@@ -2344,9 +2332,9 @@ export class Service {
   }
   private async reconcileCompactions() {
     await this.storage.exclusive(async () => {
-      for (const summary of [...this.storage.summaries.values()]) {
-        if (this.activities.has(summary.runID)) continue;
-        const parent = await this.run(summary.runID);
+      for (const runID of [...this.storage.compactingRunIDs]) {
+        if (this.activities.has(runID)) continue;
+        const parent = await this.run(runID);
         const pending = parent.compaction;
         if (!pending || pending.status !== "waiting" || !pending.childRunID)
           continue;

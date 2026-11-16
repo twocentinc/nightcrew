@@ -71,6 +71,21 @@ export const summarize = (r: Run): Summary => ({
   held: r.held,
   remainingMs: Math.max(0, r.agent.timeoutMs - r.activeMs),
 });
+// Only use this boundary for reads: a timed-out write must never release the
+// serialization lock while it may still commit. Late read results are discarded.
+export async function boundedRead<T>(read: () => Promise<T>, timeoutMs = 10000): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(read),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new NightcrewError(
+          "storage.readTimeout", "State read exceeded its deadline", 6, "safe",
+        )), timeoutMs);
+      }),
+    ]);
+  } finally { clearTimeout(timer); }
+}
 async function regular(file: string, max: number) {
   const stat = await lstat(file);
   if (!stat.isFile() || stat.isSymbolicLink() || stat.size > max)
@@ -90,6 +105,7 @@ export async function readJSON<T>(
   schema: ZodType<T>,
   max: number,
 ): Promise<T> {
+  return boundedRead(async () => {
   await regular(file, max);
   const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
@@ -97,6 +113,7 @@ export async function readJSON<T>(
   } finally {
     await handle.close();
   }
+  });
 }
 export async function atomicJSON(file: string, value: unknown, max: number) {
   checkpoint();
@@ -130,6 +147,8 @@ export class Storage {
   summaries = new Map<string, Summary>();
   messages = new Map<string, { runID: string; index: number }>();
   unreadable: string[] = [];
+  readonly pendingRunIDs = new Set<string>();
+  readonly compactingRunIDs = new Set<string>();
   private tail: Promise<unknown> = Promise.resolve();
   private ownsLock = false;
   constructor(
@@ -258,15 +277,19 @@ export class Storage {
         throw new Error("Duplicate message UUID");
     });
     this.summaries.set(r.runID, summarize(r));
+    if (r.pendingInputs.some(p => !p.cancelled)) this.pendingRunIDs.add(r.runID);
+    else this.pendingRunIDs.delete(r.runID);
+    if (r.compaction?.status === "waiting" && r.compaction.childRunID) this.compactingRunIDs.add(r.runID);
+    else this.compactingRunIDs.delete(r.runID);
     indexedMessages.forEach((m, index) => {
       if (m.role === "user")
         this.messages.set(m.messageID, { runID: r.runID, index });
     });
   }
   async reconcile() {
-    const entries = await readdir(path.join(this.home, "runs"), {
+    const entries = await boundedRead(() => readdir(path.join(this.home, "runs"), {
       withFileTypes: true,
-    }).catch((error: NodeJS.ErrnoException) => {
+    })).catch((error: NodeJS.ErrnoException) => {
       if (error.code === "ENOENT") return [];
       throw error;
     });
@@ -275,13 +298,22 @@ export class Storage {
       if (!this.summaries.has(e.name) && !this.unreadable.includes(e.name)) {
         try {
           this.index(await this.read(e.name));
-        } catch {
+        } catch (error) {
+          if (error instanceof NightcrewError && error.code === "storage.readTimeout") throw error;
           this.unreadable.push(e.name);
         }
       }
     }
   }
   async read(runID: string) {
+    try { return await boundedRead(() => this.readRun(runID)); }
+    catch (error) {
+      if (error instanceof NightcrewError && error.code === "storage.readTimeout")
+        this.logger?.emit("storage.readTimeout", {reason:"io"});
+      throw error;
+    }
+  }
+  private async readRun(runID: string) {
     if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/.test(runID))
       throw new Error("Invalid run ID");
     const dir = path.join(this.home, "runs", runID);

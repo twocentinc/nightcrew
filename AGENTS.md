@@ -81,3 +81,10 @@ The schema-30 CLI is the stable baseline. Preserve existing commands and semanti
 prefer compatible additions and bug fixes justified by real agent needs. Keep
 scheduler, cache and eval response schemas explicit. Eval suite CLI deadlines
 are separate from individual case limits and ordinary management deadlines.
+
+Run-state reads are deadline-bounded; discard late read results without indexing
+or mutating state. Never apply that timeout pattern to serialized writes, which
+may still commit. Scheduler indexes for pending inputs and waiting compactions
+are rebuilt from run files and updated only with committed state. Idle scheduling
+must not reread every archived transcript. Record operational scheduler failures
+separately from actual presence sampling failures.
