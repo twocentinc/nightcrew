@@ -1,3 +1,4 @@
+import { evalSuiteSchema, evalRunSchema, evalRunResultSchema, runEval } from "./evals.js";
 import { requestSchemas } from "./operationInputs.js";
 import { operationDefinitions, callOperation } from "./operations.js";
 import path from "node:path";
@@ -178,6 +179,13 @@ const helpDefinitionSchema = z.object({
   requestSchema: z.string(),
   resultSchema: z.string(),
 });
+define("evals validate", "Validate an eval suite without inference", "static", "none", false,
+  z.object({ suiteID: z.string(), cases: z.number(), valid: z.literal(true) }),
+  async c => { const suite = evalSuiteSchema.parse(c.request); return { suiteID: suite.suiteID, cases: suite.cases.length, valid: true }; },
+  { request: evalSuiteSchema });
+define("evals run", "Run a suite with mocked tools and save a create-only result bundle", "local", "none", true,
+  evalRunResultSchema, async c => runEval(c.request, (command, request = {}, resourceID) => control(c.home, { command, request, ...(resourceID ? { resourceID } : {}) }, remainingTimeout(90000)), c.dryRun),
+  { request: evalRunSchema });
 define(
   "help",
   "Discover commands and their contracts",

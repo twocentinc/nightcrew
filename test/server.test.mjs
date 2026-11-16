@@ -1781,3 +1781,20 @@ test("fleet overview HTTP uses the same authenticated outcome contract as the CL
   const schema = await f.request("GET", "/openapi.json");
   assert.ok(schema.body.paths[route]);
 });
+
+test("length finish reasons are recoverable only for managed continuations; broken streams still fail", async () => {
+  const { LlamaRuntime } = await import('../dist/runtime.js');
+  const runtime = new LlamaRuntime(() => ({}));
+  const response = (done = true, finish = 'length') => new Response(
+    'data: ' + JSON.stringify({ choices: [{ index: 0, delta: { content: 'prefix', tool_calls: [{ index: 0, function: { name: 'inspect', arguments: '{' } }] }, finish_reason: finish }] }) + '\n\n' + (done ? 'data: [DONE]\n\n' : '')
+  );
+  let fragments;
+  const r = await runtime.readStream(response(), new AbortController().signal, undefined, true, v => fragments = v, true);
+  assert.equal(r.outputLimitReached, true);
+  assert.equal(r.text, 'prefix');
+  assert.deepEqual(r.toolCalls, []);
+  assert.equal(fragments.toolCalls[0].arguments, '{');
+  await assert.rejects(runtime.readStream(response(), new AbortController().signal), /Incomplete generation/);
+  await assert.rejects(runtime.readStream(response(false), new AbortController().signal, undefined, true, undefined, true), /Incomplete generation/);
+  await assert.rejects(runtime.readStream(response(true, 'content_filter'), new AbortController().signal, undefined, true, undefined, true), /Incomplete generation/);
+});

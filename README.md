@@ -914,3 +914,21 @@ actual endpoint error. `runs resume` releases a blocked compactor with its paren
 Original history is replaced in model input only after a fitting summary passes
 validation; the stored transcript is never deleted. Lexical checks are not a
 semantic accuracy guarantee.
+
+### Stable CLI baseline
+
+Schema version 30 freezes the existing command names, request semantics, and typed
+response shapes. Prefer backward-compatible additions and fixes driven by actual
+agents; intentional contract changes still require a new immutable schema archive.
+`skills reload` refreshes both skills and tools for compatibility. Instant inference
+executes selected skill reads only; other tool calls remain the client's responsibility.
+
+`evals run` defaults to a 120-minute overall deadline (also its maximum), allowing
+up to 25 cases of four minutes each plus setup and cleanup. `--timeout` can shorten
+that deadline. Each case still obeys its own configured and agent execution limits.
+Other finite commands retain their 90-second default and five-minute maximum.
+A CLI timeout is separate from a managed agent's active-work timeout.
+
+Persistent runs pause at their storage limit, up to 48 MB. Compaction saves model
+context, not transcript disk space. There is no automatic rollover at the maximum;
+use fresh-run agents for recurring work that must not accumulate indefinitely.

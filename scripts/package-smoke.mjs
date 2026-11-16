@@ -18,13 +18,15 @@ try {
   for (const file of pack.files)
     assert.match(
       file.path,
-      /^(package\.json|README\.md|docs\/model-switch-verification\.md|examples\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(?:md|json)|dist\/[a-zA-Z0-9_-]+\.(js|d\.ts))$/,
+      /^(package\.json|README\.md|docs\/(?:model-switch-verification|eval-format)\.md|examples\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(?:md|json|mjs)|dist\/[a-zA-Z0-9_-]+\.(js|d\.ts))$/,
       "Unexpected packed file: " + file.path,
     );
   assert.ok(pack.files.some((f) => f.path === "dist/cli.js"));
   assert.ok(
     pack.files.some((f) => f.path === "examples/hello-world/agent.json"),
   );
+  for (const name of ["inspect.mjs", "report.mjs", "agent.json", "skill.json"])
+    assert.ok(pack.files.some((f) => f.path === "examples/agent-supervisor/" + name));
   const install = path.join(temp, "install");
   await mkdir(install);
   await exec(

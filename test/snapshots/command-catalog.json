@@ -246,6 +246,61 @@
     },
     {
       "confirmation": false,
+      "description": "Release a terminal eval sample after saving its result",
+      "mutates": true,
+      "name": "evals release",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "evals.release.request",
+      "resultSchema": "evals.release.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "Run a suite with mocked tools and save a create-only result bundle",
+      "mutates": true,
+      "name": "evals run",
+      "operand": "none",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "evals.run.request",
+      "resultSchema": "evals.run.result",
+      "scope": "local"
+    },
+    {
+      "confirmation": false,
+      "description": "Generate one eval turn; return all tool calls without executing any",
+      "mutates": true,
+      "name": "evals sample",
+      "operand": "none",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "evals.sample.request",
+      "resultSchema": "evals.sample.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "Validate an eval suite without inference",
+      "mutates": false,
+      "name": "evals validate",
+      "operand": "none",
+      "options": [
+        "request"
+      ],
+      "requestSchema": "evals.validate.request",
+      "resultSchema": "evals.validate.result",
+      "scope": "static"
+    },
+    {
+      "confirmation": false,
       "description": "Inspect agents, schedules, recent outcomes and runs needing review",
       "mutates": false,
       "name": "fleet status",
@@ -297,7 +352,7 @@
     },
     {
       "confirmation": false,
-      "description": "Submit instant inference without executing tools",
+      "description": "Submit instant inference; execute selected skill reads and return client tool calls",
       "mutates": true,
       "name": "inference submit",
       "operand": "none",
@@ -1132,5 +1187,5 @@
     "version": false
   },
   "protocolVersion": 1,
-  "schemaVersion": 28
+  "schemaVersion": 30
 }

@@ -168,3 +168,12 @@ test("Granite example uses a disabled single-turn audio agent", async () => {
   assert.equal(agent.enabled, false);
   assert.equal(agent.modelID, "granite");
 });
+
+test("eval CLI deadline accommodates suites while ordinary command limits remain bounded", async () => {
+  const { parseCLI } = await import('../dist/cli.js');
+  assert.equal(parseCLI(['evals','run']).timeoutMs, 7200000);
+  assert.equal(parseCLI(['evals','run','--timeout','120m']).timeoutMs, 7200000);
+  assert.equal(parseCLI(['agents','list']).timeoutMs, 90000);
+  assert.throws(() => parseCLI(['agents','list','--timeout','6m']), /Timeout/);
+  assert.throws(() => parseCLI(['evals','run','--timeout','121m']), /Timeout/);
+});

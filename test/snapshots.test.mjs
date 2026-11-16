@@ -143,7 +143,7 @@ test("named KV contexts move between concurrent live slots and respect the disk 
  if(url.pathname==='/tokenize'){fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({tokenize:body})+'\\n');res.end(JSON.stringify({tokens:[1,2,3,4]}));return;}
  if(url.pathname==='/slots'){res.end(JSON.stringify(busy.map((is_processing,id)=>({id,is_processing}))));return;}
  if(url.pathname.startsWith('/slots/')){fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({slot:url.pathname,action:url.searchParams.get('action'),filename:body.filename})+'\\n');if(url.searchParams.get('action')==='save')fs.writeFileSync(path.join(dir,body.filename),'cache');res.end('{}');return;}
- const id=body.id_slot;busy[id]=true;fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({start:id,concurrent:busy.filter(Boolean).length})+'\\n');res.on('close',()=>busy[id]=false);
+ const id=body.id_slot;busy[id]=true;fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({start:id,concurrent:busy.filter(Boolean).length,continuation:body.continue_final_message,generationPrompt:body.add_generation_prompt})+'\\n');res.on('close',()=>busy[id]=false);
  setTimeout(()=>{busy[id]=false;res.setHeader('Content-Type','text/event-stream');res.end('data: '+JSON.stringify({choices:[{index:0,delta:{content:'done'},finish_reason:'stop'}]})+'\\n\\ndata: [DONE]\\n\\n');},100);
  });}).listen(Number(process.argv[process.argv.indexOf('--port')+1]),'127.0.0.1');
  `,
@@ -259,6 +259,21 @@ test("named KV contexts move between concurrent live slots and respect the disk 
         ),
     );
   }
+
+  const continuedInput = {
+    ...input, continueFinalMessage: true, thinking: false, tools: [],
+    messages: [...input.messages, { ...input.messages[0], role: "assistant", content: "unfinished prefix", attachments: [] }],
+  };
+  await runtime.countTokens(continuedInput, new AbortController().signal);
+  await runtime.generate(continuedInput, new AbortController().signal);
+  const continuationEntries = (await readFile(log, "utf8")).trim().split("\n").map(JSON.parse);
+  const continuationTemplate = continuationEntries.filter(e => e.template).at(-1).template;
+  assert.equal(continuationTemplate.continue_final_message, "content");
+  assert.equal(continuationTemplate.add_generation_prompt, false);
+  assert.equal(continuationTemplate.messages.at(-1).content, "unfinished prefix");
+  const continuationRequest = continuationEntries.filter(e => e.start !== undefined).at(-1);
+  assert.equal(continuationRequest.continuation, "content");
+  assert.equal(continuationRequest.generationPrompt, false);
 
   await Promise.all([generate("s1", "alpha"), generate("s2", "beta")]);
   assert.ok((await readFile(log, "utf8")).includes('"concurrent":2'));

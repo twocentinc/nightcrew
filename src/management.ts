@@ -104,6 +104,17 @@ export async function manage(
       dryRun,
     );
   }
+  if (command === "evals release") {
+    const chat = service.chat(name ?? fail("missing_id"));
+    if (!chat.evalOptions || !["completed", "failed", "cancelled", "timedOut"].includes(chat.state)) fail("eval_not_terminal");
+    if (!dryRun) service.chats.delete(chat.requestID);
+    return { changed: !dryRun };
+  }
+  if (command === "evals sample") {
+    const request = operationInputs["evals sample"].parse(raw);
+    if (dryRun) return { changed: false, request };
+    return service.submitChat(request, { sampling: request.sampling });
+  }
   if (resource === "inference") {
     if (action === "submit") {
       if (dryRun)

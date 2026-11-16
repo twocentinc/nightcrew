@@ -206,7 +206,7 @@ export function loadSkillContent(skills: Skill[], raw: unknown) {
 }
 export function withSkillCatalog(
   messages: Message[],
-  skills: Skill[],
+  skills: Pick<Skill, "skillID" | "name" | "description">[],
 ): Message[] {
   if (!skills.length) return messages;
   const catalog =

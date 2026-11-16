@@ -16,3 +16,13 @@ single-turn audio agent and WAV attachments, with no bundled private recordings.
 a researched handoff prompt, and a synthetic evaluation turn. It can be referenced
 by another agent's compaction handler without adding a recurring trigger.
 
+
+
+- [Agent supervisor](agent-supervisor/README.md): portable read-only run metrics,
+  operational evidence, Markdown handoffs and incremental review checkpoints.
+
+
+## Eval fixtures
+
+[Converted regression evals](evals/README.md) exercise summarizer and supervisor
+answers through the mocked eval CLI.

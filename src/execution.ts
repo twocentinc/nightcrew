@@ -60,13 +60,13 @@ export async function pause(ms: number) {
   });
   checkpoint();
 }
-export function parseDuration(value: string) {
+export function parseDuration(value: string, maximumMs = 300000) {
   const match = /^(\d+(?:\.\d+)?)(ms|s|m)$/.exec(value);
   if (!match) throw invalidInput("Timeout requires ms, s, or m");
   const result =
     Number(match[1]) * ({ ms: 1, s: 1000, m: 60000 }[match[2]!] ?? 0);
-  if (!Number.isSafeInteger(result) || result < 1 || result > 300000)
-    throw invalidInput("Timeout must be 1ms..5m");
+  if (!Number.isSafeInteger(result) || result < 1 || result > maximumMs)
+    throw invalidInput(`Timeout must be 1ms..${maximumMs / 60000}m`);
   return result;
 }
 export function diagnostic(

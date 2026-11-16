@@ -675,7 +675,8 @@ export class LlamaRuntime implements Runtime {
           ...(input.sampling?.parallelToolCalls === undefined
             ? {}
             : { parallel_tool_calls: input.sampling.parallelToolCalls }),
-          add_generation_prompt: true,
+          add_generation_prompt: !input.continueFinalMessage,
+          ...(input.continueFinalMessage ? { continue_final_message: "content" } : {}),
           chat_template_kwargs: { enable_thinking: input.thinking ?? true },
         }),
       );
@@ -804,12 +805,18 @@ export class LlamaRuntime implements Runtime {
             model: input.modelID,
             id_slot: slot.index,
             cache_prompt: true,
+            ...(input.continueFinalMessage
+              ? { continue_final_message: "content", add_generation_prompt: false }
+              : {}),
             messages,
             tools: input.tools.map((t) => ({ type: "function", function: t })),
             tool_choice: input.tools.length ? "auto" : "none",
             ...(input.thinking === undefined
               ? {}
               : { chat_template_kwargs: { enable_thinking: input.thinking } }),
+            ...(input.reasoningBudgetTokens === undefined
+              ? {}
+              : { reasoning_budget_tokens: input.reasoningBudgetTokens }),
             max_tokens: input.maxOutputTokens,
             temperature: input.temperature,
             ...(input.sampling
@@ -836,6 +843,7 @@ export class LlamaRuntime implements Runtime {
           onDelta,
           input.thinking !== false,
           onEvidence,
+          input.continueOnOutputLimit,
         );
       const reader = response.body.getReader();
       let bytes = 0;
@@ -901,6 +909,7 @@ export class LlamaRuntime implements Runtime {
     onDelta?: (text: string) => void,
     captureThinking = true,
     onEvidence?: Parameters<Runtime["generate"]>[3],
+    continueOnOutputLimit = false,
   ): Promise<Result> {
     const reader = response.body!.getReader();
     const decoder = new TextDecoder();
@@ -1019,12 +1028,15 @@ export class LlamaRuntime implements Runtime {
     } finally {
       await reader.cancel();
     }
-    if (!ended || !["stop", "tool_calls"].includes(finish))
+    if (!ended || !["stop", "tool_calls", ...(continueOnOutputLimit ? ["length"] : [])].includes(finish))
       throw Error("Incomplete generation");
     return {
+      ...(finish === "length" ? { outputLimitReached: true } : {}),
       text,
       ...(captureThinking && reasoningContent ? { reasoningContent } : {}),
-      toolCalls: [...calls.entries()]
+      // A length-limited tool call may not even contain valid JSON or an ID.
+      // Preserve fragments through onEvidence, never expose them for execution.
+      toolCalls: finish === "length" ? [] : [...calls.entries()]
         .sort(([a], [b]) => a - b)
         .map(([, c]) => toolCallSchema.parse(c)),
       usage,

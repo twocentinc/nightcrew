@@ -17,13 +17,21 @@ shared deadlines and diagnostics. `src/daemon.ts` owns the private control socke
 and bounded external policy hooks. `src/service.ts` owns timer admission, plan
 revalidation, per-slot execution and persistent single-run conversation segments.
 `src/compaction.ts` owns compaction handler/checkpoint schemas, safe history
-projection and bounded script execution. The service schedules linked compactor
+projection and bounded script execution. It generates domain-independent source
+references for original records/text excerpts and restores selected evidence into
+resumed context; summaries never own source identity or wording. The service schedules linked compactor
 runs; the runtime counts templated tokens and validates KV checkpoint generations.
+Managed output-limit continuation is reconstructed from durable attempt records;
+never validate/deliver partial answers or execute truncated tool calls.
 Runs carry holds, pending inputs, compaction checkpoints, configuration and trigger
 occurrence snapshots.
 `src/supervision.ts` owns output-validation configuration/execution, loop detection
 and derived run outcomes, review fingerprints and effective hook retry chains. Keep validation evidence durable and never equate schema
 validation or hook execution with factual correctness or confirmed external delivery.
+`src/evals.ts` owns versioned eval suites, exact argument mock dispatch and
+create-only result bundles. Eval sampling in `src/service.ts` uses the instant
+scheduler but never executes tools, skills, hooks or compaction. Keep evaluation
+expectations out of model inputs and unreviewed criteria distinct from passes.
 `src/diagnostics.ts` owns capability and readiness reporting.
 `src/runArtifacts.ts` owns create-only run bundles, checksum manifests and
 read-only run/bundle integrity verification.
@@ -65,3 +73,11 @@ behavior without an actual model-specific check.
 Real-model tests live under `test/live/`, outside the default suite. Do not run
 them without explicit authorization for inference.
 
+
+
+
+
+The schema-30 CLI is the stable baseline. Preserve existing commands and semantics;
+prefer compatible additions and bug fixes justified by real agent needs. Keep
+scheduler, cache and eval response schemas explicit. Eval suite CLI deadlines
+are separate from individual case limits and ordinary management deadlines.

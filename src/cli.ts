@@ -146,7 +146,7 @@ export function parseCLI(argv: string[]) {
     helpScope,
     values,
     home,
-    timeoutMs: parseDuration(String(values.timeout ?? "90s")),
+    timeoutMs: parseDuration(String(values.timeout ?? (selected === "evals run" ? "120m" : "90s")), selected === "evals run" ? 7200000 : 300000),
     verbosity: verbosity as Verbosity,
   };
 }

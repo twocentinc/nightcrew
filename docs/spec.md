@@ -4,6 +4,10 @@ Status: implemented contract through 0.23.0 (schema 28), with validation limits 
 Runtime schemas and registered procedures are authoritative; this document
 explains behavior rather than maintaining another endpoint inventory.
 
+Deferred exploration: [workspace pipelines](pipelines.md) describes a possible
+future dependency-graph workflow. It is not part of the implemented contract or
+approved implementation scope.
+
 ## Purpose and boundaries
 
 Nightcrew is a standalone CLI and daemon that owns local llama.cpp model serving,
@@ -209,7 +213,12 @@ of instructions, the summary and remaining messages. Handler requests exclude st
 thinking traces, decode text attachments, and identify omitted binary attachments
 without sending base64. Original transcript evidence remains unchanged. Summary
 targets reserve the retained context plus tokenizer slack; child output reservations
-are capped to that target plus JSON overhead, within the configured output limit.
+are capped to that target plus JSON overhead when thinking is disabled. Thinking-enabled
+children retain their configured generation limit because reasoning shares that
+budget with the visible summary. Both reservations must fit the child context;
+the final summary still obeys the smaller summary target. Thinking in linked
+compactors is limited to half the generation budget, capped at 1024 tokens, to
+reserve room for the visible answer.
 
 A summarizer executes as a separate linked fresh run with its own model, prompt
 and output settings. The waiting parent consumes no active-time budget. Child work
@@ -387,11 +396,19 @@ also forces finalization. No hidden retry re-executes a failed external action.
 Exhausted recovery remains visible as needsReview even if final formatting passes.
 
 Compaction receives explicit instructions to separate facts, hypotheses, failed
-attempts and remaining work. A deterministic source check rejects newly invented
-numeric literals and evidence IDs before accepting a checkpoint. It does not
+attempts and remaining work. A deterministic source check warns about unsupported
+numeric literals and evidence IDs. Warnings are retained in the `compacted` event
+and do not block accepting a checkpoint. Numeric comparisons
+ignore valid thousands separators and trailing decimal zeros, and permit rounded
+displays of source decimal quantities. Rounding uses exact integer arithmetic and
+never rounds integer identifiers or converts values to percentages. Count-pair
+notation such as scanned/total is accepted only when both components exist in
+the source; this does not validate their relationship. Timestamp
+formatting and list ordinals are checked separately. This lexical check does not
 prove relationships, units or causal interpretations are correct, nor require
 all source facts in a bounded summary. Exact source context remains recoverable;
-a rejected checkpoint holds the parent at context_full. After compaction the
+Only invalid/empty summaries, generation failures, or context-size failures can
+hold compaction; evidence discrepancies do not trigger retries or holds. After compaction the
 model receives authoritative Nightcrew tool counters and recovery state, instead
 of relying on the summarizer's arithmetic. Existing checkpoints are not rewritten.
 
@@ -436,3 +453,82 @@ records retryOf; pending/started work becomes unknown after restart. Successful
 retry supersedes earlier failure in derived outcomes, but every receipt remains.
 Replaying either retry UUID does not execute work again. Delivery output validation
 still applies. No automatic recovery sends messages or retries external effects.
+
+## Optional review agents
+
+The distributed examples include a portable agent-supervisor with an executable
+read-only run inspector, companion skill, manual trigger and Markdown completion
+hook. It reports computed run metrics and bounded operational failure evidence for
+a larger model to evaluate; it has no management or delivery tools. It snapshots
+eligible revisions, discloses coverage limits and checkpoints only metric pages
+returned before a successfully exported report. Checkpointing is not a factual
+review guarantee. Nothing is activated by init; users install and configure the
+example with the existing CLI. Its scripts use only Node APIs and the Nightcrew
+home, without the client application or Discord dependencies.
+
+
+
+
+### Source-linked compaction evidence
+
+Compaction annotates user/tool content with stable, code-generated `src:` references.
+Structured JSON leaf records and plain-text paragraphs are supported without
+domain field names; system prompts, thinking and binary attachments are not sources.
+The summarizer retains references beside factual claims, questions and decisions.
+When rebuilding context, Nightcrew resolves those references against the original
+covered transcript and includes original record/text content with its message ID
+and JSON pointer or paragraph position. Source text remains untrusted data.
+
+The evidence packet is bounded to 6000 serialized characters; whole excerpts that
+do not fit and unknown references are explicitly listed as omitted. It does not
+truncate a record into an apparently complete fact, fetch new data, or treat a
+reference as proof of an interpretation. Sources are derived, not duplicated in a
+new store; references carried through successive summaries resolve to the original
+transcript. Existing summaries without source references remain supported. The
+normal token counter still checks the complete summary plus evidence context.
+This improves evidence availability, not summary accuracy or semantic verification.
+
+### Managed response continuation
+
+A managed agent's `maxOutputTokens` limits each generation, not the assembled
+answer. A complete llama.cpp stream ending with `finish_reason: length` saves
+its partial text/thinking/tool fragments in an attempt with reason `output_limit`
+and requests continuation. Text uses llama.cpp native assistant prefill (`continue_final_message: "content"`) with the exact saved prefix as the final assistant message and no generation prompt. Token counting uses the same template options. Text chunks are appended verbatim and committed as
+one assistant message only after generation stops normally. JSON validation and
+completion/delivery hooks run on the assembled answer, never on a partial chunk.
+
+Continuation is derived from unresolved attempts in the current segment and
+survives daemon restarts, preemption, and compaction. Saved response text is kept
+outside the compactor's source history and reinjected exactly, subject to actual
+context counting and output reservation. Incomplete tool calls are never executed;
+the next generation must emit complete calls from scratch. Thinking-only limits
+retain the reasoning draft and request an answer with thinking disabled.
+
+Active-time, context, transcript-storage and 1 MB assembled-response limits still
+apply; an empty length response fails rather than spinning. Transport truncation
+without a valid completed stream remains an error. Instant API requests and raw
+eval samples keep their existing behavior; continuation belongs to managed runs.
+A fresh run snapshots its generation limit and scheduling slice, so configuration
+changes require a new fresh run; retry preserves that original agent snapshot.
+
+
+### Evidence and worker review refinements
+
+Compaction source packets retain bounded ancestor scalar metadata with each
+original excerpt, preserving schema names, units, citation identity and scope
+without domain-specific compactor rules.
+
+The combined Loose Threads example replaces duplicate Discord Activity analysis.
+Supervisor metrics distinguish normal compaction waiting from held runs and flag
+empty structured result collections for review. Such flags are advisory, not
+execution failures; bounded final-report excerpts allow review of useful output
+separately from successful execution. Factual support still requires source review.
+
+Compactor input admission counts the fully annotated, serialized request using the
+compactor's model and reserved output budget. Oversized requests are partitioned
+at complete exchange boundaries. Each accepted prefix checkpoint advances only
+through messages actually summarized; the parent repeats compaction if its
+remaining context is still over threshold. Original transcript messages remain
+intact. A single exchange that cannot fit is held with an explicit diagnostic;
+it is never silently truncated or recursively compacted by the child.
+

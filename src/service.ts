@@ -65,6 +65,7 @@ export function fail(code: string, status = 400): never {
 }
 export const tools = builtinTools;
 export type Result = {
+  outputLimitReached?: boolean;
   text: string;
   reasoningContent?: string;
   toolCalls: Message["toolCalls"];
@@ -105,6 +106,9 @@ export interface Runtime {
       messages: Message[];
       tools: ChatInput["tools"];
       thinking?: boolean;
+      reasoningBudgetTokens?: number;
+      continueOnOutputLimit?: boolean;
+      continueFinalMessage?: boolean;
       maxOutputTokens: number;
       temperature: number;
       sampling?: Agent["sampling"];
@@ -125,6 +129,7 @@ export type Presence = {
   diagnostic: string | null;
 };
 type Chat = {
+  evalOptions?: { sampling?: Agent["sampling"] };
   requestID: string;
   input: ChatInput & { modelID: string };
   skills: Skill[];
@@ -142,6 +147,14 @@ type Page = { key: string; items: unknown[]; offset: number; expires: number };
 export class Service {
   readonly skills = new Map<string, Skill>();
   readonly tools = new Map<string, ToolDefinition>();
+  private responseContinuation(run: Run) {
+    const chunks: Attempt[] = [];
+    for (const attempt of [...run.attempts].reverse()) {
+      if (attempt.segment !== run.segment || attempt.messageID) break;
+      if (attempt.reason === "output_limit") chunks.unshift(attempt);
+    }
+    return chunks;
+  }
   private runMessages(
     run: Run,
     checkpoint?: Parameters<typeof contextMessages>[1],
@@ -1384,7 +1397,7 @@ export class Service {
     for (const [id, c] of this.chats)
       if (terminal(c.state) && c.expires < Date.now()) this.chats.delete(id);
   }
-  async submitChat(request: ChatInput) {
+  async submitChat(request: ChatInput, evalOptions?: { sampling?: Agent["sampling"] }) {
     const out = await this.storage.exclusive(async () => {
       await this.storage.reconcile();
       this.expire();
@@ -1396,9 +1409,9 @@ export class Service {
       const input = { ...request, skillIDs: request.skillIDs ?? [], modelID };
       if (new Set(input.skillIDs).size !== input.skillIDs.length)
         fail("duplicate_identity");
-      if (input.tools.some((t) => t.name === "load_skills"))
+      if (!evalOptions && input.tools.some((t) => t.name === "load_skills"))
         fail("reserved_tool_name");
-      const selectedSkills = input.skillIDs.map((id) =>
+      const selectedSkills = (evalOptions ? [] : input.skillIDs).map((id) =>
         structuredClone(this.skills.get(id) ?? fail("skill_not_found", 404)),
       );
       if (
@@ -1443,7 +1456,7 @@ export class Service {
         (c) => c.input.messages.at(-1)?.messageID === latest.messageID,
       );
       if (old) {
-        if (canonical(old.input) !== canonical(input))
+        if (canonical(old.input) !== canonical(input) || canonical(old.evalOptions ?? null) !== canonical(evalOptions ?? null))
           fail("message_conflict", 409);
         return {
           requestID: old.requestID,
@@ -1487,6 +1500,7 @@ export class Service {
       )
         fail("request_capacity", 429);
       const c: Chat = {
+        ...(evalOptions ? { evalOptions } : {}),
         requestID: randomUUID(),
         input,
         skills: selectedSkills,
@@ -1914,6 +1928,20 @@ export class Service {
       Math.max(1, c.deadline - Date.now()),
     );
     try {
+      if (c.evalOptions) {
+        const input = { ...c.input, slotID, persistContext: false, sampling: c.evalOptions.sampling,
+          thinking: [...c.input.messages].reverse().find(m => m.role === "user")?.thinking };
+        if (!this.runtime.countTokens) throw Error("context_count_unavailable");
+        const tokens = await this.runtime.countTokens(input, controller.signal);
+        const slot = executionSlots(this.storage.store.config).find(s => s.slotID === slotID)!;
+        if (tokens + input.maxOutputTokens > slot.contextTokens) throw Error("context_full");
+        c.result = await this.runtime.generate(input, controller.signal, this.deltas(c.requestID));
+        controller.signal.throwIfAborted();
+        if (Buffer.byteLength(JSON.stringify(c.result)) > 1024 * 1024) throw Error("output_limit");
+        c.state = "completed";
+        this.chatEvent(c, "completed", c.result);
+        return;
+      }
       const tool = this.tools.get("load_skills")!;
       const messages = withSkillCatalog(
         structuredClone(c.input.messages),
@@ -1997,13 +2025,16 @@ export class Service {
       if (!c.result) throw Error("Inference did not complete");
       c.state = "completed";
       this.chatEvent(c, "completed", c.result);
-    } catch {
+    } catch (error) {
       c.state = controller.signal.aborted
         ? controller.signal.reason === "timedOut"
           ? "timedOut"
           : "cancelled"
         : "failed";
-      c.error = { code: c.state, message: "Inference did not complete" };
+      const evalCode = c.evalOptions && error instanceof Error
+        ? ({ context_full: "context_full", context_count_unavailable: "context_count_unavailable", "Incomplete generation": "output_incomplete", output_limit: "output_limit" } as Record<string, string>)[error.message]
+        : undefined;
+      c.error = { code: evalCode ?? c.state, message: evalCode ?? "Inference did not complete" };
       this.chatEvent(c, c.state as Event["type"], {});
     } finally {
       clearTimeout(timeout);
@@ -2130,10 +2161,51 @@ export class Service {
           rebuilt[0] = { ...rebuilt[0], content: input.messages[0].content };
         return [...rebuilt, ...executionInstructions];
       };
-      const count = await this.runtime.countTokens(input, signal);
+      let count = await this.runtime.countTokens(input, signal);
+      if (run.parentRunID && count >= threshold) {
+        // Annotation/JSON overhead belongs to the child's actual model budget.
+        // Compact a complete prefix; leave every unprocessed message in the parent.
+        const parent = await this.run(run.parentRunID);
+        const pending = parent.compaction;
+        if (!pending || pending.childRunID !== run.runID)
+          throw Error("Compaction parent no longer owns this child");
+        const requestMessage = run.messages.find(m => m.role === "user")!;
+        const request = JSON.parse(requestMessage.content) as ReturnType<typeof compactionRequest>;
+        let fitted = false;
+        for (let end = request.messages.length - 1; end > 0; end--) {
+          const next = request.messages[end]!;
+          // A new user/assistant starts a complete exchange. Never split tool results.
+          if (next.role !== "user" && !(next.role === "assistant" && request.messages[end - 1]?.role === "tool")) continue;
+          const prefix = request.messages.slice(0, end);
+          const content = JSON.stringify({ ...request, messages: prefix });
+          const candidate = { ...input, messages: input.messages.map(m =>
+            m.messageID === requestMessage.messageID ? { ...m, content } : m) };
+          const tokens = await this.runtime.countTokens(candidate, signal);
+          if (tokens >= threshold - 32) continue;
+          const coveredThrough = parent.messages.findIndex(m => m.messageID === prefix.at(-1)!.messageID);
+          if (coveredThrough <= (parent.compactions.at(-1)?.coveredThrough ?? 0)) continue;
+          pending.coveredThrough = coveredThrough;
+          requestMessage.content = content;
+          input.messages = candidate.messages;
+          count = tokens;
+          await this.storage.exclusive(async () => {
+            this.event(parent, "compactionRequested", { partitioned: true, childRunID: run.runID, coveredThrough, inputTokens: tokens });
+            await this.save(parent);
+            await this.save(run);
+          });
+          fitted = true;
+          break;
+        }
+        if (!fitted) throw Error("A complete compaction exchange exceeds the summarizer input budget; reduce tool response size or increase its context capacity");
+      }
       if (run.compaction?.status === "ready") {
         const pending = run.compaction;
-        validateSummaryEvidence(pending.summary ?? "", compactionRequest(run));
+        const warnings: string[] = [];
+        try {
+          validateSummaryEvidence(pending.summary ?? "", compactionRequest(run));
+        } catch (error) {
+          warnings.push(error instanceof Error ? error.message : "Summary evidence discrepancy");
+        }
         const checkpoint = {
           checkpointID: pending.requestID,
           at: now(),
@@ -2148,7 +2220,7 @@ export class Service {
           messages: preparedMessages(checkpoint),
         };
         const tokens = await this.runtime.countTokens(candidate, signal);
-        if (tokens >= threshold || tokens >= count)
+        if (tokens >= count)
           throw Error("Compacted context does not fit or did not reduce input");
         if (run.compactions.length >= 1000)
           throw Error("Compaction checkpoint limit");
@@ -2158,6 +2230,7 @@ export class Service {
         run.error = null;
         this.event(run, "compacted", {
           checkpointID: checkpoint.checkpointID,
+          warnings,
           coveredThrough: checkpoint.coveredThrough,
           inputTokens: count,
           outputTokens: tokens,
@@ -2166,7 +2239,7 @@ export class Service {
         await this.storage.exclusive(() => this.save(run));
         input.messages = candidate.messages;
         input.contextEpoch = run.compactions.length;
-        return true;
+        return tokens < threshold ? true : this.prepareContext(run, input, capacity, signal);
       }
       if (count < threshold) return true;
       if (run.parentRunID)
@@ -2310,12 +2383,14 @@ export class Service {
             agent.contextMode = "fresh";
             agent.compaction = null;
             agent.slotID = "auto";
-            // Honor a smaller configured output cap, and reserve only what this
-            // summary needs (including JSON overhead) in the child's context.
-            agent.maxOutputTokens = Math.min(
-              agent.maxOutputTokens,
-              pending.targetTokens + 128,
-            );
+            // Thinking shares the generation budget with the visible summary.
+            // Keep its configured allowance; context admission still checks that
+            // the complete input and reserved output fit the model slot.
+            if (!agent.thinking)
+              agent.maxOutputTokens = Math.min(
+                agent.maxOutputTokens,
+                pending.targetTokens + 128,
+              );
             const content = JSON.stringify(compactionRequest(parent));
             if (content.length > 262144)
               throw Error("Compactor request is too large; compact earlier");
@@ -2508,6 +2583,9 @@ export class Service {
         const lastAssistant = [...currentMessages]
           .reverse()
           .find((m) => m.role === "assistant");
+        const continuation = this.responseContinuation(r);
+        const prefix = continuation.map((a) => a.text).join("");
+        const priorReasoning = continuation.map((a) => a.reasoningContent).join("");
         if (lastAssistant)
           for (const call of lastAssistant.toolCalls) {
             if (this.atStorageLimit(r)) break;
@@ -2554,6 +2632,7 @@ export class Service {
         let repairReason: string | null = null;
         if (
           lastAssistant &&
+          !continuation.length &&
           !lastAssistant.toolCalls.length &&
           lastAssistant.content.trim()
         ) {
@@ -2664,7 +2743,7 @@ export class Service {
           emptyAnswer ||
           !!repairReason ||
           (r.recovery?.segment === r.segment && r.recovery.finalizing);
-        const thinking = finalizing
+        const thinking = finalizing || continuation.length > 0
           ? false
           : ([...r.messages].reverse().find((m) => m.role === "user")
               ?.thinking ?? r.agent.thinking);
@@ -2725,7 +2804,41 @@ export class Service {
             toolCalls: [],
             toolCallID: null,
           });
+        const continueFinalMessage = !!prefix && !continuation.at(-1)?.toolCalls.length;
+        if (continueFinalMessage) {
+          // Keep the exact prefix inside the open assistant message. A new user
+          // turn can make the model omit punctuation at the chunk boundary.
+          if (messages.at(-1)?.role === "assistant")
+            messages.push({ messageID: randomUUID(), role: "user",
+              content: "Complete the unfinished answer in the required format.",
+              attachments: [], toolCalls: [], toolCallID: null });
+          messages.push({ messageID: randomUUID(), role: "assistant", content: prefix,
+            attachments: [], toolCalls: [], toolCallID: null });
+        } else if (continuation.length) {
+          const partialTools = continuation.at(-1)!.toolCalls;
+          messages.push({
+            messageID: randomUUID(),
+            role: "assistant",
+            content: prefix || (priorReasoning
+              ? "Unfinished reasoning draft (not verified evidence):\n" + priorReasoning
+              : "The previous generation stopped during a tool call."),
+            attachments: [], toolCalls: [], toolCallID: null,
+          }, {
+            messageID: randomUUID(),
+            role: "user",
+            content: "Nightcrew output continuation: the previous generation reached its per-response token limit. " +
+              (partialTools.length
+                ? "The unfinished tool calls below were NOT executed. Emit the required complete tool calls again from scratch; never execute partial arguments. Fragments: " + JSON.stringify(partialTools) + ". "
+                : prefix
+                  ? "Continue the answer EXACTLY where the assistant text ends. Emit only the remaining text, including any needed leading whitespace. Do not repeat, restart, summarize, add a preamble, or wrap JSON in fences. Your text will be appended verbatim to the saved prefix. No more tools are available for this answer. "
+                  : "Finish the reasoning and return the answer or complete tool calls. The draft is not a final answer. ") +
+              "Preserve the required output format and evidence qualifications.",
+            attachments: [], toolCalls: [], toolCallID: null,
+          });
+        }
         const input: Parameters<Runtime["generate"]>[0] = {
+          continueOnOutputLimit: true,
+          continueFinalMessage,
           modelID: r.agent.modelID,
           slotID,
           contextID:
@@ -2740,12 +2853,15 @@ export class Service {
           persistContext: r.agent.contextMode === "persistent",
           contextEpoch: r.compactions.length,
           messages,
-          tools: (finalizing ? [] : this.runTools(r)).map((t) => ({
+          tools: (finalizing || (prefix && !continuation.at(-1)?.toolCalls.length) ? [] : this.runTools(r)).map((t) => ({
             name: t.toolID,
             description: t.description,
             parameters: t.parameters,
           })),
           thinking,
+          ...(r.parentRunID && thinking
+            ? { reasoningBudgetTokens: Math.min(1024, Math.floor(r.agent.maxOutputTokens / 2)) }
+            : {}),
           maxOutputTokens: r.agent.maxOutputTokens,
           temperature: r.agent.temperature,
           sampling: r.agent.sampling,
@@ -2820,13 +2936,36 @@ export class Service {
           },
         );
         if (controller.signal.aborted) break;
+        if (result.outputLimitReached) {
+          // These attempts are durable continuation chunks, not complete messages.
+          // They survive interruption/restart/compaction without completing the run
+          // or executing unfinished tool calls. No new user turn/budget is created.
+          attempt.text = result.text;
+          attempt.reasoningContent = thinking ? (result.reasoningContent ?? "") : "";
+          attempt.status = "interrupted";
+          attempt.reason = "output_limit";
+          attempt.updatedAt = now();
+          activeAttempt = undefined;
+          this.provisional.delete(runID);
+          await this.storage.exclusive(() => this.save(r));
+          if (!attempt.text && !attempt.reasoningContent && !attempt.toolCalls.length)
+            throw Error("Output continuation made no progress");
+          if (Buffer.byteLength(prefix + attempt.text) > 1048576 ||
+              Buffer.byteLength(priorReasoning + attempt.reasoningContent) > 1048576)
+            throw Error("Assembled response exceeds storage limit");
+          continue;
+        }
+        const content = prefix + result.text;
+        const reasoningContent = priorReasoning + (thinking ? (result.reasoningContent ?? "") : "");
+        if (Buffer.byteLength(content) > 1048576 || Buffer.byteLength(reasoningContent) > 1048576)
+          throw Error("Assembled response exceeds storage limit");
         const m: Message = {
           messageID: randomUUID(),
           role: "assistant",
-          content: result.text,
-          thinking,
-          ...(thinking && result.reasoningContent !== undefined
-            ? { reasoningContent: result.reasoningContent }
+          content,
+          thinking: thinking || continuation.some((a) => a.thinking),
+          ...(reasoningContent
+            ? { reasoningContent }
             : {}),
           attachments: [],
           toolCalls: result.toolCalls,
@@ -2841,6 +2980,7 @@ export class Service {
         )
           throw Error("Run capacity");
         r.messages.push(m);
+        for (const chunk of continuation) chunk.messageID = m.messageID;
         if (activeAttempt) {
           activeAttempt.status = "completed";
           activeAttempt.messageID = m.messageID;

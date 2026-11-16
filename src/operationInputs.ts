@@ -1,3 +1,4 @@
+import { evalSampleSchema } from "./evals.js";
 import { loggingSchema } from "./logging.js";
 import { z } from "zod";
 import {
@@ -19,6 +20,8 @@ import {
 import { toolDefinitionSchema } from "./registry.js";
 const revision = z.number().int().positive();
 export const operationInputs = {
+  "evals release": z.strictObject({}),
+  "evals sample": evalSampleSchema,
   "runs review": z.strictObject({
     expectedRevision: revision,
     status: z.enum(["open", "acknowledged", "resolved"]),

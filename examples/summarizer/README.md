@@ -41,13 +41,19 @@ still invoke it. No recurring trigger is needed. Choose the model's
 
 ## Settings and context capacity
 
-Thinking is disabled to keep the output budget available for the summary; this is
-an initial latency/budget choice, not a demonstrated quality advantage. Temperature
-0.1 and neutral repetition penalties favor faithful copying over variation. These
-are task-specific settings, not a claim that the model cannot hallucinate.
+Thinking is disabled in this example. Live replay with the revised prompt advanced
+the cursor correctly without thinking; enabling thinking still produced inaccurate
+progress counts and conflated facts. Temperature remains 0.1 and the configured
+output ceiling is 1536 tokens. The active timeout is three minutes.
 
-The configured 1536-token output limit is a ceiling. Linked compactor runs reserve
-at most their requested summary target plus 128 tokens for JSON. The target accounts
+Thinking is supported if enabled for an installation: give it enough generation
+budget for both reasoning and the final answer. Linked compactor thinking is
+limited to half that budget, capped at 1024 tokens, leaving room for a summary.
+A larger budget does not establish factual correctness.
+
+Linked compactors with thinking enabled retain their configured output budget.
+Without thinking, the reservation is capped at the summary target plus 128 tokens.
+The target accounts
 for the parent’s retained context and tokenization slack, capped at 1024 tokens. The complete summarizer input must also fit: its system prompt, serialized
 source messages, earlier summary, and reserved output all consume context. A parent
 threshold close to a 4096-token slot's limit may leave too much input for this

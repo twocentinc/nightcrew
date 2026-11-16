@@ -1,0 +1,16 @@
+{
+  "trigger": {
+    "triggerID": "agent-supervisor-manual",
+    "name": "agent supervisor on demand",
+    "agentID": "agent-supervisor",
+    "enabled": false,
+    "schedule": {
+      "type": "manual"
+    },
+    "message": {
+      "content": "Review new or changed Nightcrew runs. Load your skill, read all metrics pages, investigate the highest-priority issues, and write a Markdown handoff for a larger supervising model. Do not change anything.",
+      "attachments": []
+    },
+    "queuePolicy": "skip"
+  }
+}

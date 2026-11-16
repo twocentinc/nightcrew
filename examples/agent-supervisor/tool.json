@@ -1,0 +1,36 @@
+{
+  "tool": {
+    "toolID": "nightcrew_inspect",
+    "description": "Read-only projected Nightcrew run metrics and bounded operational failure evidence. Overview then pages; run for selected detail. No mutation or arbitrary paths.",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "action": {
+          "type": "string",
+          "enum": [
+            "overview",
+            "page",
+            "run"
+          ]
+        },
+        "page": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "runID": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]{1,128}$"
+        }
+      },
+      "required": [
+        "action"
+      ],
+      "additionalProperties": false
+    },
+    "executablePath": "/absolute/path/to/node",
+    "argv": [
+      "/absolute/path/to/agent-supervisor/inspect.mjs"
+    ],
+    "timeoutMs": 60000
+  }
+}

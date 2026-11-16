@@ -69,13 +69,13 @@ async function fixture(t, generate, extra = {}, hooks = []) {
   const runtime = {
     status: () => [],
     close: async () => {},
-    generate: async (request, signal) => {
+    generate: async (request, signal, onDelta, onEvidence) => {
       calls.push(request);
       return {
         text: "done",
         toolCalls: [],
         usage: { inputTokens: 1, outputTokens: 1 },
-        ...(await generate(request, calls.length, signal)),
+        ...(await generate(request, calls.length, signal, { onDelta, onEvidence })),
       };
     },
   };
@@ -592,4 +592,89 @@ test("failed runs retry in place with a new segment and preserved failure eviden
     1,
   );
   assert.equal(dry.runID, done.runID);
+});
+
+test("output-limit chunks form one validated JSON answer and remain inspectable", async (t) => {
+  const f = await fixture(t, async (request, n) => {
+    assert.equal(request.continueOnOutputLimit, true);
+    if (n === 1) return { text: '{"answer":', outputLimitReached: true };
+    assert.equal(request.continueFinalMessage, true);
+    assert.equal(request.messages.at(-1).role, "assistant");
+    assert.equal(request.messages.at(-1).content, '{"answer":');
+    assert.deepEqual(request.tools, []);
+    return { text: '42}' };
+  }, { outputValidation: validation });
+  const r = await f.submit();
+  assert.equal(r.state, 'completed');
+  assert.equal(r.result, '{"answer":42}');
+  assert.equal(r.validations.length, 1);
+  assert.equal(r.validations[0].status, 'passed');
+  assert.equal(r.messages.filter(m => m.role === 'assistant').length, 1);
+  assert.equal(r.attempts[0].reason, 'output_limit');
+  assert.equal(r.attempts[0].text, '{"answer":');
+  assert.equal(r.attempts[0].messageID, r.messages.at(-1).messageID);
+  const { verifyRun } = await import('../dist/runArtifacts.js');
+  assert.equal((await verifyRun(f.service, r.runID)).valid, true);
+});
+
+test("multiple output chunks survive an interrupted continuation and daemon restart", async (t) => {
+  const f = await fixture(t, async (request, n, signal) => {
+    if (n === 1) return { text: 'first ', outputLimitReached: true };
+    if (n === 2) return { text: 'second ', outputLimitReached: true };
+    if (n === 3) {
+      await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+      throw Error('interrupted');
+    }
+    assert.equal(request.messages.at(-1).content, 'first second ');
+    return { text: 'last' };
+  });
+  const accepted = await f.service.submit('worker', input());
+  await until(() => f.calls.length === 3);
+  await f.restart();
+  const r = await until(async () => {
+    const r = await f.service.run(accepted.runID);
+    return r.state === 'completed' && r;
+  });
+  assert.equal(r.result, 'first second last');
+  assert.equal(r.attempts.filter(a => a.reason === 'output_limit').length, 2);
+  assert.equal(r.messages.filter(m => m.role === 'assistant').length, 1);
+});
+
+test("truncated tool calls are regenerated, never executed as fragments", async (t) => {
+  const f = await fixture(t, async (request, n, signal, evidence) => {
+    if (n === 1) {
+      evidence.onEvidence({ reasoningContent: '', toolCalls: [{ index: 0, callID: 'partial', name: 'runs_list', arguments: '{"limit":' }] });
+      return { text: '', outputLimitReached: true };
+    }
+    if (n === 2) {
+      assert.equal(request.messages.filter(m => m.role === 'tool').length, 0);
+      assert.match(request.messages.at(-1).content, /NOT executed/);
+      assert(request.tools.some(t => t.name === 'runs_list'));
+      return { text: '', toolCalls: [{ callID: 'complete', name: 'runs_list', arguments: '{"limit":1}' }] };
+    }
+    return { text: 'done' };
+  }, { mode: 'agent-loop', toolIDs: ['runs_list'] });
+  const r = await f.submit();
+  assert.equal(r.state, 'completed');
+  assert.deepEqual(r.messages.filter(m => m.role === 'tool').map(m => m.toolCallID), ['complete']);
+});
+
+test("thinking-only output limits retain reasoning and request a visible answer", async (t) => {
+  const f = await fixture(t, async (request, n) => {
+    if (n === 1) return { text: '', reasoningContent: 'Unfinished hypothesis', outputLimitReached: true };
+    assert.equal(request.thinking, false);
+    assert.match(request.messages.at(-2).content, /Unfinished hypothesis/);
+    return { text: 'qualified answer' };
+  }, { thinking: true });
+  const r = await f.submit();
+  assert.equal(r.result, 'qualified answer');
+  assert.equal(r.messages.at(-1).reasoningContent, 'Unfinished hypothesis');
+});
+
+test("empty length responses cannot spin through continuation forever", async (t) => {
+  const f = await fixture(t, async () => ({ text: '', outputLimitReached: true }));
+  const r = await f.submit();
+  assert.equal(r.state, 'failed');
+  assert.match(r.error.message, /no progress/);
+  assert.equal(f.calls.length, 1);
 });

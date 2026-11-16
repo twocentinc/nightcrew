@@ -46,6 +46,19 @@ export const planSchema = z.strictObject({
   pause: z.array(z.string()).max(16),
   reason: z.string().max(1000),
 });
+export const schedulerSnapshotSchema = z.object({
+  now: z.number(), eligible: z.boolean(), blockers: z.array(z.string()),
+  residentModelID: z.string().nullable(), residentSince: z.number(), settings: schedulerSchema,
+  pending: z.array(z.object({runID:z.string(), modelID:z.string(), priority:z.number(), modelPriority:z.number(), waitingSince:z.number()})),
+  active: z.array(z.object({runID:z.string(), modelID:z.string(), slotID:z.string()})),
+  slots: z.array(z.object({slotID:z.string(), modelID:z.string()})),
+});
+export const policyResultSchema = z.object({plan:planSchema, source:z.enum(["builtin", "hook", "hold", "fallback"]), diagnostic:z.string().nullable()});
+export const schedulerStatusSchema = z.object({
+  instantModelID:z.string().nullable(), residentModelID:z.string().nullable(),
+  active:z.array(z.object({id:z.string(), kind:z.enum(["run", "chat"]), slotID:z.string(), modelID:z.string()})),
+  lastDecision:policyResultSchema.extend({at:z.string()}).nullable(),
+});
 export type Plan = z.infer<typeof planSchema>;
 export function instantModelID(config: Config): string | null {
   return (

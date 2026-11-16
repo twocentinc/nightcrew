@@ -1,3 +1,4 @@
+import { schedulerSnapshotSchema, policyResultSchema, schedulerStatusSchema } from "./scheduler.js";
 import { z } from "zod";
 import {
   os,
@@ -716,7 +717,7 @@ export const operations = {
   "agents cache": defineOperation(
     "agents cache",
     "Inspect saved agent KV cache without changing its transcript",
-    z.json(),
+    z.object({contextID:z.string(),items:z.array(z.object({modelID:z.string(),bytes:z.number().int().nonnegative(),updatedAt:z.string()})),changed:z.boolean()}),
     false,
     "required",
     false,
@@ -725,7 +726,7 @@ export const operations = {
   "agents reset-cache": defineOperation(
     "agents reset-cache",
     "Discard saved agent KV cache without deleting conversation history",
-    z.json(),
+    z.object({contextID:z.string(),items:z.array(z.object({modelID:z.string(),bytes:z.number().int().nonnegative(),updatedAt:z.string()})),changed:z.boolean()}),
     true,
     "required",
     true,
@@ -752,7 +753,7 @@ export const operations = {
   "scheduler status": defineOperation(
     "scheduler status",
     "Inspect active allocations and the last scheduling decision",
-    z.json(),
+    schedulerStatusSchema,
     false,
     "none",
     false,
@@ -761,15 +762,24 @@ export const operations = {
   "scheduler explain": defineOperation(
     "scheduler explain",
     "Evaluate scheduling policy without dispatching work",
-    z.json(),
+    policyResultSchema.extend({snapshot:schedulerSnapshotSchema}),
     false,
     "none",
     false,
     "daemon",
   ),
+  "evals release": defineOperation(
+    "evals release", "Release a terminal eval sample after saving its result",
+    z.object({ changed: z.boolean() }), true, "required", false, "daemon",
+  ),
+  "evals sample": defineOperation(
+    "evals sample", "Generate one eval turn; return all tool calls without executing any",
+    z.union([chatAcceptanceSchema, z.object({ changed: z.literal(false), request: operationInputs["evals sample"] })]),
+    true, "none", false, "daemon",
+  ),
   "inference submit": defineOperation(
     "inference submit",
-    "Submit instant inference without executing tools",
+    "Submit instant inference; execute selected skill reads and return client tool calls",
     z.union([
       chatAcceptanceSchema,
       z.object({ changed: z.literal(false), request: chatInputSchema }),
