@@ -987,6 +987,11 @@ test("management HTTP and CLI share every oRPC operation contract", async (t) =>
   const { getCommand } = await import("../dist/commands.js");
   for (const op of operationDefinitions) {
     const command = getCommand(op.name);
+    if (["evals sample", "evals release"].includes(op.name)) {
+      assert.equal(command, undefined);
+      assert.equal(Boolean(f.app.document.paths["/v1/operations/" + op.name.replaceAll(" ", "/")]), false);
+      continue;
+    }
     assert.equal(command.request, op.request, op.name);
     assert.equal(command.result, op.result, op.name);
     const route = "/v1/operations/" + op.name.replaceAll(" ", "/");
@@ -1768,7 +1773,7 @@ for (const emptyAgain of [false, true])
 
 test("fleet overview HTTP uses the same authenticated outcome contract as the CLI", async (t) => {
   const f = await fixture(t);
-  const route = "/v1/operations/fleet/status";
+  const route = "/v1/operations/status";
   assert.equal(
     (await f.request("POST", route, { request: {} }, false)).status,
     401,

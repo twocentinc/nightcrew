@@ -433,7 +433,7 @@ export async function runEval(
           checkpoint();
           if (Date.now() >= deadline) throw Error("timeout");
           detail = detailSchema.parse(
-            await transport("inference get", {}, activeRequest),
+            await transport("instant get", {}, activeRequest),
           );
           if (
             ["completed", "failed", "timedOut", "cancelled"].includes(
@@ -544,7 +544,7 @@ export async function runEval(
       if (activeRequest) {
         try {
           await withoutExecution(() =>
-            transport("inference cancel", {}, activeRequest),
+            transport("instant cancel", {}, activeRequest),
           );
         } catch {
           record.cancellation = "unconfirmed; inspect request ID";

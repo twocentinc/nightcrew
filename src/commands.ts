@@ -84,6 +84,7 @@ export const globalOptions = {
   "no-input": false,
   "non-interactive": false,
   help: false,
+  advanced: false,
   version: false,
 } as const;
 const definitions: Definition[] = [];
@@ -199,7 +200,7 @@ define(
     options: z.array(z.string()),
     schemaVersion: z.number(),
   }),
-  async (c) => help(c.helpScope ?? c.resourceID ?? ""),
+  async (c) => help(c.helpScope ?? c.resourceID ?? "", !!c.values.advanced),
 );
 define(
   "version",
@@ -281,9 +282,10 @@ define(
   false,
   doctorSchema,
   (c) =>
-    doctor(c.home, !!c.values.live, (timeout) =>
-      control(c.home, { command: "daemon status" }, timeout),
-    ),
+    doctor(c.home, !!c.values.live, async (timeout) => {
+      const result = await control(c.home, { command: "status" }, timeout) as {pid:number;runtime:object};
+      return {pid:result.pid,...result.runtime};
+    }),
   { options: ["live"] },
 );
 define(
@@ -373,11 +375,10 @@ for (const action of [
   "uninstall",
   "status",
   "start",
-  "stop",
   "restart",
   "logs",
 ]) {
-  const name = "startup " + action;
+  const name = "daemon " + action;
   const mutation = !["status", "logs"].includes(action);
   const result =
     action === "status"
@@ -428,13 +429,13 @@ for (const action of [
           try {
             await control(
               c.home,
-              { command: "daemon status" },
+              { command: "status" },
               remainingTimeout(1000),
             );
             break;
           } catch (e) {
             checkpoint();
-            diagnostic("debug", "startup.waitingForReadiness");
+            diagnostic("debug", "daemon.waitingForReadiness");
           }
           await pause(200);
         }
@@ -449,6 +450,7 @@ for (const action of [
   );
 }
 for (const operation of operationDefinitions) {
+  if (["evals sample", "evals release"].includes(operation.name)) continue;
   const {
     name,
     description,
@@ -482,9 +484,10 @@ export const commandCatalog = () =>
       resultSchema: d.name.replaceAll(" ", ".") + ".result",
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
-export function help(scope = "") {
+export const advancedCommands = new Set(["agents cache", "agents reset-cache", "runs verify", "runs retry-hook", "schema get", "auth rotate", "capabilities", "presence sample", "skills reload", "scheduler explain"]);
+export function help(scope = "", advanced = false) {
   const catalog = commandCatalog().filter(
-    (d) => !scope || d.name === scope || d.name.startsWith(scope + " "),
+    (d) => (!scope ? (advanced || !advancedCommands.has(d.name)) : d.name === scope || d.name.startsWith(scope + " ")),
   );
   if (scope && !catalog.length) throw invalidInput("Unknown help scope");
   return {

@@ -146,8 +146,8 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
 
   assert.equal(
     (
-      await call(home, ["agents", "disable", "reviewer"], {
-        expectedRevision: 1,
+      await call(home, ["agents", "update", "reviewer"], {
+        expectedRevision: 1, changes: { enabled: false },
       })
     ).result.agent.enabled,
     false,
@@ -319,21 +319,16 @@ test("foreground daemon serves local CRUD and shuts down cleanly", async (t) => 
   let status;
   for (let i = 0; i < 100; i++) {
     try {
-      status = await control(home, { command: "daemon status" }, 1000);
+      status = await control(home, { command: "status" }, 1000);
       break;
     } catch {}
     await delay(50);
   }
   assert.equal(status.pid, child.pid);
-  const presence = await call(home, ["presence", "status"], undefined, env);
-  assert.equal(presence.ok, true);
-  assert.deepEqual(Object.keys(presence.result).sort(), [
-    "cooldownUntil",
-    "presence",
-  ]);
-  assert.ok(["present", "away"].includes(presence.result.presence.state));
-  assert.equal(typeof presence.result.presence.samplingHealthy, "boolean");
-  assert.equal(presence.result.cooldownUntil, status.cooldownUntil);
+  const overview = await call(home, ["status", "--details"], undefined, env);
+  assert.equal(overview.ok,true);
+  assert.ok(overview.result.scheduler);
+  assert.ok(["present","away"].includes(overview.result.runtime.presence.state));
   const listed = await call(
     home,
     [

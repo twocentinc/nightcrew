@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { readFileSync } from "node:fs";
 export const PROTOCOL_VERSION = 1;
-export const SCHEMA_VERSION = 30;
+export const SCHEMA_VERSION = 31;
 export const packageVersion = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ).version as string;

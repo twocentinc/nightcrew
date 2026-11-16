@@ -77,8 +77,8 @@ them without explicit authorization for inference.
 
 
 
-The schema-30 CLI is the stable baseline. Preserve existing commands and semantics;
-prefer compatible additions and bug fixes justified by real agent needs. Keep
+Before v1, breaking changes are allowed. Remove superseded commands and update
+all first-party callers; do not add compatibility aliases for abandoned workflows. Keep
 scheduler, cache and eval response schemas explicit. Eval suite CLI deadlines
 are separate from individual case limits and ordinary management deadlines.
 
@@ -88,3 +88,7 @@ may still commit. Scheduler indexes for pending inputs and waiting compactions
 are rebuilt from run files and updated only with committed state. Idle scheduling
 must not reread every archived transcript. Record operational scheduler failures
 separately from actual presence sampling failures.
+
+Schema 31 consolidates public CLI lifecycle under daemon, interactive calls under
+instant, and fleet/presence/scheduling inspection under status. Internal eval
+sample/release procedures must not be exposed in CLI or HTTP discovery.

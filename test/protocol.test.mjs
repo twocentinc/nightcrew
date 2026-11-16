@@ -34,7 +34,7 @@ test("versioned command catalog and schemas stay aligned with parser and help", 
   await snapshots();
   const schemas = exportSchemas();
   for (const definition of commandDefinitions) {
-    assert.ok(help().commands.includes(definition.name));
+    assert.ok(help("", true).commands.includes(definition.name));
     assert.ok(schemas[definition.name.replaceAll(" ", ".") + ".request"]);
     assert.ok(schemas[definition.name.replaceAll(" ", ".") + ".result"]);
     const parsed = parseCLI([
@@ -176,4 +176,15 @@ test("eval CLI deadline accommodates suites while ordinary command limits remain
   assert.equal(parseCLI(['agents','list']).timeoutMs, 90000);
   assert.throws(() => parseCLI(['agents','list','--timeout','6m']), /Timeout/);
   assert.throws(() => parseCLI(['evals','run','--timeout','121m']), /Timeout/);
+});
+
+test('simplified CLI removes obsolete names and hides advanced and internal operations', async () => {
+  const {parseCLI}=await import('../dist/cli.js');
+  const {help}=await import('../dist/commands.js');
+  for(const args of [['startup','status'],['inference','submit'],['queue','list'],['fleet','status'],['presence','status'],['scheduler','get'],['scheduler','update'],['scheduler','status'],['agents','enable','a'],['triggers','disable','t'],['evals','sample']]) assert.throws(()=>parseCLI(args),/Unknown command/);
+  assert.equal(parseCLI(['instant','submit']).command,'instant submit');
+  assert.equal(parseCLI(['runs','pause','a']).command,'runs pause');
+  assert.equal(help().commands.includes('runs retry-hook'),false);
+  assert.equal(help('',true).commands.includes('runs retry-hook'),true);
+  assert.equal(help('',true).commands.includes('evals sample'),false);
 });

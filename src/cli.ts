@@ -37,6 +37,7 @@ const optionTypes: Record<string, string | false> = {
   agent: "agentID",
   state: "state",
   live: false,
+  details: false,
 };
 const aliases: Record<string, string> = {
   "-h": "--help",
@@ -230,6 +231,7 @@ export async function main(argv = process.argv.slice(2)) {
           }
         }
       }
+      if (command === "status" && args.values.details) raw.details = true;
       context.request = args.definition.request.parse(raw);
       execution.check();
       if (args.definition.confirmation && !context.yes && !context.dryRun)

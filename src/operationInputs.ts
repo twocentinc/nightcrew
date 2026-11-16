@@ -20,6 +20,7 @@ import {
 import { toolDefinitionSchema } from "./registry.js";
 const revision = z.number().int().positive();
 export const operationInputs = {
+  status: z.strictObject({ details: z.boolean().default(false) }),
   "evals release": z.strictObject({}),
   "evals sample": evalSampleSchema,
   "runs review": z.strictObject({
@@ -43,17 +44,7 @@ export const operationInputs = {
   }),
   "agents run": z.strictObject({ message: userMessageSchema }),
   "runs reply": z.strictObject({ message: userMessageSchema }),
-  "inference submit": chatInputSchema,
-  "scheduler update": z.strictObject({
-    expectedRevision: revision,
-    changes: z.strictObject(
-      Object.fromEntries(
-        Object.entries(configSchema.shape.scheduler.unwrap().shape).map(
-          ([key, field]) => [key, field.unwrap().optional()],
-        ),
-      ),
-    ),
-  }),
+  "instant submit": chatInputSchema,
   "triggers create": z.strictObject({ trigger: triggerDraftSchema }),
   "triggers update": z.strictObject({
     expectedRevision: revision,
@@ -67,19 +58,16 @@ export const operationInputs = {
       }),
   }),
   "triggers delete": z.strictObject({ expectedRevision: revision }),
-  "triggers enable": z.strictObject({ expectedRevision: revision }),
-  "triggers disable": z.strictObject({ expectedRevision: revision }),
+
+
   "triggers fire": z.strictObject({
     occurrenceID: uuid.optional(),
     message: userMessageSchema.omit({ messageID: true }).optional(),
   }),
-  "queue list": pageSchema.extend({
-    agentID: id.optional(),
-    state: z.enum(["queued", "paused"]).optional(),
-  }),
-  "queue hold": z.strictObject({ expectedRevision: revision }),
-  "queue release": z.strictObject({ expectedRevision: revision }),
-  "queue cancel": z.strictObject({ expectedRevision: revision }),
+
+  "runs pause": z.strictObject({ expectedRevision: revision }),
+
+
   "runs list": pageSchema.extend({
     agentID: id.optional(),
     state: runState.optional(),
@@ -112,7 +100,7 @@ export const operationInputs = {
       .partial()
       .extend({
         logging: loggingSchema.optional(),
-        scheduler: configSchema.shape.scheduler.unwrap().optional(),
+        scheduler: z.strictObject(Object.fromEntries(Object.entries(configSchema.shape.scheduler.unwrap().shape).map(([key, field]) => [key, field.unwrap().optional()]))).optional(),
       }),
   }),
   "agents create": z.strictObject({ agent: agentDraftSchema }),
@@ -137,8 +125,8 @@ export const operationInputs = {
         maxOutputTokens: z.number().int().min(1).max(32768).optional(),
       }),
   }),
-  "agents enable": z.strictObject({ expectedRevision: revision }),
-  "agents disable": z.strictObject({ expectedRevision: revision }),
+
+
   "agents delete": z.strictObject({ expectedRevision: revision }),
   "models create": z.strictObject({
     model: modelSchema,
@@ -155,12 +143,9 @@ export const operationInputs = {
     }),
   }),
   "models delete": z.strictObject({ expectedRevision: revision }),
-  "slots create": z.strictObject({ slot: slotSchema }),
-  "slots update": z.strictObject({
-    expectedRevision: revision,
-    changes: slotSchema.omit({ slotID: true }).partial(),
-  }),
-  "slots delete": z.strictObject({ expectedRevision: revision }),
+
+
+
   "skills read": skillLoadInputSchema.extend({ runID: id.optional() }),
   "skills create": z.strictObject({ skill: skillSchema }),
   "skills update": z.strictObject({

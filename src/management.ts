@@ -87,11 +87,6 @@ export async function manage(
     const { runID, ...selection } = request;
     return loadSkillContent(skills, selection);
   }
-  if (command === "presence status")
-    return {
-      presence: service.presence,
-      cooldownUntil: service.storage.store.cooldownUntil,
-    };
   if (command === "agents cache" || command === "agents reset-cache") {
     service.agent(name ?? fail("missing_id"));
     if (!service.runtime.contextCache)
@@ -115,7 +110,7 @@ export async function manage(
     if (dryRun) return { changed: false, request };
     return service.submitChat(request, { sampling: request.sampling });
   }
-  if (resource === "inference") {
+  if (resource === "instant") {
     if (action === "submit") {
       if (dryRun)
         return { changed: false, request: requestSchemas[command]!.parse(raw) };
@@ -131,53 +126,7 @@ export async function manage(
     if (action === "cancel")
       return service.cancelChat(name ?? fail("missing_id"), dryRun);
   }
-  if (resource === "scheduler") {
-    if (action === "get")
-      return {
-        configRevision: service.storage.store.config.revision,
-        settings: service.storage.store.config.scheduler,
-      };
-    if (action === "status") return service.schedulerStatus();
-    if (action === "explain") return service.explainScheduler();
-    if (action === "update")
-      return service.storage.exclusive(async () => {
-        const input = requestSchemas[command]!.parse(raw) as {
-          expectedRevision: number;
-          changes: Partial<import("./scheduler.js").SchedulerConfig>;
-        };
-        const next = structuredClone(service.storage.store);
-        if (next.config.revision !== input.expectedRevision)
-          fail("revision_conflict", 409);
-        const resizing =
-          input.changes.maxConcurrent !== undefined ||
-          input.changes.contextTokens !== undefined ||
-          input.changes.instantModelID !== undefined;
-        if (
-          resizing &&
-          (service.schedulerStatus().active.length ||
-            [...service.chats.values()].some((c) => c.state === "queued"))
-        )
-          fail("runtime_busy", 409);
-        next.config.scheduler = { ...next.config.scheduler, ...input.changes };
-        next.config.revision++;
-        if (input.changes.contextTokens !== undefined)
-          next.config.slots = next.config.slots.map((s) => ({
-            ...s,
-            contextTokens: input.changes.contextTokens!,
-          }));
-        storeSchema.parse(next);
-        validateConfig(next);
-        if (!dryRun) {
-          if (resizing) await service.runtime.close();
-          await service.storage.saveConfig(next);
-        }
-        return {
-          changed: !dryRun,
-          configRevision: next.config.revision,
-          settings: next.config.scheduler,
-        };
-      });
-  }
+  if (command === "scheduler explain") return service.explainScheduler();
   if (resource === "triggers") {
     if (action === "fire") {
       const value = requestSchemas[command]!.parse(raw) as {
@@ -278,10 +227,8 @@ export async function manage(
           next.triggers.splice(index, 1);
           item = null;
         } else {
-          const changes =
-            action === "update"
-              ? value!.changes!
-              : { enabled: action === "enable" };
+          if (action !== "update") fail("unknown_command");
+          const changes = value!.changes!;
           const reset =
             (changes.enabled === true && !current.enabled) ||
             (changes.schedule !== undefined &&
@@ -304,52 +251,6 @@ export async function manage(
       return { item, changed: !dryRun };
     });
   }
-  if (resource === "queue") {
-    if (action === "list") {
-      const input = requestSchemas[command]!.parse(raw) as {
-        limit: number;
-        cursor?: string;
-        agentID?: string;
-        state?: string;
-      };
-      return service.page(
-        "queue:" + canonical([input.agentID ?? null, input.state ?? null]),
-        input,
-        async () =>
-          (await service.listRuns(input.agentID, input.state)).filter(
-            (r) => r.state === "queued" || r.state === "paused",
-          ),
-      );
-    }
-    if (action === "get") {
-      const run = await service.run(name ?? fail("missing_id"));
-      if (run.state !== "queued" && run.state !== "paused")
-        fail("run_not_pending", 409);
-      return { run: service.detail(run) };
-    }
-    if (action === "hold" || action === "release" || action === "cancel") {
-      const value = requestSchemas[command]!.parse(raw) as {
-        expectedRevision: number;
-      };
-      return service.queueControl(
-        name ?? fail("missing_id"),
-        action,
-        value.expectedRevision,
-        dryRun,
-      );
-    }
-    fail("unknown_command");
-  }
-  if (command === "slots save" || command === "slots restore") {
-    if (!name) fail("slot_required");
-    if (service.status().queue.length) fail("runtime_busy", 409);
-    if (!service.runtime.snapshot) fail("snapshots_unsupported", 503);
-    return service.runtime.snapshot!(
-      name!,
-      action as "save" | "restore",
-      dryRun,
-    );
-  }
   if (command === "auth rotate") {
     if (!yes && !dryRun) fail("confirmation_required");
     return service.storage.exclusive(async () => {
@@ -363,7 +264,7 @@ export async function manage(
       return { changed: !dryRun, ...(!dryRun ? { token } : {}) };
     });
   }
-  if (command === "fleet status") {
+  if (command === "status") {
     const runs = [...service.storage.summaries.values()].sort(
       (a, b) =>
         b.updatedAt.localeCompare(a.updatedAt) ||
@@ -381,6 +282,8 @@ export async function manage(
     };
     return {
       observedAt: now(),
+      pid: process.pid,
+      ...(operationInputs.status.parse(raw).details ? {scheduler:service.schedulerStatus()} : {}),
       runtime: service.status(),
       totals: {
         runs: runs.length,
@@ -407,8 +310,6 @@ export async function manage(
       reviewTruncated: review.length > 100,
     };
   }
-  if (command === "daemon status")
-    return { pid: process.pid, ...service.status() };
   if (command === "config get")
     return { config: exposeConfig(service.storage.store) };
   if (command === "agents create") {
@@ -417,11 +318,7 @@ export async function manage(
     };
     return service.createAgent(value.agent, dryRun);
   }
-  if (
-    command === "agents update" ||
-    command === "agents enable" ||
-    command === "agents disable"
-  ) {
+  if (command === "agents update") {
     const value = requestSchemas[command]!.parse(raw) as {
       expectedRevision: number;
       changes?: Partial<z.infer<typeof agentSchema>>;
@@ -429,7 +326,7 @@ export async function manage(
     return service.patchAgent(
       name ?? fail("missing_id"),
       value.expectedRevision,
-      value.changes ?? { enabled: action === "enable" },
+      value.changes ?? {},
       dryRun,
     );
   }
@@ -451,6 +348,8 @@ export async function manage(
       operationInputs[command].parse(raw),
       dryRun,
     );
+  if (command === "runs pause")
+    return service.pauseRun(name ?? fail("missing_id"), operationInputs[command].parse(raw).expectedRevision, dryRun);
   if (command === "runs resume")
     return service.queueControl(
       name ?? fail("missing_id"),
@@ -582,13 +481,19 @@ export async function manage(
       const liveSettingsOnly =
         resource === "config" &&
         Object.keys(value.changes as object).every((k) =>
-          ["logging", "interactionCooldownMs"].includes(k),
+          ["logging", "interactionCooldownMs", "scheduler"].includes(k),
         );
       if (!liveSettingsOnly && service.status().queue.length)
         fail("runtime_busy", 409);
       if (resource === "config") {
         const changes = value.changes as Partial<typeof next.config>;
         if (Object.keys(changes).length === 0) fail("empty_changes");
+        if (changes.scheduler) {
+          const resizing = ["maxConcurrent", "contextTokens", "instantModelID"].some(k => Object.hasOwn(changes.scheduler!, k));
+          if (resizing && (service.schedulerStatus().active.length || [...service.chats.values()].some(c => c.state === "queued"))) fail("runtime_busy",409);
+          if (changes.scheduler.contextTokens !== undefined) next.config.slots = next.config.slots.map(slot => ({...slot,contextTokens:changes.scheduler!.contextTokens!}));
+          changes.scheduler = {...next.config.scheduler,...changes.scheduler};
+        }
         next.config = { ...next.config, ...changes };
       } else if (resource === "models") {
         if (action === "create") {
@@ -710,9 +615,11 @@ export async function manage(
       const liveSettingsOnly =
         resource === "config" &&
         Object.keys(value.changes as object).every((k) =>
-          ["logging", "interactionCooldownMs"].includes(k),
+          ["logging", "interactionCooldownMs", "scheduler"].includes(k),
         );
-      if (resource !== "agents" && !liveSettingsOnly)
+      const schedulerChanges = resource === "config" ? (value.changes as {scheduler?:Record<string,unknown>}).scheduler : undefined;
+      const resizingScheduler = schedulerChanges && ["maxConcurrent", "contextTokens", "instantModelID"].some(k => Object.hasOwn(schedulerChanges,k));
+      if ((resource !== "agents" && !liveSettingsOnly) || resizingScheduler)
         await service.runtime.close();
       await service.storage.saveConfig(next);
     }

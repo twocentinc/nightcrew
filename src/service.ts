@@ -1258,6 +1258,22 @@ export class Service {
     }
     return { run: this.detail(await this.run(runID)), changed: result.changed };
   }
+  async pauseRun(runID: string, expectedRevision: number, dryRun: boolean) {
+    const run = await this.run(runID);
+    if (run.revision !== expectedRevision) fail("revision_conflict", 409);
+    if (terminal(run.state)) fail("run_not_pending", 409);
+    const activity = this.activities.get(runID);
+    if (activity) {
+      if (dryRun) return {run:this.detail(run),changed:false};
+      // Set the live hold before aborting so the scheduler cannot restart it.
+      const live = this.liveRuns.get(runID);
+      if (live) live.held = true;
+      activity.controller.abort("manual");
+      await activity.task;
+      return {run:this.detail(await this.run(runID)),changed:true};
+    }
+    return this.queueControl(runID, "hold", expectedRevision, dryRun);
+  }
   async queueControl(
     runID: string,
     action: "hold" | "release" | "cancel",
@@ -3010,6 +3026,7 @@ export class Service {
     } finally {
       if (controller.signal.aborted) {
         const reason = controller.signal.reason;
+        if (reason === "manual") r.held = true;
         if (reason === "cancelled")
           for (const p of r.pendingInputs) p.cancelled = true;
         r.state =
@@ -3026,7 +3043,9 @@ export class Service {
                 ? "presence"
                 : reason === "timeSlice"
                   ? "timeSlice"
-                  : reason === "scheduler"
+                  : reason === "manual"
+                    ? "manualStop"
+                    : reason === "scheduler"
                     ? "scheduler"
                     : "restart"
             : null;

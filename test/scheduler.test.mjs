@@ -395,15 +395,15 @@ test("scheduler partial updates preserve existing limits and hook configuration"
     maxWaitMs: 123456,
   });
   const { requestSchemas } = await import("../dist/operationInputs.js");
-  const request = requestSchemas["scheduler update"].parse({
+  const request = requestSchemas["config update"].parse({
     expectedRevision: f.service.storage.store.config.revision,
-    changes: { timersEnabled: false },
+    changes: { scheduler: { timersEnabled: false } },
   });
-  assert.deepEqual(request.changes, { timersEnabled: false });
-  const out = await manage(f.service, { command: "scheduler update", request });
-  assert.equal(out.settings.maxConcurrent, 3);
-  assert.equal(out.settings.contextTokens, 8192);
-  assert.equal(out.settings.maxWaitMs, 123456);
+  assert.deepEqual(request.changes, { scheduler: { timersEnabled: false } });
+  const out = await manage(f.service, { command: "config update", request });
+  assert.equal(out.config.scheduler.maxConcurrent, 3);
+  assert.equal(out.config.scheduler.contextTokens, 8192);
+  assert.equal(out.config.scheduler.maxWaitMs, 123456);
   const config = requestSchemas["config update"].parse({
     expectedRevision: 1,
     changes: { interactionCooldownMs: 0 },
@@ -443,10 +443,10 @@ test("instant inference rejects other models and invalid configuration", async (
   );
   await assert.rejects(
     manage(f.service, {
-      command: "scheduler update",
+      command: "config update",
       request: {
         expectedRevision: f.service.storage.store.config.revision,
-        changes: { instantModelID: "missing" },
+        changes: { scheduler: { instantModelID: "missing" } },
       },
     }),
     /Instant model/,
@@ -475,4 +475,25 @@ test("default background agents borrow the same slot serially with fresh run con
   assert.notEqual(seen[0].contextID, seen[1].contextID);
   assert.ok(seen.every((i) => i.persistContext === false));
   assert.notEqual(a.runID, b.runID);
+});
+
+test('runs pause interrupts active generation and holds across restart until resumed', async t => {
+  let calls=0;
+  const f=await setup(t,async (input,signal)=>{
+    calls++;
+    if(calls>1)return done;
+    return new Promise((resolve,reject)=>signal.addEventListener('abort',()=>reject(Error('paused')),{once:true}));
+  });
+  await f.agent('pausable');
+  const accepted=await f.service.submit('pausable',message('work'));
+  await until(()=>calls===1);
+  let run=await f.service.run(accepted.runID);
+  const paused=await manage(f.service,{command:'runs pause',resourceID:run.runID,request:{expectedRevision:run.revision}});
+  assert.equal(paused.run.state,'paused');assert.equal(paused.run.held,true);
+  assert.equal(paused.run.pauseReason,'manualStop');
+  await f.restart();await delay(100);assert.equal(calls,1);
+  run=await f.service.run(run.runID);
+  await manage(f.service,{command:'runs resume',resourceID:run.runID,request:{expectedRevision:run.revision}});
+  await until(async()=> (await f.service.run(run.runID)).state==='completed');
+  assert.equal(calls,2);
 });

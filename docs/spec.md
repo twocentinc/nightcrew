@@ -42,7 +42,7 @@ routes in src/server.ts remain compatibility adapters, with their historical
 envelopes and pagination; managed actions delegate to the shared procedures.
 Streaming run/chat events remain dedicated oRPC routes.
 
-Bootstrap, local service installation, startup logs, local inspection and schema
+Bootstrap, local service installation, daemon logs, local inspection and schema
 discovery remain CLI concerns. Run export and bundle verification require local
 filesystem access and are not exposed as remote operations. Read the generated
 command catalog or CLI help for the exact inventory.
@@ -233,7 +233,7 @@ children and failure events remain durable across restart. Script handlers do no
 automatically retry. Missing handlers, oversized retained input, or exhausted
 summary retries hold the parent with context_full. Context preparation/runtime
 errors instead hold at runtime_error with their actual error; resuming the parent
-releases its blocked compactor without consuming a summary retry. Explicit queue release retries with the current
+releases its blocked compactor without consuming a summary retry. Explicit runs resume retries with the current
 handler. Restart retains dependencies; cancellation cancels unfinished child work.
 Instant request compaction and automatic multi-stage chunking remain deferred.
 
@@ -247,7 +247,7 @@ limitMB, bytes and message/event/attempt counts captured at the boundary.
 
 A storage hook runs after the hold is persisted and does not unpause the run.
 It can notify a supervisor or use the CLI to export/review the run. Hook stdout
-is ignored; it is not a summary protocol. Explicit queue release is still required.
+is ignored; it is not a summary protocol. Explicit runs resume is still required.
 One automatic delivery attempt is recorded per event sequence and executable;
 explicit supervisor retries append linked receipts without replacing old ones. Repeated
 submissions to the same held run do not create new storage-limit events.
@@ -412,7 +412,7 @@ hold compaction; evidence discrepancies do not trigger retries or holds. After c
 model receives authoritative Nightcrew tool counters and recovery state, instead
 of relying on the summarizer's arithmetic. Existing checkpoints are not rewritten.
 
-`fleet status` uses the same oRPC operation for CLI and HTTP and requires the
+`status` uses the same oRPC operation for CLI and HTTP and requires the
 daemon for current runtime state. It shows each configured agent, its schedules,
 latest run activity/outcome, active run count, review count and recorded active
 milliseconds, plus current presence/cooldown, model/slot status and the newest
@@ -423,7 +423,7 @@ usage. No new index, queue database, or inferred memory/token telemetry is store
 Context preparation failures (template rendering, tokenization or unavailable
 runtime) hold a run with `runtime_error` and `context_preparation_failed`, rather
 than claiming its context is full. HTTP failures retain the endpoint, status and
-bounded response body in run evidence, not daemon logs. Explicit queue release
+bounded response body in run evidence, not daemon logs. Explicit runs resume
 clears the hold after the underlying cause is corrected. Output-schema guidance
 is merged into the leading system prompt, including when compaction rebuilds the
 context; model templates need not support later system messages.
@@ -436,7 +436,7 @@ required note. Reviews are append-only, segment-scoped and fingerprint the issue
 state. Resolution removes fleet attention while preserving failure evidence and
 separate execution/output/delivery outcomes. New failures invalidate resolution.
 
-`runs resume` shares queue release semantics. `runs retry` takes expectedRevision,
+`runs resume` shares runs resume semantics. `runs retry` takes expectedRevision,
 a new client messageID UUID and note; it requires a terminal non-compactor run
 without pending inputs and repeats the last user input, attachments and thinking
 override in a new segment of the same transcript. It uses ordinary reply snapshot
@@ -532,3 +532,17 @@ remaining context is still over threshold. Original transcript messages remain
 intact. A single exchange that cannot fit is held with an explicit diagnostic;
 it is never silently truncated or recursively compacted by the child.
 
+
+
+## CLI simplification, schema 31
+
+The pre-v1 CLI intentionally removes superseded names without aliases. Public
+commands use `instant` for interactive requests and `daemon` for LaunchAgent
+management plus foreground execution. `status` includes fleet/runtime/presence;
+`--details` includes scheduling. `daemon status` reports local service installation.
+Queue inspection uses filtered runs. `runs pause` holds queued work or interrupts
+active work with a durable hold; `runs resume` releases it. Agent/trigger updates
+own `enabled`; config updates own partial scheduler settings. Skill/tool CRUD
+refreshes registrations; explicit reload remains advanced. Eval sampling and
+release are internal-only, excluded from public CLI and HTTP discovery. Advanced
+help exposes recovery, cache, schema, verification and diagnostic operations.

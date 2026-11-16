@@ -32,15 +32,15 @@ Source and runtime data remain separate.
 ```sh
 nightcrew init
 nightcrew doctor
-nightcrew startup install --dry-run
-nightcrew startup install
-nightcrew startup status
+nightcrew daemon install --dry-run
+nightcrew daemon install
 nightcrew daemon status
-nightcrew startup logs --lines 100
-nightcrew startup stop
-nightcrew startup start
-nightcrew startup restart
-nightcrew startup uninstall --yes
+nightcrew daemon status
+nightcrew daemon logs --lines 100
+nightcrew daemon stop
+nightcrew daemon start
+nightcrew daemon restart
+nightcrew daemon uninstall --yes
 ```
 
 `init` defaults to loopback port 6970, a five-minute interaction cooldown, and
@@ -89,7 +89,7 @@ while work is nonterminal; changing HTTP bind settings reports `restartRequired`
 Agent edits affect future runs. Skills and tool definitions are snapshotted in
 new runs; historical runs retain their configuration.
 
-`agents enable` / `disable` update eligibility. `agents run`, `runs list`,
+`agents update` with `changes.enabled` updates eligibility. `agents run`, `runs list`,
 `runs get`, `runs transcript`, `runs reply` and `runs cancel` operate through a
 running daemon. Enabled interval and cron triggers dispatch automatically.
 
@@ -181,7 +181,7 @@ A timed-out mutation can have an unknown outcome; never blindly retry it.
 
 `--timeout 90s` is the default finite-command deadline; durations accept `ms`,
 `s`, or `m`, up to five minutes. It covers input, local work, IPC, child processes
-and startup readiness polling. Accepted background runs use their own agent
+and daemon readiness polling. Accepted background runs use their own agent
 timeouts and continue independently. Foreground `daemon run` lasts until stopped.
 `--verbose` and `--verbosity debug` emit structured diagnostics on stderr;
 `--quiet` suppresses them. `--no-input` / `--non-interactive` explicitly select
@@ -199,11 +199,11 @@ a completed diagnostic may successfully report an unhealthy system.
 Presence has two read-only commands:
 
 ```sh
-nightcrew presence status
+nightcrew status
 nightcrew presence sample
 ```
 
-`presence status` reads the running daemon's latest sample and `cooldownUntil`;
+`status` includes the running daemon's latest sample and `cooldownUntil` under `runtime`;
 it fails if the daemon is unavailable. `presence sample` takes a fresh reading
 of the local desktop without requiring an initialized home or running daemon.
 It does not update the daemon's sample or change scheduling. Both expose
@@ -346,7 +346,7 @@ Operational JSON lines go to `<home>/logs/daemon.jsonl`, with rotations `.1`
 through `.9`. `files` includes the active file (1–10 total); `maxBytes` bounds
 each file (1024 bytes–16 MB). Defaults retain at most three 1 MB files. Retention
 and size reductions are enforced on the next emitted entry. `off` stops writes
-but preserves existing logs. `nightcrew startup logs --lines 100` reads these
+but preserves existing logs. `nightcrew daemon logs --lines 100` reads these
 files as well as legacy launchd stdout/stderr; existing launchd files are not
 rewritten or rotated by this logger.
 
@@ -387,8 +387,8 @@ nightcrew runs list --agent reviewer --state completed --limit 20 --cursor CURSO
 nightcrew runs verify RUN_ID
 printf '%s\n' '{"destination":"/absolute/new-bundle"}' | nightcrew runs export RUN_ID --request -
 printf '%s\n' '{"bundle":"/absolute/new-bundle"}' | nightcrew runs verify RUN_ID --request -
-nightcrew startup logs --lines 1000 --limit 50
-nightcrew startup logs --lines 1000 --limit 50 --cursor CURSOR
+nightcrew daemon logs --lines 1000 --limit 50
+nightcrew daemon logs --lines 1000 --limit 50 --cursor CURSOR
 ```
 
 Run list, transcript and search pages default to 50 entries, maximum 100. Their
@@ -435,15 +435,15 @@ nightcrew triggers list
 nightcrew triggers get TRIGGER_ID
 nightcrew triggers create --request trigger.json
 nightcrew triggers update TRIGGER_ID --request changes.json
-nightcrew triggers enable TRIGGER_ID --request revision.json
-nightcrew triggers disable TRIGGER_ID --request revision.json
+nightcrew triggers update TRIGGER_ID --request enabled-update.json
+
 nightcrew triggers delete TRIGGER_ID --request revision.json --yes
 nightcrew triggers fire TRIGGER_ID
-nightcrew queue list --agent AGENT_ID --state queued --limit 20
-nightcrew queue get RUN_ID
-nightcrew queue hold RUN_ID --request revision.json
-nightcrew queue release RUN_ID --request revision.json
-nightcrew queue cancel RUN_ID --request revision.json
+nightcrew runs list --agent AGENT_ID --state queued --limit 20
+nightcrew runs get RUN_ID
+nightcrew runs pause RUN_ID --request revision.json
+nightcrew runs resume RUN_ID --request revision.json
+nightcrew runs cancel RUN_ID
 ```
 
 A create request contains `trigger`: `{triggerID,name,agentID,enabled,schedule,
@@ -475,7 +475,7 @@ Coalesced occurrence history is bounded to 1,000 entries. Trigger edits do not
 rewrite accepted definition snapshots. Disable/delete stops new submissions,
 not existing runs. Dry-run previews create/coalesce/skip without writing.
 
-Update requests use `{expectedRevision,changes}`; enable/disable/delete and queue
+Update requests use `{expectedRevision,changes}`; delete and pause/resume
 hold/release/cancel use `{expectedRevision}` from current inspection. Holds are
 persisted in existing run state files, survive restart, and block dispatch even
 on instant slots. Queue controls affect only queued or paused work; use `runs
@@ -484,17 +484,17 @@ There is no separate queue database.
 
 ## Scheduler and persistent agents (0.12)
 
-`scheduler get`, `scheduler update --request FILE`, `scheduler status` and
+`config get`, `config update --request FILE`, `status --details` and
 `scheduler explain` expose settings, allocations and policy decisions. Updates
-use `{expectedRevision,changes}`. Defaults: `maxConcurrent: 1`,
+use `{expectedRevision,changes:{scheduler:{...}}}`. Defaults: `maxConcurrent: 1`,
 `contextTokens: 4096`, `snapshotBudgetMB: 1024`, `minResidencyMs: 60000`,
 `maxWaitMs: 900000`, `timersEnabled: true`, `hook: null`.
 
 Set `instantModelID` to one configured chat model, for example `qwen`. Null uses
 an existing legacy instant-slot model, then the first configured chat model.
-`scheduler status` reports the effective model. Only that model gets an instant
-slot. `inference submit` defaults to it and rejects a different explicit model.
-Use `inference get REQUEST_ID` / `inference cancel REQUEST_ID` to inspect/cancel.
+`status --details` reports the effective model. Only that model gets an instant
+slot. `instant submit` defaults to it and rejects a different explicit model.
+Use `instant get REQUEST_ID` / `instant cancel REQUEST_ID` to inspect/cancel.
 Instant work pauses background inference, waits for compute to release and keeps
 background work stopped through the configurable interaction cooldown (five
 minutes by default). Changing slot topology requires idle compute and no queued
@@ -636,9 +636,9 @@ Agent summary failures receive bounded retries as described under Review and
 recovery below. Exhausted retries, missing handlers, impossible output reservations,
 or summaries that still exceed the budget hold the parent at `context_full`.
 Runtime preparation failures instead hold at `runtime_error`.
-Nothing is silently discarded. Inspect `runs get` or `queue get` for the error,
+Nothing is silently discarded. Inspect `runs get` or `runs get` for the error,
 fix the handler through `agents update`, then use revision-checked
-`queue release RUN_ID --request revision.json` to retry. Release picks up the
+`runs resume RUN_ID --request revision.json` to retry. Release picks up the
 agent's current compaction handler while preserving the run's other snapshots.
 An oversized latest input/tool exchange may require cancellation and revised input
 or larger context capacity; this version does not chunk compactor input.
@@ -857,7 +857,7 @@ promoted into the final answer. Single-turn/audio behavior is unchanged.
 
 ## Supervising results
 
-Use `nightcrew fleet status` for agent schedules, latest outcomes, runs needing
+Use `nightcrew status` for agent schedules, latest outcomes, runs needing
 review, active execution time, presence/cooldown and model/slot state. Drill down
 with `nightcrew runs get RUN_ID` and `nightcrew runs transcript RUN_ID`.
 A completed run can still have invalid output or failed delivery; `outcome`
@@ -874,7 +874,7 @@ recovery behavior and compaction verification limits.
 
 ## Review and recovery
 
-Inspect `fleet status`, then `runs get RUN_ID` and `runs transcript RUN_ID`.
+Inspect `status`, then `runs get RUN_ID` and `runs transcript RUN_ID`.
 All recovery commands use the same oRPC contracts over CLI and HTTP. Discover
 exact JSON with `schema get runs.review` (or `runs.resume`, `runs.retry`,
 `runs.retry-hook`). Supply the request with `--request FILE` or stdin.
@@ -882,7 +882,7 @@ exact JSON with `schema get runs.review` (or `runs.resume`, `runs.retry`,
 | Command | Request fields | Behavior |
 | --- | --- | --- |
 | `runs review RUN_ID` | `expectedRevision`, `status`, `note` | Append an `open`, `acknowledged` or `resolved` review. |
-| `runs resume RUN_ID` | `expectedRevision` | Release an existing hold; equivalent to `queue release`. |
+| `runs resume RUN_ID` | `expectedRevision` | Release a hold or resume paused work. |
 | `runs retry RUN_ID --yes` | `expectedRevision`, new `messageID` UUID, `note` | Repeat the latest user input as a new segment in the same transcript. |
 | `runs retry-hook RUN_ID --yes` | `expectedRevision`, zero-based `receiptIndex`, new `requestID` UUID, `note` | Explicitly retry the selected failed hook. |
 
@@ -917,10 +917,10 @@ semantic accuracy guarantee.
 
 ### Stable CLI baseline
 
-Schema version 30 freezes the existing command names, request semantics, and typed
-response shapes. Prefer backward-compatible additions and fixes driven by actual
-agents; intentional contract changes still require a new immutable schema archive.
-`skills reload` refreshes both skills and tools for compatibility. Instant inference
+Schema version 31 simplifies the CLI. Before v1, breaking changes are allowed;
+remove obsolete commands instead of preserving compatibility aliases. Intentional
+contract changes still require a new immutable schema archive.
+Advanced `skills reload` refreshes both skills and tools after external file edits. Instant inference
 executes selected skill reads only; other tool calls remain the client's responsibility.
 
 `evals run` defaults to a 120-minute overall deadline (also its maximum), allowing
@@ -932,3 +932,34 @@ A CLI timeout is separate from a managed agent's active-work timeout.
 Persistent runs pause at their storage limit, up to 48 MB. Compaction saves model
 context, not transcript disk space. There is no automatic rollover at the maximum;
 use fresh-run agents for recurring work that must not accumulate indefinitely.
+
+## Simplified CLI (0.29)
+
+`nightcrew help` shows everyday commands. `nightcrew help --advanced` includes
+cache operations, hook recovery, verification, schemas, auth rotation, explicit
+registry reload and scheduling diagnostics. `help GROUP` also shows advanced
+commands for that group. Commands are callable directly regardless of help visibility.
+
+- `status` combines fleet health, presence, cooldown, queue and recent outcomes.
+  Add `--details` for live scheduler allocations and its last decision.
+- `daemon` owns install/uninstall/start/stop/restart/status/logs/run.
+  `daemon status` inspects the LaunchAgent even if the daemon is stopped;
+  top-level `status` inspects the running workload.
+- `instant submit/get/cancel` replaces inference. Instant work uses the configured
+  interactive model and interrupts background execution.
+- `runs list --state queued` or `--state paused` inspects queued work.
+  `runs pause ID --request revision.json` holds queued work or interrupts active
+  work and keeps it held; `runs resume` releases it. `cancel` terminates work;
+  `reply` adds input; `retry` repeats the last input. These are distinct actions.
+- Set agent/trigger eligibility through `update` with
+  `{"expectedRevision":1,"changes":{"enabled":false}}`.
+- Configure the scheduler through `config update`, e.g.
+  `{"expectedRevision":1,"changes":{"scheduler":{"timersEnabled":false}}}`.
+  Nested scheduler updates preserve omitted settings. Capacity/model/context
+  changes reject active execution and reset the idle runtime as needed.
+- Skills/tools CRUD refreshes registrations automatically. Advanced `skills reload`
+  is only needed after externally editing their files.
+- `evals validate/run` are public; sample/release are internal daemon operations.
+
+Removed command groups and verbs are rejected, not aliased. This pre-v1 project
+allows breaking contract changes; upgrade local hooks/scripts alongside the CLI.

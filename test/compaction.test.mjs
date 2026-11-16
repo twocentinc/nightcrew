@@ -189,7 +189,7 @@ test("agent compaction releases the background slot, links a separate run, then 
   assert.equal(f.calls[1].slotID, f.calls[2].slotID);
   assert.ok(done.events.some((e) => e.type === "compacted"));
 });
-test("invalid summary pauses and queue release retries using the current handler", async (t) => {
+test("invalid summary pauses and runs resume retries using the current handler", async (t) => {
   const f = await fixture(
     t,
     script(

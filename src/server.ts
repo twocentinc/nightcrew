@@ -194,7 +194,7 @@ export function createRouter(service: Service) {
       .route({ method: "GET", path: "/v1/status" })
       .input(z.strictObject({}))
       .output(statusSchema)
-      .handler(() => api["daemon status"](noResource)),
+      .handler(async () => (await api["status"](noResource)).runtime),
     configGet: protectedRoute
       .route({ method: "GET", path: "/v1/config" })
       .input(z.strictObject({}))
@@ -458,7 +458,7 @@ export function createRouter(service: Service) {
       .handler(async ({ input }) =>
         reply(
           chatAcceptanceSchema.parse(
-            await api["inference submit"]({
+            await api["instant submit"]({
               resourceID: undefined,
               request: input,
             }),
@@ -471,7 +471,7 @@ export function createRouter(service: Service) {
       .input(z.strictObject({ requestID: id }))
       .output(z.object({ request: chatDetailSchema }))
       .handler(async ({ input }) => ({
-        request: await api["inference get"]({
+        request: await api["instant get"]({
           resourceID: input.requestID,
           request: {},
         }),
@@ -490,7 +490,7 @@ export function createRouter(service: Service) {
         z.object({ requestID: id, status: z.string(), changed: z.boolean() }),
       )
       .handler(({ input }) =>
-        api["inference cancel"]({
+        api["instant cancel"]({
           resourceID: input.requestID,
           request: {},
           dryRun: input.dryRun,

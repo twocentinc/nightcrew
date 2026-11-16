@@ -44,34 +44,6 @@
     },
     {
       "confirmation": false,
-      "description": "disable automatic agent eligibility",
-      "mutates": true,
-      "name": "agents disable",
-      "operand": "required",
-      "options": [
-        "request",
-        "dry-run"
-      ],
-      "requestSchema": "agents.disable.request",
-      "resultSchema": "agents.disable.result",
-      "scope": "management"
-    },
-    {
-      "confirmation": false,
-      "description": "enable automatic agent eligibility",
-      "mutates": true,
-      "name": "agents enable",
-      "operand": "required",
-      "options": [
-        "request",
-        "dry-run"
-      ],
-      "requestSchema": "agents.enable.request",
-      "resultSchema": "agents.enable.result",
-      "scope": "management"
-    },
-    {
-      "confirmation": false,
       "description": "Inspect one agent",
       "mutates": false,
       "name": "agents get",
@@ -194,6 +166,47 @@
     },
     {
       "confirmation": false,
+      "description": "install the per-user LaunchAgent",
+      "mutates": true,
+      "name": "daemon install",
+      "operand": "none",
+      "options": [
+        "dry-run"
+      ],
+      "requestSchema": "daemon.install.request",
+      "resultSchema": "daemon.install.result",
+      "scope": "local"
+    },
+    {
+      "confirmation": false,
+      "description": "logs the per-user LaunchAgent",
+      "mutates": false,
+      "name": "daemon logs",
+      "operand": "none",
+      "options": [
+        "lines",
+        "limit",
+        "cursor"
+      ],
+      "requestSchema": "daemon.logs.request",
+      "resultSchema": "daemon.logs.result",
+      "scope": "local"
+    },
+    {
+      "confirmation": false,
+      "description": "restart the per-user LaunchAgent",
+      "mutates": true,
+      "name": "daemon restart",
+      "operand": "none",
+      "options": [
+        "dry-run"
+      ],
+      "requestSchema": "daemon.restart.request",
+      "resultSchema": "daemon.restart.result",
+      "scope": "local"
+    },
+    {
+      "confirmation": false,
       "description": "Run the daemon in the foreground",
       "mutates": true,
       "name": "daemon run",
@@ -207,16 +220,27 @@
     },
     {
       "confirmation": false,
-      "description": "Inspect current daemon and scheduler state",
+      "description": "start the per-user LaunchAgent",
+      "mutates": true,
+      "name": "daemon start",
+      "operand": "none",
+      "options": [
+        "dry-run"
+      ],
+      "requestSchema": "daemon.start.request",
+      "resultSchema": "daemon.start.result",
+      "scope": "local"
+    },
+    {
+      "confirmation": false,
+      "description": "status the per-user LaunchAgent",
       "mutates": false,
       "name": "daemon status",
       "operand": "none",
-      "options": [
-        "request"
-      ],
+      "options": [],
       "requestSchema": "daemon.status.request",
       "resultSchema": "daemon.status.result",
-      "scope": "daemon"
+      "scope": "local"
     },
     {
       "confirmation": false,
@@ -232,6 +256,20 @@
       "scope": "daemon"
     },
     {
+      "confirmation": true,
+      "description": "uninstall the per-user LaunchAgent",
+      "mutates": true,
+      "name": "daemon uninstall",
+      "operand": "none",
+      "options": [
+        "dry-run",
+        "yes"
+      ],
+      "requestSchema": "daemon.uninstall.request",
+      "resultSchema": "daemon.uninstall.result",
+      "scope": "local"
+    },
+    {
       "confirmation": false,
       "description": "Check configuration, executables, presence and optional live daemon readiness",
       "mutates": false,
@@ -243,20 +281,6 @@
       "requestSchema": "doctor.request",
       "resultSchema": "doctor.result",
       "scope": "local"
-    },
-    {
-      "confirmation": false,
-      "description": "Release a terminal eval sample after saving its result",
-      "mutates": true,
-      "name": "evals release",
-      "operand": "required",
-      "options": [
-        "request",
-        "dry-run"
-      ],
-      "requestSchema": "evals.release.request",
-      "resultSchema": "evals.release.result",
-      "scope": "daemon"
     },
     {
       "confirmation": false,
@@ -274,20 +298,6 @@
     },
     {
       "confirmation": false,
-      "description": "Generate one eval turn; return all tool calls without executing any",
-      "mutates": true,
-      "name": "evals sample",
-      "operand": "none",
-      "options": [
-        "request",
-        "dry-run"
-      ],
-      "requestSchema": "evals.sample.request",
-      "resultSchema": "evals.sample.result",
-      "scope": "daemon"
-    },
-    {
-      "confirmation": false,
       "description": "Validate an eval suite without inference",
       "mutates": false,
       "name": "evals validate",
@@ -298,19 +308,6 @@
       "requestSchema": "evals.validate.request",
       "resultSchema": "evals.validate.result",
       "scope": "static"
-    },
-    {
-      "confirmation": false,
-      "description": "Inspect agents, schedules, recent outcomes and runs needing review",
-      "mutates": false,
-      "name": "fleet status",
-      "operand": "none",
-      "options": [
-        "request"
-      ],
-      "requestSchema": "fleet.status.request",
-      "resultSchema": "fleet.status.result",
-      "scope": "daemon"
     },
     {
       "confirmation": false,
@@ -325,47 +322,6 @@
     },
     {
       "confirmation": false,
-      "description": "Cancel instant inference",
-      "mutates": true,
-      "name": "inference cancel",
-      "operand": "required",
-      "options": [
-        "request",
-        "dry-run"
-      ],
-      "requestSchema": "inference.cancel.request",
-      "resultSchema": "inference.cancel.result",
-      "scope": "daemon"
-    },
-    {
-      "confirmation": false,
-      "description": "Inspect an instant inference request",
-      "mutates": false,
-      "name": "inference get",
-      "operand": "required",
-      "options": [
-        "request"
-      ],
-      "requestSchema": "inference.get.request",
-      "resultSchema": "inference.get.result",
-      "scope": "daemon"
-    },
-    {
-      "confirmation": false,
-      "description": "Submit instant inference; execute selected skill reads and return client tool calls",
-      "mutates": true,
-      "name": "inference submit",
-      "operand": "none",
-      "options": [
-        "request",
-        "dry-run"
-      ],
-      "requestSchema": "inference.submit.request",
-      "resultSchema": "inference.submit.result",
-      "scope": "daemon"
-    },
-    {
-      "confirmation": false,
       "description": "Initialize a private runtime home without overwriting it",
       "mutates": true,
       "name": "init",
@@ -377,6 +333,47 @@
       "requestSchema": "init.request",
       "resultSchema": "init.result",
       "scope": "local"
+    },
+    {
+      "confirmation": false,
+      "description": "Cancel instant inference",
+      "mutates": true,
+      "name": "instant cancel",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "instant.cancel.request",
+      "resultSchema": "instant.cancel.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "Inspect an instant inference request",
+      "mutates": false,
+      "name": "instant get",
+      "operand": "required",
+      "options": [
+        "request"
+      ],
+      "requestSchema": "instant.get.request",
+      "resultSchema": "instant.get.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "Submit instant inference; execute selected skill reads and return client tool calls",
+      "mutates": true,
+      "name": "instant submit",
+      "operand": "none",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "instant.submit.request",
+      "resultSchema": "instant.submit.result",
+      "scope": "daemon"
     },
     {
       "confirmation": false,
@@ -460,91 +457,6 @@
     },
     {
       "confirmation": false,
-      "description": "Inspect presence and interaction cooldown",
-      "mutates": false,
-      "name": "presence status",
-      "operand": "none",
-      "options": [
-        "request"
-      ],
-      "requestSchema": "presence.status.request",
-      "resultSchema": "presence.status.result",
-      "scope": "daemon"
-    },
-    {
-      "confirmation": false,
-      "description": "cancel a pending run with a revision check",
-      "mutates": true,
-      "name": "queue cancel",
-      "operand": "required",
-      "options": [
-        "request",
-        "dry-run"
-      ],
-      "requestSchema": "queue.cancel.request",
-      "resultSchema": "queue.cancel.result",
-      "scope": "daemon"
-    },
-    {
-      "confirmation": false,
-      "description": "Inspect a pending run and its trigger snapshot",
-      "mutates": false,
-      "name": "queue get",
-      "operand": "required",
-      "options": [
-        "request"
-      ],
-      "requestSchema": "queue.get.request",
-      "resultSchema": "queue.get.result",
-      "scope": "daemon"
-    },
-    {
-      "confirmation": false,
-      "description": "hold a pending run with a revision check",
-      "mutates": true,
-      "name": "queue hold",
-      "operand": "required",
-      "options": [
-        "request",
-        "dry-run"
-      ],
-      "requestSchema": "queue.hold.request",
-      "resultSchema": "queue.hold.result",
-      "scope": "daemon"
-    },
-    {
-      "confirmation": false,
-      "description": "List queued and paused runs, including held work",
-      "mutates": false,
-      "name": "queue list",
-      "operand": "none",
-      "options": [
-        "request",
-        "limit",
-        "cursor",
-        "agent",
-        "state"
-      ],
-      "requestSchema": "queue.list.request",
-      "resultSchema": "queue.list.result",
-      "scope": "daemon"
-    },
-    {
-      "confirmation": false,
-      "description": "release a pending run with a revision check",
-      "mutates": true,
-      "name": "queue release",
-      "operand": "required",
-      "options": [
-        "request",
-        "dry-run"
-      ],
-      "requestSchema": "queue.release.request",
-      "resultSchema": "queue.release.result",
-      "scope": "daemon"
-    },
-    {
-      "confirmation": false,
       "description": "Cancel managed work",
       "mutates": true,
       "name": "runs cancel",
@@ -600,6 +512,20 @@
       "requestSchema": "runs.list.request",
       "resultSchema": "runs.list.result",
       "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "Pause active work or hold queued work with a revision check",
+      "mutates": true,
+      "name": "runs pause",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "runs.pause.request",
+      "resultSchema": "runs.pause.result",
+      "scope": "daemon"
     },
     {
       "confirmation": false,
@@ -733,46 +659,6 @@
     },
     {
       "confirmation": false,
-      "description": "Inspect scheduler settings",
-      "mutates": false,
-      "name": "scheduler get",
-      "operand": "none",
-      "options": [
-        "request"
-      ],
-      "requestSchema": "scheduler.get.request",
-      "resultSchema": "scheduler.get.result",
-      "scope": "management"
-    },
-    {
-      "confirmation": false,
-      "description": "Inspect active allocations and the last scheduling decision",
-      "mutates": false,
-      "name": "scheduler status",
-      "operand": "none",
-      "options": [
-        "request"
-      ],
-      "requestSchema": "scheduler.status.request",
-      "resultSchema": "scheduler.status.result",
-      "scope": "daemon"
-    },
-    {
-      "confirmation": false,
-      "description": "Configure capacity, residency, timers and policy hook",
-      "mutates": true,
-      "name": "scheduler update",
-      "operand": "none",
-      "options": [
-        "request",
-        "dry-run"
-      ],
-      "requestSchema": "scheduler.update.request",
-      "resultSchema": "scheduler.update.result",
-      "scope": "management"
-    },
-    {
-      "confirmation": false,
       "description": "Read a generated request or result schema",
       "mutates": false,
       "name": "schema get",
@@ -880,95 +766,17 @@
     },
     {
       "confirmation": false,
-      "description": "install the per-user LaunchAgent",
-      "mutates": true,
-      "name": "startup install",
-      "operand": "none",
-      "options": [
-        "dry-run"
-      ],
-      "requestSchema": "startup.install.request",
-      "resultSchema": "startup.install.result",
-      "scope": "local"
-    },
-    {
-      "confirmation": false,
-      "description": "logs the per-user LaunchAgent",
+      "description": "Inspect agents, schedules, recent outcomes and runs needing review",
       "mutates": false,
-      "name": "startup logs",
+      "name": "status",
       "operand": "none",
       "options": [
-        "lines",
-        "limit",
-        "cursor"
+        "request",
+        "details"
       ],
-      "requestSchema": "startup.logs.request",
-      "resultSchema": "startup.logs.result",
-      "scope": "local"
-    },
-    {
-      "confirmation": false,
-      "description": "restart the per-user LaunchAgent",
-      "mutates": true,
-      "name": "startup restart",
-      "operand": "none",
-      "options": [
-        "dry-run"
-      ],
-      "requestSchema": "startup.restart.request",
-      "resultSchema": "startup.restart.result",
-      "scope": "local"
-    },
-    {
-      "confirmation": false,
-      "description": "start the per-user LaunchAgent",
-      "mutates": true,
-      "name": "startup start",
-      "operand": "none",
-      "options": [
-        "dry-run"
-      ],
-      "requestSchema": "startup.start.request",
-      "resultSchema": "startup.start.result",
-      "scope": "local"
-    },
-    {
-      "confirmation": false,
-      "description": "status the per-user LaunchAgent",
-      "mutates": false,
-      "name": "startup status",
-      "operand": "none",
-      "options": [],
-      "requestSchema": "startup.status.request",
-      "resultSchema": "startup.status.result",
-      "scope": "local"
-    },
-    {
-      "confirmation": false,
-      "description": "stop the per-user LaunchAgent",
-      "mutates": true,
-      "name": "startup stop",
-      "operand": "none",
-      "options": [
-        "dry-run"
-      ],
-      "requestSchema": "startup.stop.request",
-      "resultSchema": "startup.stop.result",
-      "scope": "local"
-    },
-    {
-      "confirmation": true,
-      "description": "uninstall the per-user LaunchAgent",
-      "mutates": true,
-      "name": "startup uninstall",
-      "operand": "none",
-      "options": [
-        "dry-run",
-        "yes"
-      ],
-      "requestSchema": "startup.uninstall.request",
-      "resultSchema": "startup.uninstall.result",
-      "scope": "local"
+      "requestSchema": "status.request",
+      "resultSchema": "status.result",
+      "scope": "daemon"
     },
     {
       "confirmation": false,
@@ -1070,34 +878,6 @@
     },
     {
       "confirmation": false,
-      "description": "disable a saved trigger",
-      "mutates": true,
-      "name": "triggers disable",
-      "operand": "required",
-      "options": [
-        "request",
-        "dry-run"
-      ],
-      "requestSchema": "triggers.disable.request",
-      "resultSchema": "triggers.disable.result",
-      "scope": "management"
-    },
-    {
-      "confirmation": false,
-      "description": "enable a saved trigger",
-      "mutates": true,
-      "name": "triggers enable",
-      "operand": "required",
-      "options": [
-        "request",
-        "dry-run"
-      ],
-      "requestSchema": "triggers.enable.request",
-      "resultSchema": "triggers.enable.result",
-      "scope": "management"
-    },
-    {
-      "confirmation": false,
       "description": "Manually submit a saved trigger without changing its schedule",
       "mutates": true,
       "name": "triggers fire",
@@ -1175,6 +955,7 @@
     "unsupported": 4
   },
   "globalOptions": {
+    "advanced": false,
     "help": false,
     "home": "absolute-path",
     "no-input": false,
@@ -1187,5 +968,5 @@
     "version": false
   },
   "protocolVersion": 1,
-  "schemaVersion": 30
+  "schemaVersion": 31
 }

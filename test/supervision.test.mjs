@@ -188,11 +188,11 @@ test("bounded failed repairs complete execution but mark output for review and s
   assert.equal(o.task, "needsReview");
   assert.equal(o.delivery, "failed");
   assert.match(settled.hookReceipts[0].diagnostic, /not dispatched/);
-  const fleet = await callOperation(f.service, { command: "fleet status" });
+  const fleet = await callOperation(f.service, { command: "status" });
   assert.equal(fleet.totals.needsReview, 1);
   assert.equal(fleet.agents[0].latestRun.runID, r.runID);
   assert.equal(fleet.review[0].outcome.output, "failed");
-  operations["fleet status"].result.parse(fleet);
+  operations["status"].result.parse(fleet);
 });
 test("unconfigured output is unverified and ordinary hooks are not deliveries", async (t) => {
   const f = await fixture(t, async () => ({ text: "done" }), {}, [

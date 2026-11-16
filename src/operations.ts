@@ -229,11 +229,13 @@ export const operations = {
     "none",
     true,
   ),
-  "fleet status": defineOperation(
-    "fleet status",
+  "status": defineOperation(
+    "status",
     "Inspect agents, schedules, recent outcomes and runs needing review",
     z.object({
       observedAt: z.string(),
+      pid: z.number(),
+      scheduler: schedulerStatusSchema.optional(),
       runtime: statusSchema,
       totals: z.object({
         runs: z.number(),
@@ -260,25 +262,10 @@ export const operations = {
     "none",
     false,
     "daemon",
+    ["details"],
   ),
-  "daemon status": defineOperation(
-    "daemon status",
-    "Inspect current daemon and scheduler state",
-    statusSchema.extend({ pid: z.number() }),
-    false,
-    "none",
-    false,
-    "daemon",
-  ),
-  "presence status": defineOperation(
-    "presence status",
-    "Inspect presence and interaction cooldown",
-    statusSchema.pick({ presence: true, cooldownUntil: true }),
-    false,
-    "none",
-    false,
-    "daemon",
-  ),
+
+
   "config get": defineOperation(
     "config get",
     "Read redacted configuration",
@@ -479,20 +466,8 @@ export const operations = {
     "required",
     true,
   ),
-  "agents enable": defineOperation(
-    "agents enable",
-    "enable automatic agent eligibility",
-    z.object({ agent: agentSchema, changed: z.boolean() }),
-    true,
-    "required",
-  ),
-  "agents disable": defineOperation(
-    "agents disable",
-    "disable automatic agent eligibility",
-    z.object({ agent: agentSchema, changed: z.boolean() }),
-    true,
-    "required",
-  ),
+
+
   "triggers list": defineOperation(
     "triggers list",
     "Inspect triggers and future schedule occurrences",
@@ -529,22 +504,8 @@ export const operations = {
     "required",
     true,
   ),
-  "triggers enable": defineOperation(
-    "triggers enable",
-    "enable a saved trigger",
-    z.object({ item: triggerSchema.nullable(), changed: z.boolean() }),
-    true,
-    "required",
-    false,
-  ),
-  "triggers disable": defineOperation(
-    "triggers disable",
-    "disable a saved trigger",
-    z.object({ item: triggerSchema.nullable(), changed: z.boolean() }),
-    true,
-    "required",
-    false,
-  ),
+
+
   "triggers fire": defineOperation(
     "triggers fire",
     "Manually submit a saved trigger without changing its schedule",
@@ -559,55 +520,19 @@ export const operations = {
     false,
     "daemon",
   ),
-  "queue list": defineOperation(
-    "queue list",
-    "List queued and paused runs, including held work",
-    z.object({
-      items: z.array(runSummarySchema),
-      nextCursor: z.string().nullable(),
-    }),
-    false,
-    "none",
-    false,
-    "daemon",
-    ["limit", "cursor", "agent", "state"],
-  ),
-  "queue get": defineOperation(
-    "queue get",
-    "Inspect a pending run and its trigger snapshot",
-    z.object({ run: runDetailSchema }),
-    false,
-    "required",
-    false,
-    "daemon",
-  ),
-  "queue hold": defineOperation(
-    "queue hold",
-    "hold a pending run with a revision check",
+
+
+  "runs pause": defineOperation(
+    "runs pause",
+    "Pause active work or hold queued work with a revision check",
     z.object({ run: runDetailSchema, changed: z.boolean() }),
     true,
     "required",
     false,
     "daemon",
   ),
-  "queue release": defineOperation(
-    "queue release",
-    "release a pending run with a revision check",
-    z.object({ run: runDetailSchema, changed: z.boolean() }),
-    true,
-    "required",
-    false,
-    "daemon",
-  ),
-  "queue cancel": defineOperation(
-    "queue cancel",
-    "cancel a pending run with a revision check",
-    z.object({ run: runDetailSchema, changed: z.boolean() }),
-    true,
-    "required",
-    false,
-    "daemon",
-  ),
+
+
   "agents run": defineOperation(
     "agents run",
     "Submit a fresh managed run",
@@ -732,33 +657,9 @@ export const operations = {
     true,
     "daemon",
   ),
-  "scheduler get": defineOperation(
-    "scheduler get",
-    "Inspect scheduler settings",
-    z.object({
-      configRevision: z.number(),
-      settings: configSchema.shape.scheduler,
-    }),
-  ),
-  "scheduler update": defineOperation(
-    "scheduler update",
-    "Configure capacity, residency, timers and policy hook",
-    z.object({
-      changed: z.boolean(),
-      configRevision: z.number(),
-      settings: configSchema.shape.scheduler,
-    }),
-    true,
-  ),
-  "scheduler status": defineOperation(
-    "scheduler status",
-    "Inspect active allocations and the last scheduling decision",
-    schedulerStatusSchema,
-    false,
-    "none",
-    false,
-    "daemon",
-  ),
+
+
+
   "scheduler explain": defineOperation(
     "scheduler explain",
     "Evaluate scheduling policy without dispatching work",
@@ -777,8 +678,8 @@ export const operations = {
     z.union([chatAcceptanceSchema, z.object({ changed: z.literal(false), request: operationInputs["evals sample"] })]),
     true, "none", false, "daemon",
   ),
-  "inference submit": defineOperation(
-    "inference submit",
+  "instant submit": defineOperation(
+    "instant submit",
     "Submit instant inference; execute selected skill reads and return client tool calls",
     z.union([
       chatAcceptanceSchema,
@@ -789,8 +690,8 @@ export const operations = {
     false,
     "daemon",
   ),
-  "inference get": defineOperation(
-    "inference get",
+  "instant get": defineOperation(
+    "instant get",
     "Inspect an instant inference request",
     chatDetailSchema,
     false,
@@ -798,8 +699,8 @@ export const operations = {
     false,
     "daemon",
   ),
-  "inference cancel": defineOperation(
-    "inference cancel",
+  "instant cancel": defineOperation(
+    "instant cancel",
     "Cancel instant inference",
     z.object({
       requestID: z.string(),
@@ -820,7 +721,7 @@ export const operationRouter = Object.fromEntries(
 ) as { [K in keyof typeof operations]: (typeof operations)[K]["procedure"] };
 export const httpOperationRouter = Object.fromEntries(
   operationDefinitions
-    .filter((d) => !d.localOnly)
+    .filter((d) => !d.localOnly && !["evals sample", "evals release"].includes(d.name))
     .map((d) => [d.name, d.procedure]),
 );
 export type ManagementRouter = typeof operationRouter;
