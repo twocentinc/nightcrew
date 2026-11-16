@@ -464,14 +464,14 @@ test("hook recovery preserves attempts, deduplicates UUIDs and reconciles outcom
     hookPath: executable,
   };
   const dry = await callOperation(f.service, {
-    command: "runs retry-hook",
+    command: "runs hooks retry",
     resourceID: r.runID,
     request,
     dryRun: true,
   });
   assert.equal(dry.changed, false);
   const retried = await callOperation(f.service, {
-    command: "runs retry-hook",
+    command: "runs hooks retry",
     resourceID: r.runID,
     request,
     yes: true,
@@ -487,7 +487,7 @@ test("hook recovery preserves attempts, deduplicates UUIDs and reconciles outcom
   assert.deepEqual(stored.hookReceipts[0], failed.hookReceipts[0]);
   assert.equal(stored.hookReceipts[1].retryOf, 0);
   await callOperation(f.service, {
-    command: "runs retry-hook",
+    command: "runs hooks retry",
     resourceID: r.runID,
     request,
     yes: true,
@@ -495,7 +495,7 @@ test("hook recovery preserves attempts, deduplicates UUIDs and reconciles outcom
   assert.equal((await readFile(count, "utf8")).trim(), "called");
   await assert.rejects(
     callOperation(f.service, {
-      command: "runs retry-hook",
+      command: "runs hooks retry",
       resourceID: r.runID,
       request: {
         ...request,
@@ -534,7 +534,7 @@ test("unknown hooks require explicit acceptance and pending attempts become unkn
   };
   await assert.rejects(
     callOperation(f.service, {
-      command: "runs retry-hook",
+      command: "runs hooks retry",
       resourceID: r.runID,
       request,
       yes: true,
@@ -542,7 +542,7 @@ test("unknown hooks require explicit acceptance and pending attempts become unkn
     /hook_outcome_unknown/,
   );
   const retried = await callOperation(f.service, {
-    command: "runs retry-hook",
+    command: "runs hooks retry",
     resourceID: r.runID,
     request: { ...request, acceptUnknown: true },
     yes: true,

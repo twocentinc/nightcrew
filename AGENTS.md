@@ -92,3 +92,8 @@ separately from actual presence sampling failures.
 Schema 31 consolidates public CLI lifecycle under daemon, interactive calls under
 instant, and fleet/presence/scheduling inspection under status. Internal eval
 sample/release procedures must not be exposed in CLI or HTTP discovery.
+
+Command names must use separate words, never hyphens. Flags may use hyphens.
+HTTP listening is controlled by config.httpEnabled; never require an HTTP listener
+for local CLI control. Cache inspection belongs in agents get, and root token
+rotation belongs under config.

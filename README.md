@@ -46,7 +46,7 @@ nightcrew daemon uninstall --yes
 `init` defaults to loopback port 6970, a five-minute interaction cooldown, and
 empty agent/model registries. It refuses to overwrite configuration and returns
 the HTTP root token once. Keep that value in your client’s secret storage.
-`auth rotate --yes` replaces the HTTP token and returns a new one once; it does
+`config token rotate --yes` replaces the HTTP token and returns a new one once; it does
 not require the old token because local management is protected by filesystem
 ownership. Tokens never appear in the plist or daemon logs. `init --request`
 accepts settings from the exported initialization schema.
@@ -243,8 +243,8 @@ Nightcrew appends the model ID to keep models separate. Existing models default
 to snapshots disabled. Set this object through `models create` or the `changes`
 object of a revision-checked `models update` request.
 
-Use `agents cache AGENT_ID` to inspect persistent caches and
-`agents reset-cache AGENT_ID --yes` to discard them without deleting the transcript.
+Use `agents get AGENT_ID` to inspect persistent caches and
+`agents cache clear AGENT_ID --yes` to discard them without deleting the transcript.
 Physical slots are internal scheduler allocations; slot CRUD/save/restore commands
 are no longer exposed. Snapshots use unique files and atomic manifests.
 
@@ -877,14 +877,14 @@ recovery behavior and compaction verification limits.
 Inspect `status`, then `runs get RUN_ID` and `runs transcript RUN_ID`.
 All recovery commands use the same oRPC contracts over CLI and HTTP. Discover
 exact JSON with `schema get runs.review` (or `runs.resume`, `runs.retry`,
-`runs.retry-hook`). Supply the request with `--request FILE` or stdin.
+`runs.hooks.retry`). Supply the request with `--request FILE` or stdin.
 
 | Command | Request fields | Behavior |
 | --- | --- | --- |
 | `runs review RUN_ID` | `expectedRevision`, `status`, `note` | Append an `open`, `acknowledged` or `resolved` review. |
 | `runs resume RUN_ID` | `expectedRevision` | Release a hold or resume paused work. |
 | `runs retry RUN_ID --yes` | `expectedRevision`, new `messageID` UUID, `note` | Repeat the latest user input as a new segment in the same transcript. |
-| `runs retry-hook RUN_ID --yes` | `expectedRevision`, zero-based `receiptIndex`, new `requestID` UUID, `note` | Explicitly retry the selected failed hook. |
+| `runs hooks retry RUN_ID --yes` | `expectedRevision`, zero-based `receiptIndex`, new `requestID` UUID, `note` | Explicitly retry the selected failed hook. |
 
 All support `--dry-run`. Reviews preserve errors and validation evidence;
 resolving clears attention, not the underlying failure. New failures invalidate
@@ -963,3 +963,16 @@ commands for that group. Commands are callable directly regardless of help visib
 
 Removed command groups and verbs are rejected, not aliased. This pre-v1 project
 allows breaking contract changes; upgrade local hooks/scripts alongside the CLI.
+
+### Local-only operation (0.30)
+
+Set `httpEnabled: false` with `config update` and restart the daemon to disable
+its HTTP listener. The private local control socket remains available to every
+CLI command. HTTP defaults to enabled; changing this option requires a restart.
+For example, pass `{"changes":{"httpEnabled":false}}` through `--request`.
+
+`agents get AGENT_ID` includes saved cache sizes and timestamps per model.
+Use `agents cache clear AGENT_ID --yes` to discard saved KV state.
+Token rotation lives at `config token rotate --yes`; hook recovery lives at
+`runs hooks retry RUN_ID`. Command words never contain hyphens; flags may.
+Removed command names have no compatibility aliases.

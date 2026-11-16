@@ -156,6 +156,7 @@ async function management(
         },
         close: async () => {},
         status: () => [],
+        contextCache: (contextID, reset, dryRun) => new LlamaRuntime(() => storage.store.config, context.home).contextCache(contextID, reset, dryRun),
       },
       samplePresence,
     );
@@ -484,7 +485,7 @@ export const commandCatalog = () =>
       resultSchema: d.name.replaceAll(" ", ".") + ".result",
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
-export const advancedCommands = new Set(["agents cache", "agents reset-cache", "runs verify", "runs retry-hook", "schema get", "auth rotate", "capabilities", "presence sample", "skills reload", "scheduler explain"]);
+export const advancedCommands = new Set(["agents cache clear", "runs verify", "runs hooks retry", "schema get", "config token rotate", "capabilities", "presence sample", "skills reload", "scheduler explain"]);
 export function help(scope = "", advanced = false) {
   const catalog = commandCatalog().filter(
     (d) => (!scope ? (advanced || !advancedCommands.has(d.name)) : d.name === scope || d.name.startsWith(scope + " ")),

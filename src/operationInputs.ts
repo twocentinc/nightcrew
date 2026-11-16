@@ -34,7 +34,7 @@ export const operationInputs = {
     messageID: uuid,
     note: z.string().trim().min(1).max(2000),
   }),
-  "runs retry-hook": z.strictObject({
+  "runs hooks retry": z.strictObject({
     expectedRevision: revision,
     receiptIndex: z.number().int().nonnegative(),
     requestID: uuid,
@@ -99,6 +99,7 @@ export const operationInputs = {
       .omit({ rootTokenHash: true, revision: true })
       .partial()
       .extend({
+        httpEnabled: configSchema.shape.httpEnabled.unwrap().optional(),
         logging: loggingSchema.optional(),
         scheduler: z.strictObject(Object.fromEntries(Object.entries(configSchema.shape.scheduler.unwrap().shape).map(([key, field]) => [key, field.unwrap().optional()]))).optional(),
       }),

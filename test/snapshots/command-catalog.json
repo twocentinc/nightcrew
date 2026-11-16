@@ -1,16 +1,18 @@
 {
   "commands": [
     {
-      "confirmation": false,
-      "description": "Inspect saved agent KV cache without changing its transcript",
-      "mutates": false,
-      "name": "agents cache",
+      "confirmation": true,
+      "description": "Discard saved agent KV cache without deleting conversation history",
+      "mutates": true,
+      "name": "agents cache clear",
       "operand": "required",
       "options": [
-        "request"
+        "request",
+        "dry-run",
+        "yes"
       ],
-      "requestSchema": "agents.cache.request",
-      "resultSchema": "agents.cache.result",
+      "requestSchema": "agents.cache.clear.request",
+      "resultSchema": "agents.cache.clear.result",
       "scope": "daemon"
     },
     {
@@ -69,21 +71,6 @@
       "scope": "management"
     },
     {
-      "confirmation": true,
-      "description": "Discard saved agent KV cache without deleting conversation history",
-      "mutates": true,
-      "name": "agents reset-cache",
-      "operand": "required",
-      "options": [
-        "request",
-        "dry-run",
-        "yes"
-      ],
-      "requestSchema": "agents.reset-cache.request",
-      "resultSchema": "agents.reset-cache.result",
-      "scope": "daemon"
-    },
-    {
       "confirmation": false,
       "description": "Submit a fresh managed run",
       "mutates": true,
@@ -112,21 +99,6 @@
       "scope": "management"
     },
     {
-      "confirmation": true,
-      "description": "Replace the HTTP root token and return it once",
-      "mutates": true,
-      "name": "auth rotate",
-      "operand": "none",
-      "options": [
-        "request",
-        "dry-run",
-        "yes"
-      ],
-      "requestSchema": "auth.rotate.request",
-      "resultSchema": "auth.rotate.result",
-      "scope": "management"
-    },
-    {
       "confirmation": false,
       "description": "Report model adapter capabilities and verification limits",
       "mutates": false,
@@ -148,6 +120,21 @@
       ],
       "requestSchema": "config.get.request",
       "resultSchema": "config.get.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": true,
+      "description": "Replace the HTTP root token and return it once",
+      "mutates": true,
+      "name": "config token rotate",
+      "operand": "none",
+      "options": [
+        "request",
+        "dry-run",
+        "yes"
+      ],
+      "requestSchema": "config.token.rotate.request",
+      "resultSchema": "config.token.rotate.result",
       "scope": "management"
     },
     {
@@ -497,6 +484,21 @@
       "scope": "management"
     },
     {
+      "confirmation": true,
+      "description": "Explicitly retry a failed hook with a durable attempt and request UUID",
+      "mutates": true,
+      "name": "runs hooks retry",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run",
+        "yes"
+      ],
+      "requestSchema": "runs.hooks.retry.request",
+      "resultSchema": "runs.hooks.retry.result",
+      "scope": "daemon"
+    },
+    {
       "confirmation": false,
       "description": "List durable run summaries",
       "mutates": false,
@@ -568,21 +570,6 @@
       ],
       "requestSchema": "runs.retry.request",
       "resultSchema": "runs.retry.result",
-      "scope": "daemon"
-    },
-    {
-      "confirmation": true,
-      "description": "Explicitly retry a failed hook with a durable attempt and request UUID",
-      "mutates": true,
-      "name": "runs retry-hook",
-      "operand": "required",
-      "options": [
-        "request",
-        "dry-run",
-        "yes"
-      ],
-      "requestSchema": "runs.retry-hook.request",
-      "resultSchema": "runs.retry-hook.result",
       "scope": "daemon"
     },
     {
@@ -968,5 +955,5 @@
     "version": false
   },
   "protocolVersion": 1,
-  "schemaVersion": 31
+  "schemaVersion": 32
 }

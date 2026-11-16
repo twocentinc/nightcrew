@@ -605,7 +605,7 @@ export async function startServer(options: {
         }
       },
     );
-    await new Promise<void>((resolve, reject) => {
+    if (storage.store.config.httpEnabled) await new Promise<void>((resolve, reject) => {
       server.once("error", reject);
       server.listen(
         options.port ?? storage.store.config.port,
@@ -623,7 +623,7 @@ export async function startServer(options: {
       logger,
       close: async () => {
         server.closeAllConnections();
-        await new Promise<void>((resolve, reject) =>
+        if (server.listening) await new Promise<void>((resolve, reject) =>
           server.close((e) => (e ? reject(e) : resolve())),
         );
         await service.close();

@@ -443,7 +443,7 @@ override in a new segment of the same transcript. It uses ordinary reply snapsho
 rules. Previous messages and attempts remain visible. Both retries below require
 explicit confirmation (`--yes` in CLI), and all commands support dry-run.
 
-`runs retry-hook` takes expectedRevision, zero-based receiptIndex, a new requestID
+`runs hooks retry` takes expectedRevision, zero-based receiptIndex, a new requestID
 UUID and note. The selected failed/unknown receipt must be from the current
 segment of a terminal run and have no successor retry. Unknown results require
 acceptUnknown. The handler must still be registered for the same event/purpose;
@@ -546,3 +546,12 @@ own `enabled`; config updates own partial scheduler settings. Skill/tool CRUD
 refreshes registrations; explicit reload remains advanced. Eval sampling and
 release are internal-only, excluded from public CLI and HTTP discovery. Advanced
 help exposes recovery, cache, schema, verification and diagnostic operations.
+
+## CLI and HTTP surface (schema 32)
+
+Cache inspection is part of `agents get`; saved cache removal is
+`agents cache clear`. Hook recovery is `runs hooks retry`, and root token rotation
+is `config token rotate`. Command words use spaces rather than hyphens.
+The boolean config field `httpEnabled` defaults to true. Setting it false and
+restarting disables the HTTP listener, while local CLI control remains available.
+These replacements have no aliases before v1.

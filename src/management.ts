@@ -87,15 +87,15 @@ export async function manage(
     const { runID, ...selection } = request;
     return loadSkillContent(skills, selection);
   }
-  if (command === "agents cache" || command === "agents reset-cache") {
+  if (command === "agents cache clear") {
     service.agent(name ?? fail("missing_id"));
     if (!service.runtime.contextCache)
       fail("cache_management_unavailable", 503);
-    if (command === "agents reset-cache" && !yes && !dryRun)
+    if (!yes && !dryRun)
       fail("confirmation_required");
     return service.runtime.contextCache!(
       "agent-" + createHash("sha256").update(name!).digest("hex"),
-      command === "agents reset-cache",
+      true,
       dryRun,
     );
   }
@@ -251,7 +251,7 @@ export async function manage(
       return { item, changed: !dryRun };
     });
   }
-  if (command === "auth rotate") {
+  if (command === "config token rotate") {
     if (!yes && !dryRun) fail("confirmation_required");
     return service.storage.exclusive(async () => {
       const token = randomBytes(32).toString("base64url");
@@ -342,7 +342,7 @@ export async function manage(
       operationInputs[command].parse(raw),
       dryRun,
     );
-  if (command === "runs retry-hook")
+  if (command === "runs hooks retry")
     return service.retryHook(
       name ?? fail("missing_id"),
       operationInputs[command].parse(raw),
@@ -457,6 +457,12 @@ export async function manage(
             (x as Record<string, unknown>)[resource!.slice(0, -1) + "ID"] ===
             name,
         ) ?? fail("not_found", 404);
+      if (resource === "agents") {
+        const cache = await service.runtime.contextCache?.(
+          "agent-" + createHash("sha256").update(name!).digest("hex"), false, false,
+        );
+        return { item, cache: cache ? { contextID: cache.contextID, items: cache.items } : null };
+      }
       return { item };
     }
     if (action === "delete" && !yes && !dryRun) fail("confirmation_required");
@@ -481,7 +487,7 @@ export async function manage(
       const liveSettingsOnly =
         resource === "config" &&
         Object.keys(value.changes as object).every((k) =>
-          ["logging", "interactionCooldownMs", "scheduler"].includes(k),
+          ["logging", "interactionCooldownMs", "scheduler", "httpEnabled"].includes(k),
         );
       if (!liveSettingsOnly && service.status().queue.length)
         fail("runtime_busy", 409);
@@ -615,7 +621,7 @@ export async function manage(
       const liveSettingsOnly =
         resource === "config" &&
         Object.keys(value.changes as object).every((k) =>
-          ["logging", "interactionCooldownMs", "scheduler"].includes(k),
+          ["logging", "interactionCooldownMs", "scheduler", "httpEnabled"].includes(k),
         );
       const schedulerChanges = resource === "config" ? (value.changes as {scheduler?:Record<string,unknown>}).scheduler : undefined;
       const resizingScheduler = schedulerChanges && ["maxConcurrent", "contextTokens", "instantModelID"].some(k => Object.hasOwn(schedulerChanges,k));
@@ -627,7 +633,8 @@ export async function manage(
       changed: !dryRun,
       restartRequired:
         resource === "config" &&
-        ((value.changes as Record<string, unknown>).host !== undefined ||
+        ((value.changes as Record<string, unknown>).httpEnabled !== undefined ||
+          (value.changes as Record<string, unknown>).host !== undefined ||
           (value.changes as Record<string, unknown>).port !== undefined),
       config: exposeConfig(next),
       ...(resource === "agents" ? { agentID: name } : {}),

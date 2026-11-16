@@ -59,7 +59,7 @@ test("errors preserve correlation, classify retries and keep stdout machine read
   assert.equal(invalid.code, 2);
   assert.equal(invalid.envelope.requestID, "supervisor-turn");
   assert.equal(invalid.envelope.error.retrySafety, "never");
-  const denied = await call(["auth", "rotate"]);
+  const denied = await call(["config", "token", "rotate"]);
   assert.equal(denied.code, 8);
   const verbose = await call(["version", "--verbose"]);
   assert.equal(verbose.stdout.trim().split("\n").length, 1);
@@ -184,7 +184,13 @@ test('simplified CLI removes obsolete names and hides advanced and internal oper
   for(const args of [['startup','status'],['inference','submit'],['queue','list'],['fleet','status'],['presence','status'],['scheduler','get'],['scheduler','update'],['scheduler','status'],['agents','enable','a'],['triggers','disable','t'],['evals','sample']]) assert.throws(()=>parseCLI(args),/Unknown command/);
   assert.equal(parseCLI(['instant','submit']).command,'instant submit');
   assert.equal(parseCLI(['runs','pause','a']).command,'runs pause');
-  assert.equal(help().commands.includes('runs retry-hook'),false);
-  assert.equal(help('',true).commands.includes('runs retry-hook'),true);
+  assert.equal(help().commands.includes('runs hooks retry'),false);
+  assert.equal(help('',true).commands.includes('runs hooks retry'),true);
   assert.equal(help('',true).commands.includes('evals sample'),false);
+});
+
+test('command names use words without hyphens and removed commands are rejected', async () => {
+  const {help}=await import('../dist/commands.js');
+  for(const name of help('',true).commands) assert.equal(name.includes('-'), false, name);
+  for(const args of [['agents','cache','a'],['agents','reset-cache','a'],['runs','retry-hook','r'],['auth','rotate']]) assert.throws(()=>parseCLI(args), /Unknown command/);
 });

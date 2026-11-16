@@ -84,7 +84,7 @@ export interface Runtime {
     contextID: string,
     reset: boolean,
     dryRun: boolean,
-  ): Promise<unknown>;
+  ): Promise<{contextID: string; items: Array<{modelID: string; bytes: number; updatedAt: string}>; changed: boolean}>;
   isBusy?(): boolean;
   snapshot?(
     slotID: string,

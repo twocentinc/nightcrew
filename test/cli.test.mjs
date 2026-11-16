@@ -111,6 +111,10 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
     enabled: true,
   };
   assert.equal((await call(home, ["agents", "create"], { agent })).ok, true);
+  const inspected = await call(home, ["agents", "get", agent.agentID]);
+  assert.equal(inspected.ok, true);
+  assert.deepEqual(inspected.result.cache.items, []);
+  assert.match(inspected.result.cache.contextID, /^agent-/);
   const trigger = {
     triggerID: "timer",
     name: "timer",
@@ -285,7 +289,7 @@ test("external tools validate input, isolate environment, bound timeout and retu
     /timed out/,
   );
 });
-test("foreground daemon serves local CRUD and shuts down cleanly", async (t) => {
+test("CLI-only daemon serves local CRUD without an HTTP listener and shuts down cleanly", async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "nightcrew-daemon-"));
   let child;
   t.after(async () => {
@@ -310,7 +314,7 @@ test("foreground daemon serves local CRUD and shuts down cleanly", async (t) => 
   await new Promise((resolve) => probe.listen(0, "127.0.0.1", resolve));
   const port = probe.address().port;
   await new Promise((resolve) => probe.close(resolve));
-  assert.equal((await call(home, ["init"], { port }, env)).ok, true);
+  assert.equal((await call(home, ["init"], { port, httpEnabled: false }, env)).ok, true);
   child = spawn(process.execPath, [cli, "daemon", "run", "--home", home], {
     env,
     stdio: "ignore",
@@ -325,6 +329,22 @@ test("foreground daemon serves local CRUD and shuts down cleanly", async (t) => 
     await delay(50);
   }
   assert.equal(status.pid, child.pid);
+  const config = await call(home, ["config", "get"], undefined, env);
+  assert.equal(config.result.config.httpEnabled, false);
+  const updated = await call(home, ["config", "update"], {
+    expectedRevision: config.result.config.revision,
+    changes: {httpEnabled: true},
+  }, env);
+  assert.equal(updated.ok, true);
+  assert.equal(updated.result.restartRequired, true);
+  // A config edit alone must not open the listener before restart.
+
+  // Binding the configured port proves that CLI-only startup opened no TCP listener.
+  await new Promise((resolve, reject) => {
+    probe.once("error", reject);
+    probe.listen(port, "127.0.0.1", resolve);
+  });
+  await new Promise(resolve => probe.close(resolve));
   const overview = await call(home, ["status", "--details"], undefined, env);
   assert.equal(overview.ok,true);
   assert.ok(overview.result.scheduler);
@@ -372,7 +392,7 @@ test("foreground daemon serves local CRUD and shuts down cleanly", async (t) => 
       await call(
         home,
         ["config", "update"],
-        { expectedRevision: 1, changes: { interactionCooldownMs: 1000 } },
+        { expectedRevision: updated.result.config.revision, changes: { interactionCooldownMs: 1000 } },
         env,
       )
     ).ok,

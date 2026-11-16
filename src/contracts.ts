@@ -94,6 +94,7 @@ export const hookSchema = z.strictObject({
 export const configSchema = z.strictObject({
   scheduler: schedulerSchema.default(() => schedulerSchema.parse({})),
   revision: z.number().int().positive().max(2147483647),
+  httpEnabled: z.boolean().default(true),
   host: z.enum(["127.0.0.1", "::1"]),
   port: z.number().int().min(1024).max(65535),
   interactionCooldownMs: z.number().int().min(0).max(3600000),

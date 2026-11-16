@@ -212,8 +212,8 @@ export const operations = {
     true,
     "daemon",
   ),
-  "runs retry-hook": defineOperation(
-    "runs retry-hook",
+  "runs hooks retry": defineOperation(
+    "runs hooks retry",
     "Explicitly retry a failed hook with a durable attempt and request UUID",
     z.object({ run: runDetailSchema, changed: z.boolean() }),
     true,
@@ -221,8 +221,8 @@ export const operations = {
     true,
     "daemon",
   ),
-  "auth rotate": defineOperation(
-    "auth rotate",
+  "config token rotate": defineOperation(
+    "config token rotate",
     "Replace the HTTP root token and return it once",
     changed.extend({ token: z.string().optional() }),
     true,
@@ -285,7 +285,7 @@ export const operations = {
   "agents get": defineOperation(
     "agents get",
     "Inspect one agent",
-    z.object({ item: agentSchema }),
+    z.object({ item: agentSchema, cache: z.object({contextID:z.string(),items:z.array(z.object({modelID:z.string(),bytes:z.number().int().nonnegative(),updatedAt:z.string()}))}).nullable() }),
     false,
     "required",
   ),
@@ -639,17 +639,8 @@ export const operations = {
     false,
     "daemon",
   ),
-  "agents cache": defineOperation(
-    "agents cache",
-    "Inspect saved agent KV cache without changing its transcript",
-    z.object({contextID:z.string(),items:z.array(z.object({modelID:z.string(),bytes:z.number().int().nonnegative(),updatedAt:z.string()})),changed:z.boolean()}),
-    false,
-    "required",
-    false,
-    "daemon",
-  ),
-  "agents reset-cache": defineOperation(
-    "agents reset-cache",
+  "agents cache clear": defineOperation(
+    "agents cache clear",
     "Discard saved agent KV cache without deleting conversation history",
     z.object({contextID:z.string(),items:z.array(z.object({modelID:z.string(),bytes:z.number().int().nonnegative(),updatedAt:z.string()})),changed:z.boolean()}),
     true,
