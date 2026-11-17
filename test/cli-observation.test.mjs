@@ -7,7 +7,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {randomUUID} from 'node:crypto';
 import {setTimeout as delay} from 'node:timers/promises';
-import {parseCLI} from '../dist/cli.js';
+import {parseCLI,tailCommand} from '../dist/cli.js';
 import {help} from '../dist/commands.js';
 import {Execution} from '../dist/execution.js';
 import {tailLogs} from '../dist/startup.js';
@@ -91,4 +91,17 @@ test('log tail handles duplicate lines, partial UTF-8, rotation and truncation',
     assert.deepEqual((await iterator.next()).value.files[0].lines,['new']);
     await iterator.return();
   });
+});
+
+test('transcript tail waits for its consumer before reading another batch', async t=>{
+  const f=await fake(t,input=>({items:[{sequence:input.request.afterSequence?2:1,at:now,type:'started',segment:0,data:null,message:null,attempt:null}],nextCursor:null}));
+  const execution=new Execution(5000);
+  let release, entered;
+  const ready=new Promise(resolve=>entered=resolve);
+  const gate=new Promise(resolve=>release=resolve);
+  const task=execution.run(()=>tailCommand({home:f.home,resourceID:'r',request:{limit:1},values:{},dryRun:false,yes:false},'runs transcript',async()=>{entered();await gate;throw Error('finished test');}));
+  const rejected=assert.rejects(task,/finished test/);
+  await ready;await delay(100);
+  assert.equal(f.commands.length,1);
+  release();await rejected;
 });

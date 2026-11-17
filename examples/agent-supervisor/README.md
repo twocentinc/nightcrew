@@ -22,8 +22,9 @@ nightcrew triggers create --request trigger.json
 ```
 
 The example definitions are disabled. Enable the agent and trigger explicitly
-when ready (`nightcrew agents enable agent-supervisor` and
-`nightcrew triggers enable agent-supervisor-manual`). The schedule remains manual;
+when ready using `agents update agent-supervisor` and
+`triggers update agent-supervisor-manual`, each with a request containing the
+current `expectedRevision` and `changes: {"enabled": true}`. The schedule remains manual;
 there is no timer. Run with `nightcrew triggers fire agent-supervisor-manual`.
 No example-specific installation command is needed.
 

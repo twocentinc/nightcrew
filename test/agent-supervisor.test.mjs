@@ -149,3 +149,7 @@ test("supervisor exposes requested quality reviews without equating them with fa
   assert.deepEqual(result.quality.flags,["review_requested"]);
   assert.equal(result.lastReview.note,"Unsupported recommendation");
 });
+
+test('terminal supervisor records are not reported as active holds', () => {
+  for(const state of ['completed','cancelled','failed','timedOut']) assert.equal(metrics(run('terminal',{state,held:true})).statusMeaning,state);
+});

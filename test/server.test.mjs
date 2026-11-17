@@ -1813,3 +1813,20 @@ test("length finish reasons are recoverable only for managed continuations; brok
   await assert.rejects(runtime.readStream(response(false), new AbortController().signal, undefined, true, undefined, true), /Incomplete generation/);
   await assert.rejects(runtime.readStream(response(true, 'content_filter'), new AbortController().signal, undefined, true, undefined, true), /Incomplete generation/);
 });
+
+test("instant completion is published only after its cooldown is durable", async t => {
+  let release;
+  const f=await fixture(t,async()=>{await new Promise(resolve=>release=resolve);return {text:"hello",toolCalls:[],usage:{inputTokens:1,outputTokens:1}};});
+  const next=structuredClone(f.app.service.storage.store);next.config.interactionCooldownMs=5000;
+  await f.app.service.storage.exclusive(()=>f.app.service.storage.saveConfig(next));
+  const accepted=await f.request("POST","/v1/chat/requests",chat());
+  assert.equal(accepted.status,202);
+  await until(()=>release);
+  const original=f.app.service.storage.saveConfig.bind(f.app.service.storage);
+  let persist;
+  f.app.service.storage.saveConfig=async value=>{await new Promise(resolve=>persist=resolve);return original(value);};
+  release();await until(()=>persist);
+  assert.equal(f.app.service.chat(accepted.body.requestID).state,"running");
+  persist();await until(()=>f.app.service.chat(accepted.body.requestID).state==="completed");
+  assert.ok(Date.parse(f.app.service.storage.store.cooldownUntil)>Date.now());
+});

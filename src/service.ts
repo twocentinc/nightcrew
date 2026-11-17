@@ -1925,6 +1925,7 @@ export class Service {
     slotID: string,
     controller: AbortController,
   ) {
+    let finishedState: Chat["state"] = "failed";
     c.state = "running";
     this.chatEvent(c, "started", {});
     const timeout = setTimeout(
@@ -1942,8 +1943,7 @@ export class Service {
         c.result = await this.runtime.generate(input, controller.signal, this.deltas(c.requestID));
         controller.signal.throwIfAborted();
         if (Buffer.byteLength(JSON.stringify(c.result)) > 1024 * 1024) throw Error("output_limit");
-        c.state = "completed";
-        this.chatEvent(c, "completed", c.result);
+        finishedState = "completed";
         return;
       }
       const tool = this.tools.get("load_skills")!;
@@ -2027,10 +2027,9 @@ export class Service {
         }
       }
       if (!c.result) throw Error("Inference did not complete");
-      c.state = "completed";
-      this.chatEvent(c, "completed", c.result);
+      finishedState = "completed";
     } catch (error) {
-      c.state = controller.signal.aborted
+      finishedState = controller.signal.aborted
         ? controller.signal.reason === "timedOut"
           ? "timedOut"
           : "cancelled"
@@ -2038,19 +2037,22 @@ export class Service {
       const evalCode = c.evalOptions && error instanceof Error
         ? ({ context_full: "context_full", context_count_unavailable: "context_count_unavailable", "Incomplete generation": "output_incomplete", output_limit: "output_limit" } as Record<string, string>)[error.message]
         : undefined;
-      c.error = { code: evalCode ?? c.state, message: evalCode ?? "Inference did not complete" };
-      this.chatEvent(c, c.state as Event["type"], {});
+      c.error = { code: evalCode ?? finishedState, message: evalCode ?? "Inference did not complete" };
     } finally {
       clearTimeout(timeout);
       c.expires = Date.now() + 900000;
-      if (this.isInstant(c))
-        await this.storage.exclusive(async () => {
-          const next = structuredClone(this.storage.store);
-          next.cooldownUntil = new Date(
-            Date.now() + next.config.interactionCooldownMs,
-          ).toISOString();
-          await this.storage.saveConfig(next);
-        });
+      try {
+        if (this.isInstant(c)) await this.storage.exclusive(() => this.recordInteraction());
+      } catch (error) {
+        finishedState = "failed";
+        c.error = {code: "cooldown_persistence_failed", message: "Unable to persist interaction cooldown"};
+        throw error;
+      } finally {
+        // Clients may act on terminal responses immediately. Publish only after
+        // cooldown is durable, so a slow model load cannot consume the warm window.
+        c.state = finishedState;
+        this.chatEvent(c, finishedState as Event["type"], finishedState === "completed" ? c.result! : {});
+      }
     }
   }
   private atStorageLimit(run: Run) {

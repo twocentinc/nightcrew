@@ -1008,3 +1008,6 @@ arbitrary config.json edits or apply listener settings; use `config update`.
 The separate `capabilities` command, `skills reload`, `--verbose`, `-v` and
 `--non-interactive` have been removed without aliases. Use `models get`, `doctor`,
 `config reload`, `--verbosity verbose` and `--no-input` respectively.
+
+For an opt-in real-model verification of timer admission, priority/cooldown,
+restart recovery, compaction and model switching, see [the acceptance guide](docs/acceptance.md).

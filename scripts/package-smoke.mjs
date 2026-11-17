@@ -18,7 +18,7 @@ try {
   for (const file of pack.files)
     assert.match(
       file.path,
-      /^(package\.json|README\.md|docs\/(?:model-switch-verification|eval-format)\.md|examples\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(?:md|json|mjs)|dist\/[a-zA-Z0-9_-]+\.(js|d\.ts))$/,
+      /^(package\.json|README\.md|docs\/(?:model-switch-verification|eval-format|acceptance)\.md|examples\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(?:md|json|mjs)|dist\/[a-zA-Z0-9_-]+\.(js|d\.ts))$/,
       "Unexpected packed file: " + file.path,
     );
   assert.ok(pack.files.some((f) => f.path === "dist/cli.js"));

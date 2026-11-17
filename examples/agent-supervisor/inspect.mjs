@@ -60,7 +60,7 @@ export function metrics(r) {
   }
   return {
     lastReview: lastReview ? { status: lastReview.status, note: lastReview.note, at: lastReview.at } : null,
-    statusMeaning: r.held ? "held_requires_review" : r.state === "paused" && r.pauseReason === "compaction" ? "waiting_for_compactor_not_held" : r.state,
+    statusMeaning: ["completed", "failed", "timedOut", "cancelled"].includes(r.state) ? r.state : r.held ? "held_requires_review" : r.state === "paused" && r.pauseReason === "compaction" ? "waiting_for_compactor_not_held" : r.state,
     quality: { assessment: "unreviewed", flags: qualityFlags, note: "Execution/schema success does not establish useful or supported findings. Empty collections may be honest no-findings results; inspect before judging." },
     runID: r.runID,
     revision: r.revision,

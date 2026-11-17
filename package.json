@@ -1,6 +1,6 @@
 {
   "name": "nightcrew",
-  "version": "0.31.0",
+  "version": "0.31.1",
   "private": true,
   "type": "module",
   "description": "Standalone local-agent HTTP service",
@@ -40,6 +40,7 @@
     "README.md",
     "examples/",
     "docs/model-switch-verification.md",
+    "docs/acceptance.md",
     "docs/eval-format.md"
   ]
 }

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import path from "node:path";
 import { z } from "zod";
+import { once } from "node:events";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { readFile, lstat, realpath } from "node:fs/promises";
@@ -24,6 +25,7 @@ import {
   parseDuration,
   diagnostic,
   pause,
+  executionSignal,
   type Verbosity,
 } from "./execution.js";
 import { tailLogs } from "./startup.js";
@@ -248,7 +250,10 @@ export async function main(argv = process.argv.slice(2)) {
         );
       if (args.values.tail) {
         if (command === "runs transcript" && (context.request as {cursor?:string}).cursor) throw invalidInput("--tail cannot be combined with a cursor");
-        await tailCommand(context, command, result => process.stdout.write(JSON.stringify(successEnvelopeSchema.parse({version:1, requestID, command, ok:true, result})) + "\n"));
+        await tailCommand(context, command, async result => {
+          const line = JSON.stringify(successEnvelopeSchema.parse({version:1, requestID, command, ok:true, result})) + "\n";
+          if (!process.stdout.write(line)) await once(process.stdout, "drain", {signal: executionSignal()});
+        });
         return;
       }
       let output = await args.definition.handler(context);
@@ -314,17 +319,17 @@ export async function waitForWork(context: CommandContext, kind: string, id: str
     await pause(500);
   }
 }
-export async function tailCommand(context: CommandContext, command: string, emit: (output: unknown) => void) {
+export async function tailCommand(context: CommandContext, command: string, emit: (output: unknown) => void | Promise<void>) {
   const definition = getCommand(command)!;
   if (command === "daemon logs") {
-    for await (const page of tailLogs(context.home, Number(context.values.lines ?? 100))) emit(definition.result.parse(page));
+    for await (const page of tailLogs(context.home, Number(context.values.lines ?? 100))) await emit(definition.result.parse(page));
     return;
   }
   const request = context.request as {limit?:number; afterSequence?:number; recent?:boolean};
   let sequence = request.afterSequence;
   while (true) {
     const output = definition.result.parse(await definition.handler({...context, request:{limit:request.limit ?? 50, ...(sequence === undefined ? {recent:true} : {afterSequence:sequence})}})) as {items:Array<{sequence:number}>};
-    if (output.items.length) emit(output);
+    if (output.items.length) await emit(output);
     sequence = output.items.at(-1)?.sequence ?? sequence ?? 0;
     if (output.items.length < (request.limit ?? 50)) await pause(500);
   }
