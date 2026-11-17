@@ -132,24 +132,157 @@ test("Markdown hook scopes agents, preserves exact result and rejects traversal"
   );
 });
 
-test('supervisor separates compaction waiting and empty useful output from execution success', () => {
-  const waiting=metrics(run('wait',{state:'paused',pauseReason:'compaction',held:false}));
-  assert.equal(waiting.statusMeaning,'waiting_for_compactor_not_held');
-  assert.equal(metrics(run('held',{state:'paused',held:true})).statusMeaning,'held_requires_review');
-  const empty=metrics(run('empty',{result:'{"insights":[]}'}));
-  assert.deepEqual(empty.quality.flags,['empty_collection:insights']);
-  assert.equal(empty.quality.assessment,'unreviewed');
-  assert.equal(empty.state,'completed');
+test("supervisor separates compaction waiting and empty useful output from execution success", () => {
+  const waiting = metrics(
+    run("wait", { state: "paused", pauseReason: "compaction", held: false }),
+  );
+  assert.equal(waiting.statusMeaning, "waiting_for_compactor_not_held");
+  assert.equal(
+    metrics(run("held", { state: "paused", held: true })).statusMeaning,
+    "held_requires_review",
+  );
+  const empty = metrics(run("empty", { result: '{"insights":[]}' }));
+  assert.deepEqual(empty.quality.flags, ["empty_collection:insights"]);
+  assert.equal(empty.quality.assessment, "unreviewed");
+  assert.equal(empty.state, "completed");
 });
-
 
 test("supervisor exposes requested quality reviews without equating them with failed execution", () => {
-  const result=metrics(run("reviewed",{segment:0,reviews:[{segment:0,status:"open",note:"Unsupported recommendation",at:"2026-11-13T00:00:00Z"}]}));
-  assert.equal(result.state,"completed");
-  assert.deepEqual(result.quality.flags,["review_requested"]);
-  assert.equal(result.lastReview.note,"Unsupported recommendation");
+  const result = metrics(
+    run("reviewed", {
+      segment: 0,
+      reviews: [
+        {
+          segment: 0,
+          status: "open",
+          note: "Unsupported recommendation",
+          at: "2026-11-13T00:00:00Z",
+        },
+      ],
+    }),
+  );
+  assert.equal(result.state, "completed");
+  assert.deepEqual(result.quality.flags, ["review_requested"]);
+  assert.equal(result.lastReview.note, "Unsupported recommendation");
 });
 
-test('terminal supervisor records are not reported as active holds', () => {
-  for(const state of ['completed','cancelled','failed','timedOut']) assert.equal(metrics(run('terminal',{state,held:true})).statusMeaning,state);
+test("terminal supervisor records are not reported as active holds", () => {
+  for (const state of ["completed", "cancelled", "failed", "timedOut"])
+    assert.equal(
+      metrics(run("terminal", { state, held: true })).statusMeaning,
+      state,
+    );
+});
+
+test("recovered delivery and validation supersede historical failures and dated reviews", () => {
+  const r = run("recovered", {
+    segment: 1,
+    deliveryExpected: true,
+    events: [
+      { sequence: 1, segment: 0 },
+      { sequence: 2, segment: 1 },
+    ],
+    hookReceipts: [
+      {
+        eventSequence: 1,
+        executablePath: "/private/old",
+        purpose: "delivery",
+        status: "failed",
+        retryOf: null,
+      },
+      {
+        eventSequence: 2,
+        executablePath: "/private/send",
+        purpose: "delivery",
+        status: "failed",
+        retryOf: null,
+      },
+      {
+        eventSequence: 3,
+        executablePath: "/private/send",
+        purpose: "delivery",
+        status: "failed",
+        retryOf: 1,
+      },
+      {
+        eventSequence: 4,
+        executablePath: "/private/send",
+        purpose: "delivery",
+        status: "succeeded",
+        retryOf: 2,
+      },
+    ],
+    validations: [
+      { segment: 1, status: "failed" },
+      { segment: 1, status: "passed" },
+    ],
+    error: { code: "old_failure" },
+    reviews: [
+      { segment: 1, status: "open", note: "Delivery failed before retry" },
+    ],
+  });
+  const m = metrics(r);
+  assert.equal(m.current.delivery.status, "succeeded");
+  assert.equal(m.current.delivery.receipts.length, 1);
+  assert.equal(m.current.delivery.receipts[0].recovered, true);
+  assert.equal(m.historical.hookFailures, 3);
+  assert.equal(m.current.validation.status, "passed");
+  assert.equal(m.historical.validationFailures, 1);
+  assert.equal(m.current.error, null);
+  assert.equal(m.lastReview.evidenceKind, "point_in_time_reviewer_note");
+  assert.ok(!JSON.stringify(m).includes("/private/send"));
+  r.hookReceipts.at(-1).status = "unknown";
+  assert.equal(metrics(r).current.delivery.status, "unknown");
+  r.hookReceipts.at(-1).status = "pending";
+  assert.equal(metrics(r).current.delivery.status, "pending");
+  r.hookReceipts.at(-1).retryOf = 99;
+  assert.equal(
+    metrics(r).current.delivery.unknownScopeReceipts[0].status,
+    "unknown",
+  );
+});
+
+test("parent evidence distinguishes stale children from required and unverified children", async (t) => {
+  const { home, put } = await fixture(t);
+  const child = run("child", {
+    state: "paused",
+    held: true,
+    parentRunID: "parent",
+  });
+  await put(child);
+  await put(run("parent", { state: "completed", compaction: null }));
+  const opts = { home, runID: "review", now };
+  const detail = await inspect({ action: "run", runID: "child" }, opts);
+  assert.equal(detail.statusMeaning, "stale_compactor_child");
+  assert.equal(detail.current.parent.awaitsThisChild, false);
+  assert.equal(
+    metrics(
+      child,
+      run("parent", { state: "paused", compaction: { childRunID: "child" } }),
+    ).current.parent.relationship,
+    "required",
+  );
+  assert.equal(metrics(child).current.parent.relationship, "unverified");
+});
+
+test("coverage counts distinct pages and detailed runs, and detail refreshes snapshot status", async (t) => {
+  const { home, put } = await fixture(t);
+  await put(run("one", { state: "failed", error: { code: "old" } }));
+  await put(run("two"));
+  const opts = { home, runID: "review", now };
+  await inspect({ action: "page", page: 0 }, opts);
+  await inspect({ action: "page", page: 0 }, opts);
+  await put(run("one", { revision: 2, state: "completed" }));
+  await inspect({ action: "run", runID: "one" }, opts);
+  const detail = await inspect({ action: "run", runID: "one" }, opts);
+  assert.equal(detail.current.execution, "completed");
+  assert.equal(detail.snapshotRevision, 1);
+  assert.equal(detail.revision, 2);
+  assert.deepEqual(detail.coverage, {
+    summaryRunsRead: 2,
+    totalRuns: 2,
+    pagesRead: [0],
+    detailedRunIDs: ["one"],
+    detailedRunsRead: 1,
+  });
 });

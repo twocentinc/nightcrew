@@ -20,7 +20,107 @@ async function json(file) {
     throw Error("Unsafe or oversized state file");
   return JSON.parse(await readFile(file, "utf8"));
 }
-export function metrics(r) {
+const terminal = (state) =>
+  ["completed", "failed", "timedOut", "cancelled"].includes(state);
+// Resolve retry chains before projecting statuses. Keep paths private and keep
+// receipts from older conversation segments out of the current delivery result.
+export function hookEvidence(r) {
+  const receipts = r.hookReceipts ?? [];
+  const groups = new Map();
+  for (const [index, receipt] of receipts.entries()) {
+    let root = index;
+    const seen = new Set();
+    let valid = true;
+    while (
+      receipts[root]?.retryOf !== null &&
+      receipts[root]?.retryOf !== undefined
+    ) {
+      const previous = receipts[root].retryOf;
+      if (
+        !Number.isInteger(previous) ||
+        previous < 0 ||
+        previous >= root ||
+        seen.has(previous)
+      ) {
+        valid = false;
+        break;
+      }
+      seen.add(previous);
+      root = previous;
+    }
+    const original = receipts[root];
+    const key = valid
+      ? `${original.eventSequence}:${original.executablePath}`
+      : `invalid:${index}`;
+    const segment = (r.events ?? []).find(
+      (e) => e.sequence === original.eventSequence,
+    )?.segment;
+    groups.set(key, {
+      receiptIndex: index,
+      rootReceiptIndex: root,
+      purpose: receipt.purpose ?? "notification",
+      status: valid ? receipt.status : "unknown",
+      segment: segment ?? null,
+      recovered: valid && receipt.status === "succeeded" && seen.size > 0,
+    });
+  }
+  const current = [...groups.values()].filter(
+    (h) => h.segment === (r.segment ?? 0),
+  );
+  const unknownScope = [...groups.values()].filter((h) => h.segment === null);
+  const delivery = current.filter((h) => h.purpose === "delivery");
+  const status = delivery.some((h) => h.status === "unknown")
+    ? "unknown"
+    : delivery.some((h) => h.status === "failed")
+      ? "failed"
+      : delivery.some((h) => ["pending", "started"].includes(h.status))
+        ? "pending"
+        : unknownScope.some((h) => h.purpose === "delivery")
+          ? "unknown"
+          : delivery.length && delivery.every((h) => h.status === "succeeded")
+            ? "succeeded"
+            : r.deliveryExpected
+              ? "pending"
+              : "notConfigured";
+  return {
+    status,
+    receipts: current,
+    unknownScopeReceipts: unknownScope,
+    basis:
+      "Effective receipts for the current segment. Hook success alone does not independently verify the external destination.",
+  };
+}
+function coverage(snapshot) {
+  return {
+    summaryRunsRead: Object.keys(snapshot.examined).length,
+    totalRuns: snapshot.items.length,
+    pagesRead: Object.keys(snapshot.pagesRead ?? {})
+      .map(Number)
+      .sort((a, b) => a - b),
+    detailedRunIDs: Object.keys(snapshot.detailsExamined ?? {}),
+    detailedRunsRead: Object.keys(snapshot.detailsExamined ?? {}).length,
+  };
+}
+async function saveSnapshot(file, snapshot) {
+  const temporary = file + "." + randomUUID() + ".tmp";
+  await writeFile(temporary, JSON.stringify(snapshot), {
+    flag: "wx",
+    mode: 0o600,
+  });
+  await rename(temporary, file);
+}
+async function project(r, home) {
+  let parent;
+  if (r.parentRunID && ID.test(r.parentRunID)) {
+    try {
+      parent = await json(path.join(home, "runs", r.parentRunID, "state.json"));
+    } catch {
+      /* Explicitly unverified; never infer a missing parent's state. */
+    }
+  }
+  return metrics(r, parent);
+}
+export function metrics(r, parent) {
   const groups = new Map();
   for (const m of r.messages ?? [])
     for (const c of m.toolCalls ?? []) {
@@ -47,21 +147,90 @@ export function metrics(r) {
       }
     }).length;
   const qualityFlags = [];
-  const lastReview = (r.reviews ?? []).filter(review => review.segment === (r.segment ?? 0)).at(-1);
-  if (lastReview && ["open", "acknowledged"].includes(lastReview.status)) qualityFlags.push("review_requested");
+  const lastReview = (r.reviews ?? [])
+    .filter((review) => review.segment === (r.segment ?? 0))
+    .at(-1);
+  if (lastReview && ["open", "acknowledged"].includes(lastReview.status))
+    qualityFlags.push("review_requested");
   if (r.state === "completed") {
     if (!r.result?.trim()) qualityFlags.push("empty_output");
     try {
       const parsed = JSON.parse(r.result);
       if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
         for (const [key, value] of Object.entries(parsed))
-          if (Array.isArray(value) && value.length === 0) qualityFlags.push("empty_collection:" + key);
-    } catch { /* Markdown and prose are valid output formats. */ }
+          if (Array.isArray(value) && value.length === 0)
+            qualityFlags.push("empty_collection:" + key);
+    } catch {
+      /* Markdown and prose are valid output formats. */
+    }
   }
+  const parentState = r.parentRunID
+    ? parent
+      ? {
+          runID: parent.runID,
+          state: parent.state,
+          revision: parent.revision,
+          awaitsThisChild:
+            !terminal(parent.state) &&
+            parent.compaction?.childRunID === r.runID,
+          relationship:
+            terminal(parent.state) || parent.compaction?.childRunID !== r.runID
+              ? "no_longer_required"
+              : "required",
+        }
+      : { runID: r.parentRunID, relationship: "unverified" }
+    : null;
+  const delivery = hookEvidence(r);
+  const validation = (r.validations ?? [])
+    .filter((v) => v.segment === (r.segment ?? 0))
+    .at(-1);
   return {
-    lastReview: lastReview ? { status: lastReview.status, note: lastReview.note, at: lastReview.at } : null,
-    statusMeaning: ["completed", "failed", "timedOut", "cancelled"].includes(r.state) ? r.state : r.held ? "held_requires_review" : r.state === "paused" && r.pauseReason === "compaction" ? "waiting_for_compactor_not_held" : r.state,
-    quality: { assessment: "unreviewed", flags: qualityFlags, note: "Execution/schema success does not establish useful or supported findings. Empty collections may be honest no-findings results; inspect before judging." },
+    current: {
+      execution: r.state,
+      activeHold: !!r.held && !terminal(r.state),
+      error:
+        terminal(r.state) && !["failed", "timedOut"].includes(r.state)
+          ? null
+          : (r.error ?? null),
+      delivery,
+      validation: validation
+        ? { status: validation.status, at: validation.at }
+        : null,
+      parent: parentState,
+    },
+    historical: {
+      hookFailures: (r.hookReceipts ?? []).filter((h) => h.status === "failed")
+        .length,
+      validationFailures: (r.validations ?? []).filter(
+        (v) => v.status === "failed",
+      ).length,
+      retainedError: r.error ?? null,
+      note: "Past evidence, not current failure status. Later successful retries or terminal parent states supersede earlier status claims.",
+    },
+    lastReview: lastReview
+      ? {
+          status: lastReview.status,
+          note: lastReview.note,
+          at: lastReview.at,
+          evidenceKind: "point_in_time_reviewer_note",
+        }
+      : null,
+    statusMeaning: ["completed", "failed", "timedOut", "cancelled"].includes(
+      r.state,
+    )
+      ? r.state
+      : parentState?.relationship === "no_longer_required"
+        ? "stale_compactor_child"
+        : r.held
+          ? "held_requires_review"
+          : r.state === "paused" && r.pauseReason === "compaction"
+            ? "waiting_for_compactor_not_held"
+            : r.state,
+    quality: {
+      assessment: "unreviewed",
+      flags: qualityFlags,
+      note: "Execution/schema success does not establish useful or supported findings. Empty collections may be honest no-findings results; inspect before judging.",
+    },
     runID: r.runID,
     revision: r.revision,
     agentID: r.agent.agentID,
@@ -87,12 +256,6 @@ export function metrics(r) {
     compactions: (r.compactions ?? []).length,
     compactionRetries: events.filter((e) => e.type === "compactionRetry")
       .length,
-    hookFailures: (r.hookReceipts ?? []).filter((h) => h.status === "failed")
-      .length,
-    validationFailures: (r.validations ?? []).filter(
-      (v) => v.status === "failed",
-    ).length,
-    errorCode: r.error?.code ?? null,
     resultCharacters: r.result?.length ?? 0,
     modelID: r.agent.modelID,
     thinking: r.agent.thinking,
@@ -153,14 +316,23 @@ export async function inspect(
           !["failed", "timedOut"].includes(r.state)
         )
           continue;
-        items.push(metrics(r));
+        items.push(await project(r, home));
       } catch {
         unreadableRuns++;
       }
     }
     items.sort(
       (a, b) =>
-        Number(!!b.errorCode || b.held) - Number(!!a.errorCode || a.held) ||
+        Number(
+          !!b.current.error ||
+            b.current.activeHold ||
+            ["failed", "unknown"].includes(b.current.delivery.status),
+        ) -
+          Number(
+            !!a.current.error ||
+              a.current.activeHold ||
+              ["failed", "unknown"].includes(a.current.delivery.status),
+          ) ||
         b.updatedAt.localeCompare(a.updatedAt) ||
         a.runID.localeCompare(b.runID),
     );
@@ -173,6 +345,8 @@ export async function inspect(
       omittedRuns: Math.max(0, items.length - 1000),
       items: items.slice(0, 1000),
       examined: {},
+      pagesRead: {},
+      detailsExamined: {},
     };
     await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
     await writeFile(file, JSON.stringify(snapshot), {
@@ -183,6 +357,7 @@ export async function inspect(
   const totalPages = Math.ceil(snapshot.items.length / 5);
   if (input.action === "overview")
     return {
+      coverage: coverage(snapshot),
       capturedAt: snapshot.capturedAt,
       previousReport: snapshot.previousReport,
       firstReview: snapshot.firstReview,
@@ -199,13 +374,11 @@ export async function inspect(
       throw Error("No such page; finish the report if nextPage was null");
     const items = snapshot.items.slice(input.page * 5, input.page * 5 + 5);
     for (const item of items) snapshot.examined[item.runID] = item.revision;
-    const temporary = file + "." + randomUUID() + ".tmp";
-    await writeFile(temporary, JSON.stringify(snapshot), {
-      flag: "wx",
-      mode: 0o600,
-    });
-    await rename(temporary, file);
+    snapshot.pagesRead ??= {};
+    snapshot.pagesRead[input.page] = true;
+    await saveSnapshot(file, snapshot);
     return {
+      coverage: coverage(snapshot),
       page: input.page,
       items,
       nextPage: input.page + 1 < totalPages ? input.page + 1 : null,
@@ -215,15 +388,22 @@ export async function inspect(
   if (!snapshot.items.some((r) => r.runID === input.runID))
     throw Error("Run is outside this review snapshot");
   const r = await json(path.join(home, "runs", input.runID, "state.json"));
+  const projected = await project(r, home);
+  snapshot.detailsExamined ??= {};
+  snapshot.detailsExamined[r.runID] = r.revision;
+  await saveSnapshot(file, snapshot);
   return {
-    ...metrics(r),
+    ...projected,
+    coverage: coverage(snapshot),
     snapshotRevision: snapshot.items.find((x) => x.runID === input.runID)
       .revision,
-    error: r.error,
-    reviews: (r.reviews ?? []).slice(-2).map(({ status, note, at, segment }) => ({ status, note, at, segment })),
-    reportExcerpt: typeof r.result === "string" ? r.result.slice(0, 4000) : null,
+    reviews: (r.reviews ?? [])
+      .slice(-2)
+      .map(({ status, note, at, segment }) => ({ status, note, at, segment })),
+    reportExcerpt:
+      typeof r.result === "string" ? r.result.slice(0, 4000) : null,
     reportTruncated: (r.result?.length ?? 0) > 4000,
-    failures: (r.events ?? [])
+    historicalFailureEvents: (r.events ?? [])
       .filter((e) =>
         ["compactionRetry", "failed", "timedOut", "recovery"].includes(e.type),
       )
