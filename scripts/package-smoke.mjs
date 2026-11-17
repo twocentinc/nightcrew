@@ -56,8 +56,8 @@ try {
   );
   assert.equal((await call(["version"])).result.version, pkg.version);
   assert.ok(
-    (await call(["help", "tools"])).result.commands.includes(
-      "tools.create".replace(".", " "),
+    (await call(["help", "tools"])).result.tree.tools.includes(
+      "create",
     ),
   );
   assert.ok(
@@ -70,7 +70,7 @@ try {
   });
   assert.equal((await call(["init"])).ok, true);
   assert.deepEqual((await call(["agents", "list"])).result.items, []);
-  assert.equal((await call(["capabilities"])).result.models.length, 0);
+  assert.equal((await call(["doctor"])).result.capabilities.models.length, 0);
   console.log(
     `Packed and independently installed nightcrew ${pkg.version}: executable, discovery and offline commands passed.`,
   );

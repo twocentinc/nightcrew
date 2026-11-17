@@ -72,7 +72,10 @@ export const operationInputs = {
     agentID: id.optional(),
     state: runState.optional(),
   }),
-  "runs transcript": pageSchema,
+  "runs transcript": pageSchema.extend({
+    afterSequence: z.number().int().nonnegative().optional(),
+    recent: z.boolean().optional(),
+  }).refine(v => !(v.cursor && (v.afterSequence !== undefined || v.recent)) && !(v.recent && v.afterSequence !== undefined), "Cannot combine cursor, recent and afterSequence"),
   "runs search": pageSchema.extend({
     agentID: id.optional(),
     state: runState.optional(),

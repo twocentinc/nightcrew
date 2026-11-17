@@ -29,6 +29,10 @@ export class Execution {
         Promise.race([
           Promise.resolve().then(fn),
           new Promise<never>((_, reject) => {
+            if (!Number.isFinite(this.timeoutMs)) {
+              this.signal.addEventListener("abort", () => reject(this.signal.reason), {once: true});
+              return;
+            }
             timer = setTimeout(() => {
               const error = timeoutFailure(this.mutation);
               this.controller.abort(error);

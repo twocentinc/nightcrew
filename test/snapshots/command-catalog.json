@@ -78,7 +78,8 @@
       "operand": "required",
       "options": [
         "request",
-        "dry-run"
+        "dry-run",
+        "wait"
       ],
       "requestSchema": "agents.run.request",
       "resultSchema": "agents.run.result",
@@ -100,17 +101,6 @@
     },
     {
       "confirmation": false,
-      "description": "Report model adapter capabilities and verification limits",
-      "mutates": false,
-      "name": "capabilities",
-      "operand": "none",
-      "options": [],
-      "requestSchema": "capabilities.request",
-      "resultSchema": "capabilities.result",
-      "scope": "local"
-    },
-    {
-      "confirmation": false,
       "description": "Read redacted configuration",
       "mutates": false,
       "name": "config get",
@@ -120,6 +110,20 @@
       ],
       "requestSchema": "config.get.request",
       "resultSchema": "config.get.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "Reload skill folders and tool definitions",
+      "mutates": true,
+      "name": "config reload",
+      "operand": "none",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "config.reload.request",
+      "resultSchema": "config.reload.result",
       "scope": "management"
     },
     {
@@ -173,7 +177,8 @@
       "options": [
         "lines",
         "limit",
-        "cursor"
+        "cursor",
+        "tail"
       ],
       "requestSchema": "daemon.logs.request",
       "resultSchema": "daemon.logs.result",
@@ -356,7 +361,8 @@
       "operand": "none",
       "options": [
         "request",
-        "dry-run"
+        "dry-run",
+        "wait"
       ],
       "requestSchema": "instant.submit.request",
       "resultSchema": "instant.submit.result",
@@ -612,7 +618,8 @@
       "options": [
         "request",
         "limit",
-        "cursor"
+        "cursor",
+        "tail"
       ],
       "requestSchema": "runs.transcript.request",
       "resultSchema": "runs.transcript.result",
@@ -721,20 +728,6 @@
       ],
       "requestSchema": "skills.read.request",
       "resultSchema": "skills.read.result",
-      "scope": "management"
-    },
-    {
-      "confirmation": false,
-      "description": "Reload skill folders and tool definitions",
-      "mutates": true,
-      "name": "skills reload",
-      "operand": "none",
-      "options": [
-        "request",
-        "dry-run"
-      ],
-      "requestSchema": "skills.reload.request",
-      "resultSchema": "skills.reload.result",
       "scope": "management"
     },
     {
@@ -946,14 +939,12 @@
     "help": false,
     "home": "absolute-path",
     "no-input": false,
-    "non-interactive": false,
     "quiet": false,
     "request-id": "ID",
     "timeout": "duration",
-    "verbose": false,
     "verbosity": "quiet|normal|verbose|debug",
     "version": false
   },
   "protocolVersion": 1,
-  "schemaVersion": 32
+  "schemaVersion": 33
 }

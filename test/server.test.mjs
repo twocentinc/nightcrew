@@ -383,6 +383,13 @@ test("completed replies preserve snapshots, attachments and stable transcript cu
       (await q("GET", `/v1/runs/${first.runID}`)).body.run.state ===
       "completed",
   );
+  const transcript = f.app.service.transcript(await f.app.service.run(first.runID));
+  const recent = await q("POST", "/v1/operations/runs/transcript", {resourceID:first.runID, request:{recent:true,limit:2}});
+  assert.equal(recent.status,200);
+  assert.deepEqual(recent.body.items.map(e=>e.sequence),transcript.slice(-2).map(e=>e.sequence));
+  const after = await q("POST", "/v1/operations/runs/transcript", {resourceID:first.runID, request:{afterSequence:transcript.at(-2).sequence,limit:2}});
+  assert.deepEqual(after.body.items.map(e=>e.sequence),[transcript.at(-1).sequence]);
+  assert.equal((await q("POST", "/v1/operations/runs/transcript", {resourceID:first.runID,request:{recent:true,cursor:page.nextCursor}})).status,400);
   const response = await fetch(
     `http://127.0.0.1:${f.app.server.address().port}/v1/runs/${first.runID}/events`,
     { headers: { Authorization: `Bearer ${token}` } },
@@ -993,7 +1000,10 @@ test("management HTTP and CLI share every oRPC operation contract", async (t) =>
       continue;
     }
     assert.equal(command.request, op.request, op.name);
-    assert.equal(command.result, op.result, op.name);
+    if (["agents run", "instant submit"].includes(op.name)) {
+      assert.ok(command.result.options.includes(op.result));
+      assert.ok(command.result.options.includes(getCommand(op.name === "agents run" ? "runs get" : "instant get").result));
+    } else assert.equal(command.result, op.result, op.name);
     const route = "/v1/operations/" + op.name.replaceAll(" ", "/");
     assert.equal(Boolean(f.app.document.paths[route]), !op.localOnly, route);
   }
@@ -1226,7 +1236,7 @@ test("agent loops automatically discover and load snapshotted skill files on dem
         path.join(f.home, "skills", "review", "references", "guide.md"),
         "CHANGED AFTER ADMISSION",
       );
-      const reloaded = await f.request("POST", "/v1/operations/skills/reload", {
+      const reloaded = await f.request("POST", "/v1/operations/config/reload", {
         request: {},
       });
       assert.equal(reloaded.status, 200);

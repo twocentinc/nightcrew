@@ -347,3 +347,69 @@ export async function startupLogs(
       : null;
   return { files: grouped, nextCursor };
 }
+
+// Follow active files by byte offset, retaining partial UTF-8 lines and draining
+// an open inode before switching to its replacement after log rotation.
+export async function* tailLogs(home: string, lines = 100) {
+  type OpenLog = { handle: Awaited<ReturnType<typeof open>>; inode: number; offset: number; pending: Buffer };
+  const files = new Map<string, OpenLog>();
+  const seen = new Set<string>();
+  const paths = ["daemon.jsonl", "launchd.stdout.log", "launchd.stderr.log"].map(name => path.join(home, "logs", name));
+  const read = async (file: string, state: OpenLog, initial = false, skipFragment = false) => {
+    const stat = await state.handle.stat();
+    if (stat.size < state.offset) { state.offset = 0; state.pending = Buffer.alloc(0); }
+    const output: string[] = [];
+    while (state.offset < stat.size) {
+      checkpoint();
+      const bytes = Buffer.alloc(Math.min(1024 * 1024, stat.size - state.offset));
+      const { bytesRead } = await state.handle.read(bytes, 0, bytes.length, state.offset);
+      if (!bytesRead) break;
+      state.offset += bytesRead;
+      const data = Buffer.concat([state.pending, bytes.subarray(0, bytesRead)]);
+      const end = data.lastIndexOf(10);
+      if (end >= 0) output.push(...data.subarray(0, end).toString("utf8").split(/\r?\n/));
+      state.pending = data.subarray(end + 1);
+      if (state.pending.length > 1024 * 1024) throw invalidInput("Log line exceeds 1 MB");
+    }
+    if (skipFragment) output.shift();
+    return { path: file, lines: initial ? output.slice(-lines) : output, truncated: skipFragment };
+  };
+  try {
+    while (true) {
+      for (const file of paths) {
+        checkpoint();
+        let stat;
+        try { stat = await lstat(file); }
+        catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") continue; throw e; }
+        if (!stat.isFile() || stat.isSymbolicLink()) throw invalidInput("Invalid log file");
+        let state = files.get(file);
+        if (state && state.inode !== stat.ino) {
+          const old = await read(file, state);
+          if (old.lines.length) yield { files: [old], nextCursor: null };
+          await state.handle.close();
+          files.delete(file);
+          state = undefined;
+        }
+        const initial = !state;
+        if (!state) {
+          const handle = await open(file, "r");
+          const opened = await handle.stat();
+          // Only the first observation skips old content; replacements start at zero.
+          const offset = seen.has(file) ? 0 : Math.max(0, opened.size - 1024 * 1024);
+          state = { handle, inode: opened.ino, offset, pending: Buffer.alloc(0) };
+          files.set(file, state);
+          const entry = await read(file, state, !seen.has(file), offset > 0);
+          seen.add(file);
+          if (entry.lines.length) yield { files: [entry], nextCursor: null };
+        }
+        if (!initial) {
+          const entry = await read(file, state);
+          if (entry.lines.length) yield { files: [entry], nextCursor: null };
+        }
+      }
+      await pause(250);
+    }
+  } finally {
+    await Promise.all([...files.values()].map(file => file.handle.close()));
+  }
+}

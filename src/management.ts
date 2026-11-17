@@ -1,3 +1,4 @@
+import { capabilities } from "./diagnostics.js";
 import { operationInputs } from "./operationInputs.js";
 import {
   canonicalSkill,
@@ -76,7 +77,7 @@ export async function manage(
       ? undefined
       : id.parse(resourceID);
   const raw = input.request ?? {};
-  if (command === "skills reload")
+  if (command === "config reload")
     return { changed: !dryRun, ...(await service.reloadRegistry(dryRun)) };
   if (command === "skills read") {
     const request = requestSchemas[command]!.parse(raw) as { runID?: string };
@@ -372,6 +373,14 @@ export async function manage(
     }
     if (action === "cancel")
       return service.cancelRun(name ?? fail("missing_id"), dryRun);
+    if (action === "transcript") {
+      const input = operationInputs["runs transcript"].parse(raw);
+      if (input.afterSequence !== undefined || input.recent) {
+        const entries = service.transcript(await service.run(name ?? fail("missing_id")));
+        const items = input.recent ? entries.slice(-input.limit) : entries.filter(e => e.sequence > input.afterSequence!).slice(0, input.limit);
+        return { items, nextCursor: null };
+      }
+    }
     if (action === "list" || action === "transcript" || action === "search") {
       const input = requestSchemas[command]!.parse(raw) as {
         limit: number;
@@ -463,6 +472,7 @@ export async function manage(
         );
         return { item, cache: cache ? { contextID: cache.contextID, items: cache.items } : null };
       }
+      if (resource === "models") return { item, capabilities: (await capabilities(service.storage.home, next)).models.find(m => m.modelID === name)! };
       return { item };
     }
     if (action === "delete" && !yes && !dryRun) fail("confirmation_required");

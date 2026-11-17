@@ -11,9 +11,7 @@ import { startup, startupStatus, startupLogs } from "./startup.js";
 import { LlamaRuntime, samplePresence } from "./runtime.js";
 import {
   doctor,
-  capabilities,
   doctorSchema,
-  capabilitiesSchema,
 } from "./diagnostics.js";
 import {
   packageVersion,
@@ -79,10 +77,8 @@ export const globalOptions = {
   "request-id": "ID",
   timeout: "duration",
   quiet: false,
-  verbose: false,
   verbosity: "quiet|normal|verbose|debug",
   "no-input": false,
-  "non-interactive": false,
   help: false,
   advanced: false,
   version: false,
@@ -196,12 +192,21 @@ define(
   false,
   z.object({
     scope: z.string(),
-    commands: z.array(z.string()),
-    definitions: z.array(helpDefinitionSchema),
+    tree: z.record(z.string(), z.array(z.string())),
+    definitions: z.array(helpDefinitionSchema).optional(),
     options: z.array(z.string()),
     schemaVersion: z.number(),
   }),
-  async (c) => help(c.helpScope ?? c.resourceID ?? "", !!c.values.advanced),
+  async (c) => {
+    const {commands, ...details} = help(c.helpScope ?? c.resourceID ?? "", !!c.values.advanced);
+    const tree: Record<string, string[]> = {};
+    for (const command of commands) {
+      const [root, ...words] = command.split(" ");
+      tree[root!] ??= [];
+      if (words.length) tree[root!]!.push(words.join(" "));
+    }
+    return {...details, tree};
+  },
 );
 define(
   "version",
@@ -288,15 +293,6 @@ define(
       return {pid:result.pid,...result.runtime};
     }),
   { options: ["live"] },
-);
-define(
-  "capabilities",
-  "Report model adapter capabilities and verification limits",
-  "local",
-  "none",
-  false,
-  capabilitiesSchema,
-  (c) => capabilities(c.home),
 );
 define(
   "presence sample",
@@ -446,7 +442,7 @@ for (const action of [
     },
     {
       confirmation: action === "uninstall",
-      options: action === "logs" ? ["lines", "limit", "cursor"] : [],
+      options: action === "logs" ? ["lines", "limit", "cursor", "tail"] : [],
     },
   );
 }
@@ -469,9 +465,11 @@ for (const operation of operationDefinitions) {
     scope,
     operand,
     mutates,
-    result,
+    ["agents run", "instant submit"].includes(name)
+      ? z.union([result, operationDefinitions.find(d => d.name === (name === "agents run" ? "runs get" : "instant get"))!.result])
+      : result,
     (c) => management(c, name, scope),
-    { confirmation, options, request },
+    { confirmation, options: [...options, ...(["agents run", "instant submit"].includes(name) ? ["wait"] : name === "runs transcript" ? ["tail"] : [])], request },
   );
 }
 export const commandDefinitions: readonly Definition[] = definitions;
@@ -485,7 +483,7 @@ export const commandCatalog = () =>
       resultSchema: d.name.replaceAll(" ", ".") + ".result",
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
-export const advancedCommands = new Set(["agents cache clear", "runs verify", "runs hooks retry", "schema get", "config token rotate", "capabilities", "presence sample", "skills reload", "scheduler explain"]);
+export const advancedCommands = new Set(["agents cache clear", "runs verify", "runs hooks retry", "schema get", "config token rotate", "presence sample", "config reload", "scheduler explain"]);
 export function help(scope = "", advanced = false) {
   const catalog = commandCatalog().filter(
     (d) => (!scope ? (advanced || !advancedCommands.has(d.name)) : d.name === scope || d.name.startsWith(scope + " ")),
@@ -494,7 +492,7 @@ export function help(scope = "", advanced = false) {
   return {
     scope,
     commands: catalog.map((d) => d.name),
-    definitions: catalog,
+    ...(catalog.some(d => d.name === scope) ? { definitions: catalog } : {}),
     options: Object.keys(globalOptions).map((s) => "--" + s),
     schemaVersion: SCHEMA_VERSION,
   };

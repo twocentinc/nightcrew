@@ -93,7 +93,7 @@ Skills are folders with SKILL.md and optional references/ and assets/ trees.
 Each file is limited to 128 KB; a skill supports 64 files and 512 KB serialized
 resource data. Text uses UTF-8, binary assets use base64. Paths cannot traverse
 outside these directories or follow symlinks. Skill CRUD writes folders;
-skills reload validates direct filesystem edits before adopting them.
+config reload validates direct filesystem edits before adopting them.
 skills read returns instructions or selected files without modifying state.
 Updates omitting files preserve resources; explicit files replace them.
 
@@ -555,3 +555,22 @@ is `config token rotate`. Command words use spaces rather than hyphens.
 The boolean config field `httpEnabled` defaults to true. Setting it false and
 restarting disables the HTTP listener, while local CLI control remains available.
 These replacements have no aliases before v1.
+
+## CLI observation and discovery (schema 33)
+
+Root help exposes a compact command tree; exact command help adds metadata.
+Model capabilities belong to `models get` and the aggregate `doctor` report.
+`config reload` adopts skill/tool filesystem edits. Removed commands and flags
+have no aliases: use `--verbosity` and `--no-input`.
+
+`agents run --wait` and `instant submit --wait` submit once, then poll the shared
+get procedures until terminal. They compose the existing acceptance and detail
+result contracts. They never cancel daemon work on timeout or signal, and errors
+after acceptance include the accepted resource ID. Scheduling remains unchanged.
+
+`runs transcript --tail` follows committed event sequences. Its shared request
+supports `recent` or `afterSequence` without snapshot pagination cursors.
+`daemon logs --tail` follows active files by byte offset and handles rotation,
+truncation and incomplete UTF-8 lines. Tail output is JSONL using normal envelopes.
+Waits default to 120 minutes; tails have no default deadline. Both accept explicit
+observation timeouts up to 1440 minutes. Neither changes agent execution timeouts.

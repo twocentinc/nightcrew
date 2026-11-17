@@ -33,6 +33,8 @@ import {
 } from "./contracts.js";
 import { toolDefinitionSchema } from "./registry.js";
 
+import { capabilitiesSchema } from "./diagnostics.js";
+
 const empty = z.strictObject({});
 const changed = z.object({ changed: z.boolean() });
 const adminConfig = configSchema.omit({ rootTokenHash: true });
@@ -321,7 +323,7 @@ export const operations = {
   "models get": defineOperation(
     "models get",
     "Inspect one model",
-    z.object({ item: modelSchema }),
+    z.object({ item: modelSchema, capabilities: capabilitiesSchema.shape.models.element }),
     false,
     "required",
   ),
@@ -349,8 +351,8 @@ export const operations = {
     "required",
     true,
   ),
-  "skills reload": defineOperation(
-    "skills reload",
+  "config reload": defineOperation(
+    "config reload",
     "Reload skill folders and tool definitions",
     z.object({
       changed: z.boolean(),

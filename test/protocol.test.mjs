@@ -50,7 +50,7 @@ test("versioned command catalog and schemas stay aligned with parser and help", 
   );
   assert.throws(() => parseCLI(["version", "--yes"]), /not supported/);
   assert.throws(
-    () => parseCLI(["version", "--quiet", "--verbose"]),
+    () => parseCLI(["version", "--quiet", "--verbosity", "verbose"]),
     /cannot be combined/,
   );
 });
@@ -61,7 +61,7 @@ test("errors preserve correlation, classify retries and keep stdout machine read
   assert.equal(invalid.envelope.error.retrySafety, "never");
   const denied = await call(["config", "token", "rotate"]);
   assert.equal(denied.code, 8);
-  const verbose = await call(["version", "--verbose"]);
+  const verbose = await call(["version", "--verbosity", "verbose"]);
   assert.equal(verbose.stdout.trim().split("\n").length, 1);
   assert.equal(
     JSON.parse(verbose.stderr.trim().split("\n")[0]).event,

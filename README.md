@@ -22,7 +22,7 @@ The package exposes a `nightcrew` executable. `src/operations.ts` owns shared oR
 initialization. Every finite command emits one JSON envelope; diagnostics go to
 stderr. Unknown options are rejected. Use `--request <file|->` for JSON inputs,
 `--request-id`, `--home <absolute-path>`, and `--timeout 30s` as needed.
-`--no-input` and `--non-interactive` are supported; commands never prompt.
+`--no-input` is supported; commands never prompt.
 
 ## Initialize and manage the daemon
 
@@ -183,12 +183,12 @@ A timed-out mutation can have an unknown outcome; never blindly retry it.
 `s`, or `m`, up to five minutes. It covers input, local work, IPC, child processes
 and daemon readiness polling. Accepted background runs use their own agent
 timeouts and continue independently. Foreground `daemon run` lasts until stopped.
-`--verbose` and `--verbosity debug` emit structured diagnostics on stderr;
-`--quiet` suppresses them. `--no-input` / `--non-interactive` explicitly select
+`--verbosity verbose` and `--verbosity debug` emit structured diagnostics on stderr;
+`--quiet` suppresses them. `--no-input` explicitly selects
 the CLI's always noninteractive behavior. Required confirmations still use
-`--yes`; neither flag authorizes destructive changes.
+`--yes`; it does not authorize destructive changes.
 
-`capabilities` reports configured model adapter support and tool trust boundaries.
+`models get` includes model adapter capabilities; `doctor` includes fleet capabilities and tool trust boundaries.
 It explicitly marks model-specific inference and interruption as unverified.
 `doctor` checks configuration, references, file availability, executables and
 presence. `doctor --live` additionally checks the existing daemon's PID and status
@@ -750,7 +750,7 @@ A folder can look like this:
       references/guide.md
       assets/template.json
 
-After editing files directly, run nightcrew skills reload (or restart the daemon).
+After editing files directly, run nightcrew config reload (or restart the daemon).
 Reload validates the registry before replacing it. Existing admitted runs keep
 their snapshots; subsequent submissions use the reloaded definitions.
 
@@ -920,7 +920,7 @@ semantic accuracy guarantee.
 Schema version 31 simplifies the CLI. Before v1, breaking changes are allowed;
 remove obsolete commands instead of preserving compatibility aliases. Intentional
 contract changes still require a new immutable schema archive.
-Advanced `skills reload` refreshes both skills and tools after external file edits. Instant inference
+Advanced `config reload` refreshes both skills and tools after external file edits. Instant inference
 executes selected skill reads only; other tool calls remain the client's responsibility.
 
 `evals run` defaults to a 120-minute overall deadline (also its maximum), allowing
@@ -957,7 +957,7 @@ commands for that group. Commands are callable directly regardless of help visib
   `{"expectedRevision":1,"changes":{"scheduler":{"timersEnabled":false}}}`.
   Nested scheduler updates preserve omitted settings. Capacity/model/context
   changes reject active execution and reset the idle runtime as needed.
-- Skills/tools CRUD refreshes registrations automatically. Advanced `skills reload`
+- Skills/tools CRUD refreshes registrations automatically. Advanced `config reload`
   is only needed after externally editing their files.
 - `evals validate/run` are public; sample/release are internal daemon operations.
 
@@ -976,3 +976,35 @@ Use `agents cache clear AGENT_ID --yes` to discard saved KV state.
 Token rotation lives at `config token rotate --yes`; hook recovery lives at
 `runs hooks retry RUN_ID`. Command words never contain hyphens; flags may.
 Removed command names have no compatibility aliases.
+
+### Waiting, tailing and discovery (0.31)
+
+`help` returns a compact command tree. `help agents run` (or
+`agents run --help`) includes that command's options and schema references.
+Use `help --advanced` to include specialist commands.
+
+- `agents run AGENT_ID --request turn.json --wait` submits once and waits for
+  the run's terminal state, respecting scheduling and presence rules.
+- `instant submit --request chat.json --wait` waits for the instant response.
+- `runs transcript RUN_ID --tail` prints recent committed events, then new events
+  by sequence, without replaying earlier pages. The default recent count is 50;
+  use `--limit` to change the batch size (maximum 100).
+- `daemon logs --tail` prints recent lines from active logs and follows appends,
+  rotation and truncation. Use `--lines` to choose the initial count per file.
+
+Waits default to 120 minutes and accept `--timeout` up to 1440 minutes. Tail
+commands run until interrupted unless an explicit timeout is supplied. Tail
+stdout is JSONL: one normal result envelope per batch, with an error envelope
+on timeout or interruption. Finite commands still emit one envelope. Waiting
+returns the same result shape as `runs get` or `instant get`; failed, cancelled
+or timed-out work exits nonzero and includes the terminal result in error details.
+After acceptance, observation errors include `acceptedID` so clients can inspect
+existing work. Timeout, Ctrl+C and closing the CLI do not cancel daemon work;
+use the explicit cancel commands for that. Never resubmit just because waiting
+stopped. Transcript tails include committed events, not live token deltas.
+
+`config reload` reloads externally edited skills and tools. It does not reload
+arbitrary config.json edits or apply listener settings; use `config update`.
+The separate `capabilities` command, `skills reload`, `--verbose`, `-v` and
+`--non-interactive` have been removed without aliases. Use `models get`, `doctor`,
+`config reload`, `--verbosity verbose` and `--no-input` respectively.

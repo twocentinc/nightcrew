@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import path from "node:path";
+import { z } from "zod";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { readFile, lstat, realpath } from "node:fs/promises";
@@ -22,8 +23,10 @@ import {
   Execution,
   parseDuration,
   diagnostic,
+  pause,
   type Verbosity,
 } from "./execution.js";
+import { tailLogs } from "./startup.js";
 export { control, runDaemon } from "./daemon.js";
 export const version = packageVersion;
 const optionTypes: Record<string, string | false> = {
@@ -38,11 +41,12 @@ const optionTypes: Record<string, string | false> = {
   state: "state",
   live: false,
   details: false,
+  wait: false,
+  tail: false,
 };
 const aliases: Record<string, string> = {
   "-h": "--help",
   "-V": "--version",
-  "-v": "--verbose",
 };
 export function parseCLI(argv: string[]) {
   const values: Record<string, string | boolean> = {};
@@ -113,18 +117,10 @@ export function parseCLI(argv: string[]) {
   for (const name of Object.keys(values))
     if (!allowed.has(name))
       throw invalidInput("--" + name + " is not supported by " + selected);
-  if (
-    (values.quiet && (values.verbose || values.verbosity)) ||
-    (values.verbose && values.verbosity)
-  )
-    throw invalidInput("Verbosity flags cannot be combined");
-  const verbosity = String(
-    values.quiet
-      ? "quiet"
-      : values.verbose
-        ? "verbose"
-        : (values.verbosity ?? "normal"),
-  );
+  if (values.quiet && values.verbosity) throw invalidInput("Verbosity flags cannot be combined");
+  const verbosity = String(values.quiet ? "quiet" : (values.verbosity ?? "normal"));
+  if ((values.wait || values.tail) && values["dry-run"]) throw invalidInput("Observation cannot be combined with --dry-run");
+  if (values.tail && values.cursor) throw invalidInput("--tail cannot be combined with --cursor");
   if (!["quiet", "normal", "verbose", "debug"].includes(verbosity))
     throw invalidInput("Invalid verbosity");
   const home = String(
@@ -147,7 +143,7 @@ export function parseCLI(argv: string[]) {
     helpScope,
     values,
     home,
-    timeoutMs: parseDuration(String(values.timeout ?? (selected === "evals run" ? "120m" : "90s")), selected === "evals run" ? 7200000 : 300000),
+    timeoutMs: values.tail && !values.timeout ? Infinity : parseDuration(String(values.timeout ?? (selected === "evals run" || values.wait ? "120m" : "90s")), values.wait || values.tail ? 86400000 : selected === "evals run" ? 7200000 : 300000),
     verbosity: verbosity as Verbosity,
   };
 }
@@ -184,6 +180,8 @@ export async function main(argv = process.argv.slice(2)) {
   let requestID: string = randomUUID(),
     command = "cli",
     mutation = false;
+  let cleanup = () => {};
+  let accepted: {kind: string; id: string} | undefined;
   try {
     // Preserve correlation even when option or command validation fails.
     const inlineID = argv.find((a) => a.startsWith("--request-id="));
@@ -196,6 +194,12 @@ export async function main(argv = process.argv.slice(2)) {
     requestID = String(args.values["request-id"] ?? requestID);
     mutation = args.definition.mutates && !args.values["dry-run"];
     const execution = new Execution(args.timeoutMs, mutation, args.verbosity);
+    const interrupt = () => execution.controller.abort(new NightcrewError("cli.interrupted", "Observation interrupted; daemon work was not cancelled", 1, "never"));
+    if (args.values.wait || args.values.tail) {
+      process.once("SIGINT", interrupt);
+      process.once("SIGTERM", interrupt);
+      cleanup = () => { process.off("SIGINT", interrupt); process.off("SIGTERM", interrupt); };
+    }
     const context: CommandContext = {
       home: args.home,
       resourceID: args.resourceID,
@@ -242,7 +246,17 @@ export async function main(argv = process.argv.slice(2)) {
           "never",
           { authorizationFlag: "--yes" },
         );
-      const output = await args.definition.handler(context);
+      if (args.values.tail) {
+        if (command === "runs transcript" && (context.request as {cursor?:string}).cursor) throw invalidInput("--tail cannot be combined with a cursor");
+        await tailCommand(context, command, result => process.stdout.write(JSON.stringify(successEnvelopeSchema.parse({version:1, requestID, command, ok:true, result})) + "\n"));
+        return;
+      }
+      let output = await args.definition.handler(context);
+      if (args.values.wait) {
+        const value = output as {runID?:string; requestID?:string};
+        accepted = {kind: command === "agents run" ? "run" : "instant", id: (command === "agents run" ? value.runID : value.requestID)!};
+        output = await waitForWork(context, accepted.kind, accepted.id);
+      }
       execution.check();
       let validated;
       try {
@@ -272,7 +286,8 @@ export async function main(argv = process.argv.slice(2)) {
     });
     process.stdout.write(JSON.stringify(envelope) + "\n");
   } catch (e) {
-    const error = normalizeError(e, mutation);
+    const normalized = normalizeError(e, mutation);
+    const error = accepted ? new NightcrewError(normalized.code, normalized.message, normalized.exitCode, "never", {...normalized.details, outcomeUnknown:false, acceptedID:accepted.id, kind:accepted.kind, cancelled:false}) : normalized;
     process.stdout.write(
       JSON.stringify(
         errorEnvelopeSchema.parse({
@@ -285,6 +300,33 @@ export async function main(argv = process.argv.slice(2)) {
       ) + "\n",
     );
     process.exitCode = error.exitCode;
+  } finally { cleanup(); }
+}
+// These observers use the same command contracts as ordinary CLI requests.
+export async function waitForWork(context: CommandContext, kind: string, id: string) {
+  const definition = getCommand(kind === "run" ? "runs get" : "instant get")!;
+  while (true) {
+    const output = definition.result.parse(await definition.handler({...context, resourceID:id, request:{}, values:{}}));
+    const value = output as {run?:{state:string}; state?:string};
+    const state = value.run?.state ?? value.state ?? "";
+    if (state === "completed") return output;
+    if (["failed", "cancelled", "timedOut"].includes(state)) throw new NightcrewError("cli.workFailed", "Submitted work ended with state " + state, 1, "never", {result: z.json().parse(output)});
+    await pause(500);
+  }
+}
+export async function tailCommand(context: CommandContext, command: string, emit: (output: unknown) => void) {
+  const definition = getCommand(command)!;
+  if (command === "daemon logs") {
+    for await (const page of tailLogs(context.home, Number(context.values.lines ?? 100))) emit(definition.result.parse(page));
+    return;
+  }
+  const request = context.request as {limit?:number; afterSequence?:number; recent?:boolean};
+  let sequence = request.afterSequence;
+  while (true) {
+    const output = definition.result.parse(await definition.handler({...context, request:{limit:request.limit ?? 50, ...(sequence === undefined ? {recent:true} : {afterSequence:sequence})}})) as {items:Array<{sequence:number}>};
+    if (output.items.length) emit(output);
+    sequence = output.items.at(-1)?.sequence ?? sequence ?? 0;
+    if (output.items.length < (request.limit ?? 50)) await pause(500);
   }
 }
 if (

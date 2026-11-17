@@ -99,6 +99,10 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
   assert.equal(readSkill.result.skills[0].instructions, "Use inspect.");
   assert.equal((await call(home, ["schema", "get", "skills.read"])).ok, true);
 
+  const modelDetails = await call(home, ["models", "get", "qwen"]);
+  assert.equal(modelDetails.ok, true);
+  assert.equal(modelDetails.result.capabilities.tools.adapterSupported, true);
+  assert.equal(modelDetails.result.capabilities.tools.modelVerified, false);
   const agent = {
     agentID: "reviewer",
     name: "reviewer",

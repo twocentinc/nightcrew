@@ -97,3 +97,9 @@ Command names must use separate words, never hyphens. Flags may use hyphens.
 HTTP listening is controlled by config.httpEnabled; never require an HTTP listener
 for local CLI control. Cache inspection belongs in agents get, and root token
 rotation belongs under config.
+
+CLI wait/tail observers compose existing read contracts and never cancel accepted
+work when a client disconnects, times out or receives a signal. Finite commands
+emit one envelope; tails emit JSONL batches. Preserve accepted IDs on observation
+errors. Transcript tails advance by committed event sequence; log tails follow
+byte offsets and inodes without deduplicating identical lines by their text.
