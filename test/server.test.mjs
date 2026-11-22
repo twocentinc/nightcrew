@@ -232,14 +232,11 @@ test("durable UUID deduplication, dry runs, per-message attachments and restart 
     (await q("POST", `/v1/runs/${first.body.runID}/cancel`, {})).body.status,
     "cancelled",
   );
-  assert.equal(
-    (
-      await q("POST", `/v1/runs/${first.body.runID}/replies`, {
-        message: message(),
-      })
-    ).status,
-    409,
-  );
+  const continued = await q("POST", `/v1/runs/${first.body.runID}/replies`, {
+    message: message(),
+  });
+  assert.equal(continued.status, 202);
+  assert.equal(continued.body.runID, first.body.runID);
 });
 test("interactive requests are ephemeral, retryable by UUID and never execute client tools", async (t) => {
   const f = await fixture(t);

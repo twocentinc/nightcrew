@@ -4,6 +4,10 @@ Standalone local-agent daemon and JSON-first CLI. Nightcrew owns its HTTP server
 local control socket, llama.cpp processes, scheduling and run transcripts.
 It has no the client application or Guildscribe runtime dependency.
 
+The public contract is frozen at protocol 1 / schema 34. See
+[compatibility and upgrade policy](docs/compatibility.md) for the stable surfaces
+and release rules. This is a pre-1.0 baseline, not a completed 1.0 release.
+
 ## Build and discover
 
 Requires Node 22.12+ and a compatible `llama-server` on PATH.
@@ -34,7 +38,6 @@ nightcrew init
 nightcrew doctor
 nightcrew daemon install --dry-run
 nightcrew daemon install
-nightcrew daemon status
 nightcrew daemon status
 nightcrew daemon logs --lines 100
 nightcrew daemon stop
@@ -135,6 +138,10 @@ no separate RPC transport. The owner-only local control socket is for the CLI,
 not remote clients.
 
 Configuration is `config.json`; each run owns `runs/<runID>/state.json`.
+Completed and cancelled runs accept replies; a cancelled run starts a new segment
+without replaying cancelled work or pending inputs. Unresolved tool calls are
+recorded as unknown outcomes. Failed/timed-out fresh runs require explicit recovery.
+
 New run records use version 2 with tool snapshots; version 1 records remain
 readable and move to version 2 on their next write. Text and files belong to
 individual UUID-identified messages. Interactive chat state is memory-only and
@@ -219,7 +226,7 @@ presence. These commands do not load models or override presence detection.
 
 Command and JSON Schema snapshots live under `test/snapshots`. `npm run
 contracts:check` rejects drift. When intentionally changing the contract,
-increment `SCHEMA_VERSION` in `src/protocol.ts`, then run `npm run
+first review [compatibility.md](docs/compatibility.md), then increment `SCHEMA_VERSION` in `src/protocol.ts`, then run `npm run
 contracts:update`; old version archives must remain unchanged. Package versions
 are independent. `npm test` checks the contracts and integration behavior.
 `npm run test:package` packs the allowlisted distribution, independently installs
@@ -917,9 +924,9 @@ semantic accuracy guarantee.
 
 ### Stable CLI baseline
 
-Schema version 31 simplifies the CLI. Before v1, breaking changes are allowed;
-remove obsolete commands instead of preserving compatibility aliases. Intentional
-contract changes still require a new immutable schema archive.
+The schema 34 public contract is frozen; follow [compatibility.md](docs/compatibility.md).
+Previously removed commands remain absent. New contract changes require compatibility
+review as well as a new immutable schema archive.
 Advanced `config reload` refreshes both skills and tools after external file edits. Instant inference
 executes selected skill reads only; other tool calls remain the client's responsibility.
 
@@ -961,8 +968,8 @@ commands for that group. Commands are callable directly regardless of help visib
   is only needed after externally editing their files.
 - `evals validate/run` are public; sample/release are internal daemon operations.
 
-Removed command groups and verbs are rejected, not aliased. This pre-v1 project
-allows breaking contract changes; upgrade local hooks/scripts alongside the CLI.
+Previously removed command groups and verbs remain rejected, not aliased.
+The current surface is protected by the schema 34 compatibility freeze.
 
 ### Local-only operation (0.30)
 

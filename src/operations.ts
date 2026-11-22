@@ -625,7 +625,7 @@ export const operations = {
   ),
   "runs reply": defineOperation(
     "runs reply",
-    "Submit a continuation",
+    "Submit a continuation to a completed or cancelled run",
     acceptanceSchema,
     true,
     "required",

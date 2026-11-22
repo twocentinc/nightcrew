@@ -497,3 +497,50 @@ test('runs pause interrupts active generation and holds across restart until res
   await until(async()=> (await f.service.run(run.runID)).state==='completed');
   assert.equal(calls,2);
 });
+
+test("fresh runs accept a reply after cancellation without replaying cancelled work", async (t) => {
+  const inputs = [];
+  const f = await setup(t, async (input, signal) => {
+    inputs.push(input);
+    if (input.messages.at(-1).content === "first") {
+      await new Promise(resolve => signal.addEventListener("abort", resolve, { once: true }));
+      signal.throwIfAborted();
+    }
+    return done;
+  });
+  await f.agent("daily", { contextMode: "fresh" });
+  const first = await f.service.submit("daily", message("first"));
+  await until(() => inputs.length === 1);
+  await f.service.cancelRun(first.runID);
+  const cancelled = await f.service.run(first.runID);
+  assert.equal(cancelled.state, "cancelled");
+  cancelled.messages.push({messageID: randomUUID(), role: "assistant", content: "", attachments: [],
+    toolCalls: [{callID: "unfinished", name: "mutation", arguments: "{}"}], toolCallID: null});
+  cancelled.held = true;
+  const childID = randomUUID();
+  await f.service.storage.write({...structuredClone(cancelled), runID:childID,
+    state:"paused",parentRunID:first.runID,compaction:null,
+    messages:[{...cancelled.messages[0],messageID:randomUUID()}],events:[]},true);
+  cancelled.compaction = {retries:0,requestID:randomUUID(),coveredThrough:1,
+    targetTokens:100,inputTokens:200,childRunID:childID,status:"failed",summary:null,handler:null};
+  await f.service.storage.write(cancelled);
+  await f.restart();
+  const next = message("continue");
+  await f.service.submit(first.runID, next, true, true);
+  assert.equal((await f.service.run(first.runID)).state, "cancelled");
+  assert.equal((await f.service.run(childID)).state, "paused");
+  const accepted = await f.service.submit(first.runID, next, true);
+  assert.equal(accepted.runID, first.runID);
+  await until(async () => (await f.service.run(first.runID)).state === "completed");
+  const run = await f.service.run(first.runID);
+  assert.equal(run.segment, 1);
+  assert.equal(run.compaction, null);
+  assert.equal((await f.service.run(childID)).state, "cancelled");
+  assert.equal(run.held, false);
+  assert.equal(inputs.length, 2);
+  const result = inputs[1].messages.find(m => m.toolCallID === "unfinished");
+  assert.equal(JSON.parse(result.content).error.outcome, "unknown");
+  assert.equal((await f.service.submit(first.runID, next, true)).replayed, true);
+  assert.equal(run.messages.filter(m => m.messageID === next.messageID).length, 1);
+  assert.ok(run.events.some(e => e.type === "cancelled"));
+});

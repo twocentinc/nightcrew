@@ -1,6 +1,7 @@
 # Nightcrew specification
 
-Status: implemented contract through 0.23.0 (schema 28), with validation limits listed below.
+Status: frozen public baseline 0.31.4, protocol 1, schema 34.
+See [compatibility.md](compatibility.md) for stable surfaces and change policy.
 Runtime schemas and registered procedures are authoritative; this document
 explains behavior rather than maintaining another endpoint inventory.
 
@@ -126,7 +127,10 @@ Hook delivery receipts remain necessary to record external delivery attempts.
 Single-turn agents finish after one model response. Agent-loop agents execute
 allowed tool calls until a final response or limit. Active time counts against
 the agent timeout; paused time does not. Interruption preserves the run for
-resumption. Completed runs can receive replies. Run state and event history
+resumption. Completed and cancelled runs can receive replies. A reply to a
+cancelled run starts a new segment in the same transcript, clears its scheduling
+hold, and does not resume the cancelled turn or its pending inputs. Failed and
+timed-out fresh runs still require explicit recovery. Run state and event history
 remain authoritative over daemon logs.
 
 Thinking can be overridden on each user turn; omission uses the agent default.
@@ -273,8 +277,9 @@ schema, identity, event order, references and bundle consistency. It never invok
 models or tools.
 
 Normal tests use mock inference and temporary homes. The opt-in real-model suite
-is documented in live-validation.md and excluded from npm test. It was prepared
-but not executed for this milestone. Remaining empirical work includes long-run
+is documented in live-validation.md and excluded from npm test. Controlled real-model acceptance passed on November 16 with a resumed audio
+fixture, as recorded in [acceptance.md](acceptance.md). This was not a clean
+uninterrupted overnight soak or abrupt-crash test. Remaining empirical work includes long-run
 storage growth, preemption latency, residency/concurrency memory use, and summary
 quality. No UI, automatic transcript pruning, distributed scheduling or per-client
 authorization is promised by this contract.
@@ -536,7 +541,8 @@ it is never silently truncated or recursively compacted by the child.
 
 ## CLI simplification, schema 31
 
-The pre-v1 CLI intentionally removes superseded names without aliases. Public
+The schema 31 simplification removed superseded names without aliases.
+The schema 34 freeze now governs further changes. Public
 commands use `instant` for interactive requests and `daemon` for LaunchAgent
 management plus foreground execution. `status` includes fleet/runtime/presence;
 `--details` includes scheduling. `daemon status` reports local service installation.
@@ -554,7 +560,7 @@ Cache inspection is part of `agents get`; saved cache removal is
 is `config token rotate`. Command words use spaces rather than hyphens.
 The boolean config field `httpEnabled` defaults to true. Setting it false and
 restarting disables the HTTP listener, while local CLI control remains available.
-These replacements have no aliases before v1.
+The replaced names remain absent; the freeze protects the current names.
 
 ## CLI observation and discovery (schema 33)
 

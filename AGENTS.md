@@ -77,8 +77,10 @@ them without explicit authorization for inference.
 
 
 
-Before v1, breaking changes are allowed. Remove superseded commands and update
-all first-party callers; do not add compatibility aliases for abandoned workflows. Keep
+The public contract is frozen at schema 34; follow `docs/compatibility.md`.
+Do not remove or rename public commands, tighten accepted inputs, or change
+execution semantics without explicitly reopening the freeze. Schema increments
+alone do not authorize breaking changes. Keep
 scheduler, cache and eval response schemas explicit. Eval suite CLI deadlines
 are separate from individual case limits and ordinary management deadlines.
 

@@ -537,7 +537,7 @@
     },
     {
       "confirmation": false,
-      "description": "Submit a continuation",
+      "description": "Submit a continuation to a completed or cancelled run",
       "mutates": true,
       "name": "runs reply",
       "operand": "required",
@@ -946,5 +946,5 @@
     "version": false
   },
   "protocolVersion": 1,
-  "schemaVersion": 33
+  "schemaVersion": 34
 }

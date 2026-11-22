@@ -832,9 +832,11 @@ export class Service {
       previous &&
       a.contextMode !== "persistent" &&
       previous.state !== "completed" &&
+      previous.state !== "cancelled" &&
       !retryNote
     )
       fail("run_not_completed", 409);
+    const cancelledChildID = previous?.state === "cancelled" ? previous.compaction?.childRunID : null;
     const r: Run = previous ?? {
       reviews: [],
       deliveryExpected: false,
@@ -884,6 +886,29 @@ export class Service {
       hookReceipts: [],
     };
     if (previous) {
+      // A new user message continues the conversation, not the cancelled work.
+      if (previous.state === "cancelled") {
+        r.held = false;
+        // A cancelled segment's pending compaction must not block the new turn.
+        r.compaction = null;
+        // Close unresolved tool calls without replaying potentially mutating work.
+        const answered = new Set(r.messages.map((m) => m.toolCallID));
+        for (const call of r.messages.flatMap((m) => m.toolCalls)) {
+          if (answered.has(call.callID)) continue;
+          const messageID = randomUUID();
+          r.messages.push({
+            messageID,
+            role: "tool",
+            content: JSON.stringify({ ok: false, error: {
+              code: "run_cancelled", outcome: "unknown",
+              message: "The run was cancelled before a tool result was recorded. Do not assume success or automatically repeat this action.",
+            } }),
+            attachments: [], toolCalls: [], toolCallID: call.callID,
+          });
+          answered.add(call.callID);
+          this.event(r, "toolResult", { messageID });
+        }
+      }
       r.agent = structuredClone(a);
       r.skills = a.skillIDs.map((id) => structuredClone(this.skills.get(id)!));
       r.toolSnapshots = this.agentToolIDs(a).map((id) =>
@@ -922,6 +947,19 @@ export class Service {
     if (Buffer.byteLength(JSON.stringify(r)) > 56 * 1024 * 1024)
       fail("run_capacity", 507);
     if (!dryRun) {
+      if (cancelledChildID && this.storage.summaries.has(cancelledChildID)) {
+        const child = await this.run(cancelledChildID);
+        if (!terminal(child.state)) {
+          const activity = this.activities.get(cancelledChildID);
+          if (activity) activity.controller.abort("cancelled");
+          else {
+            child.state = "cancelled";
+            child.pauseReason = null;
+            this.event(child, "cancelled", {});
+            await this.save(child);
+          }
+        }
+      }
       await this.storage.write(r, !previous);
       if (this.runInteractive(r)) {
         await this.recordInteraction();
