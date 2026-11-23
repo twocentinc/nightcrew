@@ -112,6 +112,7 @@ export async function manage(
     return service.submitChat(request, { sampling: request.sampling });
   }
   if (resource === "instant") {
+    if (action === "unload") return service.unloadInstant(dryRun);
     if (action === "submit") {
       if (dryRun)
         return { changed: false, request: requestSchemas[command]!.parse(raw) };
@@ -331,6 +332,8 @@ export async function manage(
       dryRun,
     );
   }
+  if (command === "runs capabilities refresh")
+    return service.refreshRunCapabilities(name ?? fail("missing_id"), operationInputs[command].parse(raw).expectedRevision, dryRun);
   if (command === "runs review")
     return service.reviewRun(
       name ?? fail("missing_id"),
@@ -349,6 +352,8 @@ export async function manage(
       operationInputs[command].parse(raw),
       dryRun,
     );
+  if (command === "runs annotate")
+    return service.annotateRun(name ?? fail("missing_id"), operationInputs[command].parse(raw), dryRun);
   if (command === "runs pause")
     return service.pauseRun(name ?? fail("missing_id"), operationInputs[command].parse(raw).expectedRevision, dryRun);
   if (command === "runs resume")

@@ -28,6 +28,7 @@ export const operationInputs = {
     status: z.enum(["open", "acknowledged", "resolved"]),
     note: z.string().trim().min(1).max(2000),
   }),
+  "runs capabilities refresh": z.strictObject({ expectedRevision: revision }),
   "runs resume": z.strictObject({ expectedRevision: revision }),
   "runs retry": z.strictObject({
     expectedRevision: revision,
@@ -43,8 +44,13 @@ export const operationInputs = {
     hookPath: z.string().max(4096).optional(),
   }),
   "agents run": z.strictObject({ message: userMessageSchema }),
+  "runs annotate": z.strictObject({
+    messageID: uuid,
+    content: z.string().trim().min(1).max(4000),
+  }),
   "runs reply": z.strictObject({ message: userMessageSchema }),
   "instant submit": chatInputSchema,
+  "instant unload": z.strictObject({}),
   "triggers create": z.strictObject({ trigger: triggerDraftSchema }),
   "triggers update": z.strictObject({
     expectedRevision: revision,
@@ -59,7 +65,6 @@ export const operationInputs = {
   }),
   "triggers delete": z.strictObject({ expectedRevision: revision }),
 
-
   "triggers fire": z.strictObject({
     occurrenceID: uuid.optional(),
     message: userMessageSchema.omit({ messageID: true }).optional(),
@@ -67,15 +72,21 @@ export const operationInputs = {
 
   "runs pause": z.strictObject({ expectedRevision: revision }),
 
-
   "runs list": pageSchema.extend({
     agentID: id.optional(),
     state: runState.optional(),
   }),
-  "runs transcript": pageSchema.extend({
-    afterSequence: z.number().int().nonnegative().optional(),
-    recent: z.boolean().optional(),
-  }).refine(v => !(v.cursor && (v.afterSequence !== undefined || v.recent)) && !(v.recent && v.afterSequence !== undefined), "Cannot combine cursor, recent and afterSequence"),
+  "runs transcript": pageSchema
+    .extend({
+      afterSequence: z.number().int().nonnegative().optional(),
+      recent: z.boolean().optional(),
+    })
+    .refine(
+      (v) =>
+        !(v.cursor && (v.afterSequence !== undefined || v.recent)) &&
+        !(v.recent && v.afterSequence !== undefined),
+      "Cannot combine cursor, recent and afterSequence",
+    ),
   "runs search": pageSchema.extend({
     agentID: id.optional(),
     state: runState.optional(),
@@ -104,7 +115,15 @@ export const operationInputs = {
       .extend({
         httpEnabled: configSchema.shape.httpEnabled.unwrap().optional(),
         logging: loggingSchema.optional(),
-        scheduler: z.strictObject(Object.fromEntries(Object.entries(configSchema.shape.scheduler.unwrap().shape).map(([key, field]) => [key, field.unwrap().optional()]))).optional(),
+        scheduler: z
+          .strictObject(
+            Object.fromEntries(
+              Object.entries(configSchema.shape.scheduler.unwrap().shape).map(
+                ([key, field]) => [key, field.unwrap().optional()],
+              ),
+            ),
+          )
+          .optional(),
       }),
   }),
   "agents create": z.strictObject({ agent: agentDraftSchema }),
@@ -114,6 +133,7 @@ export const operationInputs = {
       .omit({ agentID: true, revision: true, createdAt: true, updatedAt: true })
       .partial()
       .extend({
+        finishSchema: agentSchema.shape.finishSchema.unwrap().optional(),
         outputValidation: agentSchema.shape.outputValidation
           .unwrap()
           .optional(),
@@ -129,7 +149,6 @@ export const operationInputs = {
         maxOutputTokens: z.number().int().min(1).max(32768).optional(),
       }),
   }),
-
 
   "agents delete": z.strictObject({ expectedRevision: revision }),
   "models create": z.strictObject({
@@ -147,8 +166,6 @@ export const operationInputs = {
     }),
   }),
   "models delete": z.strictObject({ expectedRevision: revision }),
-
-
 
   "skills read": skillLoadInputSchema.extend({ runID: id.optional() }),
   "skills create": z.strictObject({ skill: skillSchema }),

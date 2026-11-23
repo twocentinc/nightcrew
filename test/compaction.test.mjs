@@ -26,13 +26,13 @@ async function until(fn) {
   }
   throw Error("Timeout");
 }
-async function fixture(t, handler, summary = "Short summary") {
+async function fixture(t, handler, summary = "Short summary", threshold = 400) {
   const home = await mkdtemp(path.join(tmpdir(), "nc-compact-"));
   await initializeHome(home, {
     host: "127.0.0.1",
     port: 6970,
     interactionCooldownMs: 0,
-    scheduler: { contextTokens: 2048 },
+    scheduler: { contextTokens: threshold > 2048 ? 65536 : 2048 },
     models: [
       {
         modelID: "q",
@@ -40,7 +40,7 @@ async function fixture(t, handler, summary = "Short summary") {
         weightsPath: "/unused",
         projectorPath: null,
         idleUnloadMs: 300000,
-        compactionThresholdTokens: 400,
+        compactionThresholdTokens: threshold,
       },
     ],
     slots: [],
@@ -455,12 +455,20 @@ test("summary budget reserves retained context and bounds the child output reser
 
 test("thinking compactors retain their generation budget and enable reasoning", async (t) => {
   const f = await fixture(t, { type: "agent", agentID: "summarizer" });
-  await f.service.patchAgent("summarizer", f.service.agent("summarizer").revision,
-    { thinking: true, maxOutputTokens: 256 });
+  await f.service.patchAgent(
+    "summarizer",
+    f.service.agent("summarizer").revision,
+    { thinking: true, maxOutputTokens: 256 },
+  );
   const original = f.runtime.countTokens;
   f.runtime.countTokens = async (input) =>
-    input.messages.some((m) => m.content.startsWith("Previous conversation summary"))
-      ? 340 : input.thinking ? 10 : original(input);
+    input.messages.some((m) =>
+      m.content.startsWith("Previous conversation summary"),
+    )
+      ? 340
+      : input.thinking
+        ? 10
+        : original(input);
   await f.service.submit("worker", message("b".repeat(600)));
   const done = await until(async () => {
     const r = await f.service.run(f.runID);
@@ -469,31 +477,62 @@ test("thinking compactors retain their generation budget and enable reasoning", 
   const child = await f.service.run(done.compactions[0].childRunID);
   assert.equal(child.agent.maxOutputTokens, 256);
   assert.equal(child.agent.thinking, true);
-  assert.ok(f.calls.some((input) => input.thinking && input.maxOutputTokens === 256 && input.reasoningBudgetTokens === 128));
+  assert.ok(
+    f.calls.some(
+      (input) =>
+        input.thinking &&
+        input.maxOutputTokens === 256 &&
+        input.reasoningBudgetTokens === 128,
+    ),
+  );
 });
 
 test("summary evidence discrepancies warn without holding or replacing source history", async (t) => {
-  const f = await fixture(t, script(`console.log(JSON.stringify({summary:'98% approved evidence-deadbeef'}))`));
+  const f = await fixture(
+    t,
+    script(
+      `console.log(JSON.stringify({summary:'98% approved evidence-deadbeef'}))`,
+    ),
+  );
   await f.service.submit("worker", message("b".repeat(600)));
   const done = await until(async () => {
     const r = await f.service.run(f.runID);
     return r.state === "completed" && r;
   });
   assert.equal(done.compactions.length, 1);
-  assert.match(done.events.find(e => e.type === "compacted").data.warnings[0], /unsupported numeric/);
-  assert.equal(done.events.some(e => e.type === "compactionRetry"), false);
-  assert.deepEqual(done.messages.slice(0, f.original.messages.length), f.original.messages);
+  assert.match(
+    done.events.find((e) => e.type === "compacted").data.warnings[0],
+    /unsupported numeric/,
+  );
+  assert.equal(
+    done.events.some((e) => e.type === "compactionRetry"),
+    false,
+  );
+  assert.deepEqual(
+    done.messages.slice(0, f.original.messages.length),
+    f.original.messages,
+  );
 });
 
 test("unknown citation IDs are retained as warnings without blocking agent compaction", async (t) => {
-  const f = await fixture(t, { type: "agent", agentID: "summarizer" }, "Source evidence-deadbeef");
+  const f = await fixture(
+    t,
+    { type: "agent", agentID: "summarizer" },
+    "Source evidence-deadbeef",
+  );
   await f.service.submit("worker", message("b".repeat(600)));
   const done = await until(async () => {
     const r = await f.service.run(f.runID);
     return r.state === "completed" && r;
   });
-  assert.match(done.events.find(e => e.type === "compacted").data.warnings[0], /unknown evidence ID/);
-  assert.equal(done.events.some(e => e.type === "compactionRetry"), false);
+  assert.match(
+    done.events.find((e) => e.type === "compacted").data.warnings[0],
+    /unknown evidence ID/,
+  );
+  assert.equal(
+    done.events.some((e) => e.type === "compactionRetry"),
+    false,
+  );
 });
 
 test("compaction retains per-turn output constraints when replacing context", async (t) => {
@@ -572,7 +611,7 @@ test("template failures are held as runtime errors and retain the actual cause",
   await until(async () => (await f.service.run(f.runID)).state === "completed");
 });
 
-test("bad agent summary retries with a smaller target, preserves failed child and resumes", async (t) => {
+test("bad agent summary retries with the same target, preserves failed child and resumes", async (t) => {
   const f = await fixture(t, { type: "agent", agentID: "summarizer" });
   const generate = f.runtime.generate;
   let summaries = 0;
@@ -595,7 +634,7 @@ test("bad agent summary retries with a smaller target, preserves failed child an
     return r.state === "completed" && r.compactions.length && r;
   });
   assert.equal(summaries, 2);
-  assert.ok(targets[1] < targets[0]);
+  assert.equal(targets[1], targets[0]);
   const retry = done.events.find((e) => e.type === "compactionRetry");
   assert.match(retry.data.message, /valid summary/);
   const first = await f.service.run(retry.data.childRunID);
@@ -608,11 +647,7 @@ test("bad agent summary retries with a smaller target, preserves failed child an
 });
 
 test("agent compaction retries are bounded and remain exhausted across restart", async (t) => {
-  const f = await fixture(
-    t,
-    { type: "agent", agentID: "summarizer" },
-    "",
-  );
+  const f = await fixture(t, { type: "agent", agentID: "summarizer" }, "");
   await f.service.submit("worker", message("b".repeat(600)));
   const held = await until(async () => {
     const r = await f.service.run(f.runID);
@@ -675,153 +710,367 @@ test("compactor runtime errors hold the parent without summary retry and resume 
   assert.equal(done.compactions[0].childRunID, held.compaction.childRunID);
 });
 
-
 test("summary evidence ignores list ordinals but still rejects invented quantities", () => {
-  const request = { previousSummary: null, messages: [{ content: "Budget $50/day; confirmed" }] };
-  assert.doesNotThrow(() => validateSummaryEvidence(
-    "Facts: 1) Confirmed; 6) Budget $50/day; 8) Pending; 10) Follow up\n12. Check status", request));
-  for (const summary of ["Facts: 6) Budget $98/day", "Progress: 6 pages remain", "1. Approved 98%", "6) 10 messages read"])
-    assert.throws(() => validateSummaryEvidence(summary, request), /unsupported numeric/);
+  const request = {
+    previousSummary: null,
+    messages: [{ content: "Budget $50/day; confirmed" }],
+  };
+  assert.doesNotThrow(() =>
+    validateSummaryEvidence(
+      "Facts: 1) Confirmed; 6) Budget $50/day; 8) Pending; 10) Follow up\n12. Check status",
+      request,
+    ),
+  );
+  for (const summary of [
+    "Facts: 6) Budget $98/day",
+    "Progress: 6 pages remain",
+    "1. Approved 98%",
+    "6) 10 messages read",
+  ])
+    assert.throws(
+      () => validateSummaryEvidence(summary, request),
+      /unsupported numeric/,
+    );
 });
-
 
 test("summary timestamp formatting tolerates lower precision without whitelisting quantities", () => {
-  const request = { previousSummary:null, messages:[{content:'2026-11-11T05:42:35.293Z'}] };
-  assert.doesNotThrow(()=>validateSummaryEvidence('Window: 2026-11-11 05:42:35Z',request));
-  assert.doesNotThrow(()=>validateSummaryEvidence('2026-11-11T05:42:35.29Z',request));
-  for(const summary of ['Count: 35', '2026-11-11T05:42:36Z', '2026-11-11T05:42:35.294Z'])
-    assert.throws(()=>validateSummaryEvidence(summary,request),/unsupported numeric/);
+  const request = {
+    previousSummary: null,
+    messages: [{ content: "2026-11-11T05:42:35.293Z" }],
+  };
+  assert.doesNotThrow(() =>
+    validateSummaryEvidence("Window: 2026-11-11 05:42:35Z", request),
+  );
+  assert.doesNotThrow(() =>
+    validateSummaryEvidence("2026-11-11T05:42:35.29Z", request),
+  );
+  for (const summary of [
+    "Count: 35",
+    "2026-11-11T05:42:36Z",
+    "2026-11-11T05:42:35.294Z",
+  ])
+    assert.throws(
+      () => validateSummaryEvidence(summary, request),
+      /unsupported numeric/,
+    );
 });
-
 
 test("summary quantities accept formatting but not changed values or derived percentages", () => {
-  const request={previousSummary:null,messages:[{content:'1665 8004708 79221 3136 2610 12.5 9007199254740993 -1234 25% 3/4'}]};
-  for(const value of ['1,665','8,004,708','79,221','3,136','2,610','12.500','9,007,199,254,740,993','-1,234','25.0%','3/4','1\u202f665','1\u00a0665'])
-    assert.doesNotThrow(()=>validateSummaryEvidence(value,request),value);
-  for(const value of ['1,666','90%','0.25','9007199254740992','12.6','16,65','3/5'])
-    assert.throws(()=>validateSummaryEvidence(value,request),/unsupported numeric/,value);
-  assert.doesNotThrow(()=>validateSummaryEvidence('1665',{previousSummary:'1,665',messages:[]}));
+  const request = {
+    previousSummary: null,
+    messages: [
+      {
+        content:
+          "1665 8004708 79221 3136 2610 12.5 9007199254740993 -1234 25% 3/4",
+      },
+    ],
+  };
+  for (const value of [
+    "1,665",
+    "8,004,708",
+    "79,221",
+    "3,136",
+    "2,610",
+    "12.500",
+    "9,007,199,254,740,993",
+    "-1,234",
+    "25.0%",
+    "3/4",
+    "1\u202f665",
+    "1\u00a0665",
+  ])
+    assert.doesNotThrow(() => validateSummaryEvidence(value, request), value);
+  for (const value of [
+    "1,666",
+    "90%",
+    "0.25",
+    "9007199254740992",
+    "12.6",
+    "16,65",
+    "3/5",
+  ])
+    assert.throws(
+      () => validateSummaryEvidence(value, request),
+      /unsupported numeric/,
+      value,
+    );
+  assert.doesNotThrow(() =>
+    validateSummaryEvidence("1665", { previousSummary: "1,665", messages: [] }),
+  );
 });
 
-
-test("summary decimal display rounding preserves sign and units without rounding integer IDs",()=>{
-  const request={previousSummary:null,messages:[{content:'3136.409090909091 2610.4166666666665 -1234.567 9007199254740993 99.95%'}]};
-  for(const value of ['3,136','2,610','2610.42','-1,234.57','-1235','100%']) assert.doesNotThrow(()=>validateSummaryEvidence(value,request));
-  for(const value of ['3137','2611','1235','9007199254740990','90%']) assert.throws(()=>validateSummaryEvidence(value,request),/unsupported numeric/);
+test("summary decimal display rounding preserves sign and units without rounding integer IDs", () => {
+  const request = {
+    previousSummary: null,
+    messages: [
+      {
+        content:
+          "3136.409090909091 2610.4166666666665 -1234.567 9007199254740993 99.95%",
+      },
+    ],
+  };
+  for (const value of [
+    "3,136",
+    "2,610",
+    "2610.42",
+    "-1,234.57",
+    "-1235",
+    "100%",
+  ])
+    assert.doesNotThrow(() => validateSummaryEvidence(value, request));
+  for (const value of ["3137", "2611", "1235", "9007199254740990", "90%"])
+    assert.throws(
+      () => validateSummaryEvidence(value, request),
+      /unsupported numeric/,
+    );
 });
 
-
-test("summary scanned/total notation accepts only existing component counts",()=>{
-  const request={previousSummary:null,messages:[{content:'scanned 221 out of 79221 rows'}]};
-  assert.doesNotThrow(()=>validateSummaryEvidence('221/79221 rows',request));
-  for(const value of ['222/79221','221/79222','0.28%']) assert.throws(()=>validateSummaryEvidence(value,request),/unsupported numeric/);
+test("summary scanned/total notation accepts only existing component counts", () => {
+  const request = {
+    previousSummary: null,
+    messages: [{ content: "scanned 221 out of 79221 rows" }],
+  };
+  assert.doesNotThrow(() => validateSummaryEvidence("221/79221 rows", request));
+  for (const value of ["222/79221", "221/79222", "0.28%"])
+    assert.throws(
+      () => validateSummaryEvidence(value, request),
+      /unsupported numeric/,
+    );
 });
 
 test("source references restore exact generic records, not model-written claim/ID pairs", async () => {
-  const {sourceEvidence,retainedSourceEvidence,evidenceContext}=await import('../dist/compaction.js');
-  const records=[{id:'issue-a',owner:'A',text:'Could we ship before Friday?'},{id:'issue-b',owner:'B',text:'Not committed; estimate is still pending.'}];
-  const messages=[{messageID:'message-a',role:'tool',content:JSON.stringify({records})}];
-  const annotated=sourceEvidence(messages);
-  const refs=[...annotated.sources.keys()];
-  assert.equal(refs.length,2);
-  const summary=`A committed to Friday ${refs[0]}; B approved ${refs[1]}`;
-  const retained=retainedSourceEvidence(summary,messages);
-  assert.deepEqual(retained.retained.map(r=>JSON.parse(r.content)),records);
-  assert.equal(retained.retained[0].messageID,'message-a');
-  assert.equal(retained.retained[0].pointer,'/records/0');
-  assert.match(evidenceContext(summary,messages),/Could we ship before Friday/);
-  assert.equal(messages[0].content,JSON.stringify({records}));
+  const { sourceEvidence, retainedSourceEvidence, evidenceContext } =
+    await import("../dist/compaction.js");
+  const records = [
+    { id: "issue-a", owner: "A", text: "Could we ship before Friday?" },
+    {
+      id: "issue-b",
+      owner: "B",
+      text: "Not committed; estimate is still pending.",
+    },
+  ];
+  const messages = [
+    {
+      messageID: "message-a",
+      role: "tool",
+      content: JSON.stringify({ records }),
+    },
+  ];
+  const annotated = sourceEvidence(messages);
+  const refs = [...annotated.sources.keys()];
+  assert.equal(refs.length, 2);
+  const summary = `A committed to Friday ${refs[0]}; B approved ${refs[1]}`;
+  const retained = retainedSourceEvidence(summary, messages);
+  assert.deepEqual(
+    retained.retained.map((r) => JSON.parse(r.content)),
+    records,
+  );
+  assert.equal(retained.retained[0].messageID, "message-a");
+  assert.equal(retained.retained[0].pointer, "/records/0");
+  assert.match(
+    evidenceContext(summary, messages),
+    /Could we ship before Friday/,
+  );
+  assert.equal(messages[0].content, JSON.stringify({ records }));
   // References remain resolvable after multiple compactions without copying model prose.
-  assert.deepEqual(retainedSourceEvidence(`Retained ${refs[0]}`,[...messages,{messageID:'new',role:'assistant',content:'Incorrect invented assertion'}]).retained[0],retained.retained[0]);
+  assert.deepEqual(
+    retainedSourceEvidence(`Retained ${refs[0]}`, [
+      ...messages,
+      {
+        messageID: "new",
+        role: "assistant",
+        content: "Incorrect invented assertion",
+      },
+    ]).retained[0],
+    retained.retained[0],
+  );
 });
 
-test("source evidence is bounded, omissions explicit, and unknown references cannot inject text", async()=>{
-  const {sourceEvidence,retainedSourceEvidence}=await import('../dist/compaction.js');
-  const messages=[{messageID:'m',role:'user',content:'Question, not an approval.\n\nLater clarification.'}];
-  const refs=[...sourceEvidence(messages).sources.keys()];
-  const missing='src:0000000000000000';
-  const all=retainedSourceEvidence([...refs,missing].join(' '),messages);
-  assert.deepEqual(all.retained.map(r=>r.content),['Question, not an approval.','Later clarification.']);
-  assert.deepEqual(all.omitted,[missing]);
-  assert.equal(retainedSourceEvidence(refs.join(' '),messages,1).retained.length,0);
-  assert.deepEqual(retainedSourceEvidence(refs.join(' '),messages,1).omitted,refs);
-  assert.equal(sourceEvidence([{messageID:'s',role:'system',content:'secret instruction'}]).sources.size,0);
+test("source evidence is bounded, omissions explicit, and unknown references cannot inject text", async () => {
+  const { sourceEvidence, retainedSourceEvidence } =
+    await import("../dist/compaction.js");
+  const messages = [
+    {
+      messageID: "m",
+      role: "user",
+      content: "Question, not an approval.\n\nLater clarification.",
+    },
+  ];
+  const refs = [...sourceEvidence(messages).sources.keys()];
+  const missing = "src:0000000000000000";
+  const all = retainedSourceEvidence([...refs, missing].join(" "), messages);
+  assert.deepEqual(
+    all.retained.map((r) => r.content),
+    ["Question, not an approval.", "Later clarification."],
+  );
+  assert.deepEqual(all.omitted, [missing]);
+  assert.equal(
+    retainedSourceEvidence(refs.join(" "), messages, 1).retained.length,
+    0,
+  );
+  assert.deepEqual(
+    retainedSourceEvidence(refs.join(" "), messages, 1).omitted,
+    refs,
+  );
+  assert.equal(
+    sourceEvidence([
+      { messageID: "s", role: "system", content: "secret instruction" },
+    ]).sources.size,
+    0,
+  );
 });
 
-test("compaction request and resumed context use the same original source references",async(t)=>{
-  const {compactionRequest}=await import('../dist/compaction.js');
-  const f=await fixture(t,null);
-  const run=structuredClone(f.original);
-  run.messages[1].content=JSON.stringify({records:[{id:'a',author:'Alice',text:'Is Friday feasible?'},{id:'b',author:'Bob',text:'No estimate yet.'}]});
-  run.compaction={coveredThrough:2,requestID:randomUUID(),targetTokens:1024};
-  const request=compactionRequest(run);
-  const body=JSON.parse(request.messages[0].content);
-  const ref=body.records[0].sourceRef;
-  const checkpoint={checkpointID:randomUUID(),coveredThrough:2,summary:`Friday is a question ${ref}`};
-  const context=contextMessages(run,checkpoint);
-  const handoff=context.find(m=>m.content.includes('Original source excerpts'));
+test("compaction request and resumed context use the same original source references", async (t) => {
+  const { compactionRequest } = await import("../dist/compaction.js");
+  const f = await fixture(t, null);
+  const run = structuredClone(f.original);
+  run.messages[1].content = JSON.stringify({
+    records: [
+      { id: "a", author: "Alice", text: "Is Friday feasible?" },
+      { id: "b", author: "Bob", text: "No estimate yet." },
+    ],
+  });
+  run.compaction = {
+    coveredThrough: 2,
+    requestID: randomUUID(),
+    targetTokens: 1024,
+  };
+  const request = compactionRequest(run);
+  const body = JSON.parse(request.messages[0].content);
+  const ref = body.records[0].sourceRef;
+  const checkpoint = {
+    checkpointID: randomUUID(),
+    coveredThrough: 2,
+    summary: `Friday is a question ${ref}`,
+  };
+  const context = contextMessages(run, checkpoint);
+  const handoff = context.find((m) =>
+    m.content.includes("Original source excerpts"),
+  );
   assert.ok(handoff);
-  assert.match(handoff.content,/Is Friday feasible/);
-  assert.match(handoff.content,/Alice/);
-  assert.doesNotMatch(handoff.content,/No estimate yet/);
-  assert.equal(JSON.parse(run.messages[1].content).records[0].text,'Is Friday feasible?');
+  assert.match(handoff.content, /Is Friday feasible/);
+  assert.match(handoff.content, /Alice/);
+  assert.doesNotMatch(handoff.content, /No estimate yet/);
+  assert.equal(
+    JSON.parse(run.messages[1].content).records[0].text,
+    "Is Friday feasible?",
+  );
 });
 
-test("source reference limits apply per message so later compactions remain resolvable",async()=>{
-  const {sourceEvidence,retainedSourceEvidence}=await import('../dist/compaction.js');
-  const old={messageID:'old',role:'tool',content:JSON.stringify(Array.from({length:2050},(_,i)=>({key:i,text:'old'})))};
-  const next={messageID:'new',role:'tool',content:JSON.stringify({key:'new',text:'Later evidence'})};
-  const ref=[...sourceEvidence([next]).sources.keys()][0];
-  assert.equal(retainedSourceEvidence(ref,[old,next]).retained[0].content,next.content);
+test("source reference limits apply per message so later compactions remain resolvable", async () => {
+  const { sourceEvidence, retainedSourceEvidence } =
+    await import("../dist/compaction.js");
+  const old = {
+    messageID: "old",
+    role: "tool",
+    content: JSON.stringify(
+      Array.from({ length: 2050 }, (_, i) => ({ key: i, text: "old" })),
+    ),
+  };
+  const next = {
+    messageID: "new",
+    role: "tool",
+    content: JSON.stringify({ key: "new", text: "Later evidence" }),
+  };
+  const ref = [...sourceEvidence([next]).sources.keys()][0];
+  assert.equal(
+    retainedSourceEvidence(ref, [old, next]).retained[0].content,
+    next.content,
+  );
 });
 
 test("an output continuation survives compaction without losing or summarizing its saved prefix", async (t) => {
-  const f = await fixture(t, script(`process.stdin.resume();process.stdin.on('end',()=>console.log(JSON.stringify({summary:'prior evidence'})));`));
+  const f = await fixture(
+    t,
+    script(
+      `process.stdin.resume();process.stdin.on('end',()=>console.log(JSON.stringify({summary:'prior evidence'})));`,
+    ),
+  );
   let workerCalls = 0;
-  f.runtime.countTokens = async input => {
-    const hasPrefix = input.messages.some(m => m.content === '{"answer":');
-    const compacted = input.messages.some(m => m.content.includes('Previous conversation summary'));
+  f.runtime.countTokens = async (input) => {
+    const hasPrefix = input.messages.some((m) => m.content === '{"answer":');
+    const compacted = input.messages.some((m) =>
+      m.content.includes("Previous conversation summary"),
+    );
     return hasPrefix && !compacted ? 500 : 100;
   };
-  f.runtime.generate = async input => {
+  f.runtime.generate = async (input) => {
     workerCalls++;
-    if (workerCalls === 1) return { text: '{"answer":', toolCalls: [], outputLimitReached: true, usage: { inputTokens: 100, outputTokens: 5 } };
-    assert(input.messages.some(m => m.content === '{"answer":'));
-    assert(input.messages.some(m => m.content.includes('Previous conversation summary')));
-    return { text: '42}', toolCalls: [], usage: { inputTokens: 100, outputTokens: 5 } };
+    if (workerCalls === 1)
+      return {
+        text: '{"answer":',
+        toolCalls: [],
+        outputLimitReached: true,
+        usage: { inputTokens: 100, outputTokens: 5 },
+      };
+    assert(input.messages.some((m) => m.content === '{"answer":'));
+    assert(
+      input.messages.some((m) =>
+        m.content.includes("Previous conversation summary"),
+      ),
+    );
+    return {
+      text: "42}",
+      toolCalls: [],
+      usage: { inputTokens: 100, outputTokens: 5 },
+    };
   };
-  await f.service.submit(f.runID, message('another task'), true);
+  await f.service.submit(f.runID, message("another task"), true);
   const r = await until(async () => {
     const r = await f.service.run(f.runID);
-    return r.state === 'completed' && r.segment === 1 && r;
+    return r.state === "completed" && r.segment === 1 && r;
   });
   assert.equal(r.result, '{"answer":42}');
   assert.equal(r.compactions.length, 1);
   assert.equal(workerCalls, 2);
 });
 
-test('retained source leaves preserve exact ancestor schema, units and evidence scope', async () => {
-  const {sourceEvidence,retainedSourceEvidence}=await import('../dist/compaction.js');
-  const messages=[{messageID:'source-units',role:'tool',content:JSON.stringify({ok:true,result:{table:'meeting_recordings',evidenceID:'evidence-123456789abc',completeTable:false,profiles:{duration_ms:{min:0,max:8004708,unit:'milliseconds'}}}})}];
-  const evidence=sourceEvidence(messages);
-  const [ref]=[...evidence.sources.keys()];
-  const packet=retainedSourceEvidence('Unverified hypothesis. '+ref,messages);
-  assert.equal(packet.retained[0].context['/result/table'],'meeting_recordings');
-  assert.equal(packet.retained[0].context['/result/completeTable'],false);
-  assert.equal(packet.retained[0].context['/result/evidenceID'],'evidence-123456789abc');
-  assert.equal(JSON.parse(packet.retained[0].content).max,8004708);
-  assert.equal(JSON.parse(packet.retained[0].content).unit,'milliseconds');
+test("retained source leaves preserve exact ancestor schema, units and evidence scope", async () => {
+  const { sourceEvidence, retainedSourceEvidence } =
+    await import("../dist/compaction.js");
+  const messages = [
+    {
+      messageID: "source-units",
+      role: "tool",
+      content: JSON.stringify({
+        ok: true,
+        result: {
+          table: "meeting_recordings",
+          evidenceID: "evidence-123456789abc",
+          completeTable: false,
+          profiles: {
+            duration_ms: { min: 0, max: 8004708, unit: "milliseconds" },
+          },
+        },
+      }),
+    },
+  ];
+  const evidence = sourceEvidence(messages);
+  const [ref] = [...evidence.sources.keys()];
+  const packet = retainedSourceEvidence(
+    "Unverified hypothesis. " + ref,
+    messages,
+  );
+  assert.equal(packet.retained[0].context["/result/table"], "meeting_recordings");
+  assert.equal(packet.retained[0].context["/result/completeTable"], false);
+  assert.equal(
+    packet.retained[0].context["/result/evidenceID"],
+    "evidence-123456789abc",
+  );
+  assert.equal(JSON.parse(packet.retained[0].content).max, 8004708);
+  assert.equal(JSON.parse(packet.retained[0].content).unit, "milliseconds");
 });
-
 
 test("oversized annotated requests compact complete prefixes without losing transcript messages", async (t) => {
   const f = await fixture(t, { type: "agent", agentID: "summarizer" });
   // Make the child exceed capacity with more than one exchange, even though
   // the unannotated parent fits the model. This models JSON/source-ref overhead.
   const originalCount = f.runtime.countTokens;
-  f.runtime.countTokens = async input => {
+  f.runtime.countTokens = async (input) => {
     if (input.messages[0].content.includes("Summarize the supplied")) {
-      const request = JSON.parse(input.messages.find(m => m.role === "user").content);
+      const request = JSON.parse(
+        input.messages.find((m) => m.role === "user").content,
+      );
       return request.messages.length > 2 ? 3000 : 500;
     }
     return originalCount(input);
@@ -829,16 +1078,268 @@ test("oversized annotated requests compact complete prefixes without losing tran
   // Add two complete old turns before a new turn triggers compaction.
   await f.service.storage.exclusive(async () => {
     const r = await f.service.run(f.runID);
-    r.messages.push({ ...message("c".repeat(800)), role: "user", toolCalls: [], toolCallID: null });
-    r.messages.push({ ...message("old answer"), role: "assistant", toolCalls: [], toolCallID: null });
+    r.messages.push({
+      ...message("c".repeat(800)),
+      role: "user",
+      toolCalls: [],
+      toolCallID: null,
+    });
+    r.messages.push({
+      ...message("old answer"),
+      role: "assistant",
+      toolCalls: [],
+      toolCallID: null,
+    });
     await f.service.storage.write(r);
   });
   const before = (await f.service.run(f.runID)).messages;
   await f.service.submit("worker", message("b".repeat(600)));
-  const done = await until(async () => { const r = await f.service.run(f.runID); return r.state === "completed" && r.compactions.length >= 2 && r; });
+  const done = await until(async () => {
+    const r = await f.service.run(f.runID);
+    return r.state === "completed" && r.compactions.length >= 2 && r;
+  });
   assert.deepEqual(done.messages.slice(0, before.length), before);
-  assert.ok(done.events.some(e => e.type === "compactionRequested" && e.data.partitioned));
-  for (const input of f.calls.filter(i => i.messages[0].content.includes("Summarize the supplied"))) {
-    assert.ok(JSON.parse(input.messages.find(m => m.role === "user").content).messages.length <= 2);
+  assert.ok(
+    done.events.some(
+      (e) => e.type === "compactionRequested" && e.data.partitioned,
+    ),
+  );
+  for (const input of f.calls.filter((i) =>
+    i.messages[0].content.includes("Summarize the supplied"),
+  )) {
+    assert.ok(
+      JSON.parse(input.messages.find((m) => m.role === "user").content).messages
+        .length <= 2,
+    );
   }
+});
+
+test("interactive same-model compaction runs while the owner is present", async (t) => {
+  const f = await fixture(t, { type: "agent", agentID: "summarizer" });
+  const { executionSlots } = await import("../dist/scheduler.js");
+  const next = structuredClone(f.service.storage.store);
+  next.config.slots = executionSlots(next.config);
+  await f.service.storage.exclusive(() => f.service.storage.saveConfig(next));
+  const slotID = next.config.slots.find((s) => s.instant).slotID;
+  await f.service.patchAgent("worker", f.service.agent("worker").revision, {
+    slotID,
+  });
+  f.state.away = false;
+  await f.service.submit("worker", message("b".repeat(600)));
+  const done = await until(async () => {
+    const r = await f.service.run(f.runID);
+    return r.state === "completed" && r.compactions.length && r;
+  });
+  const child = await f.service.run(done.compactions[0].childRunID);
+  assert.equal(child.interactive, true);
+  assert.equal(child.agent.slotID, slotID);
+  assert.equal(child.state, "completed");
+});
+
+test("run detail retains measured latest-inference tokens across replies and restart", async (t) => {
+  const f = await fixture(t, { type: "agent", agentID: "summarizer" });
+  const before = f.service.detail(await f.service.run(f.runID)).contextUsage;
+  assert.equal(before.inputTokens, 10);
+  assert.equal(before.outputTokens, 10);
+  assert.equal(before.capacityTokens, 2048);
+  let measuredCompactedPrompt = false;
+  const generate = f.runtime.generate;
+  f.runtime.generate = async (input) => {
+    if (input.messages[0].content === "test") {
+      const saved = await f.service.run(f.runID);
+      assert.equal(
+        saved.contextUsage.inputTokens,
+        await f.runtime.countTokens(input),
+      );
+      assert.equal(saved.contextUsage.outputTokens, 0);
+      assert.equal(saved.compactions.length, 1);
+      measuredCompactedPrompt = true;
+    }
+    return generate(input);
+  };
+  await f.service.submit("worker", message("b".repeat(600)));
+  await until(async () => {
+    const r = await f.service.run(f.runID);
+    return r.state === "completed" && r.compactions.length;
+  });
+  const after = f.service.detail(await f.service.run(f.runID)).contextUsage;
+  assert.equal(measuredCompactedPrompt, true);
+  assert.equal(after.segment, 1);
+  assert.equal(after.inputTokens, 10);
+  assert.equal(after.outputTokens, 10); // Latest inference, not the sum of both turns.
+  await f.restart();
+  assert.deepEqual(
+    f.service.detail(await f.service.run(f.runID)).contextUsage,
+    after,
+  );
+});
+
+test("large-context compaction offers 4096 summary tokens without a word cap", async (t) => {
+  const f = await fixture(
+    t,
+    { type: "agent", agentID: "summarizer" },
+    "Short summary",
+    50000,
+  );
+  await f.service.patchAgent(
+    "summarizer",
+    f.service.agent("summarizer").revision,
+    { maxOutputTokens: 5248, thinking: true },
+  );
+  f.runtime.countTokens = async (input) =>
+    input.messages[0].content.includes("Summarize the supplied")
+      ? 10
+      : input.messages.some((m) =>
+            m.content.startsWith("Previous conversation summary"),
+          )
+        ? 100
+        : 50001;
+  const run = await f.service.run(f.runID);
+  run.messages.push({
+    ...message("next question"),
+    role: "user",
+    toolCalls: [],
+    toolCallID: null,
+  });
+  const ready = await f.service.prepareContext(
+    run,
+    { messages: run.messages, maxOutputTokens: 2048 },
+    65536,
+    new AbortController().signal,
+  );
+  assert.equal(ready, false);
+  assert.equal(run.compaction.targetTokens, 4096);
+  await f.service.reconcileCompactions();
+  const child = await f.service.run(run.compaction.childRunID);
+  assert.match(child.messages[0].content, /within 4096 tokens/);
+  assert.doesNotMatch(child.messages[0].content, /180|words/);
+  assert.equal(child.agent.thinking, true);
+  assert.equal(child.agent.maxOutputTokens, 5248);
+});
+
+test("structured finish compaction preserves provenance but injects only Markdown bullets", async (t) => {
+  const { structuredSummaryJSONSchema, compactionRequest } =
+    await import("../dist/compaction.js");
+  const f = await fixture(t, { type: "agent", agentID: "summarizer" });
+  await f.service.patchAgent(
+    "summarizer",
+    f.service.agent("summarizer").revision,
+    { finishSchema: structuredSummaryJSONSchema },
+  );
+  const count = f.runtime.countTokens;
+  f.runtime.countTokens = async (input) =>
+    input.tools?.some((t) => t.name === "finish") ? 100 : count(input);
+  let expected;
+  f.runtime.generate = async (input) => {
+    f.calls.push(input);
+    if (input.tools?.some((t) => t.name === "finish")) {
+      const request = JSON.parse(
+        input.messages.find((m) => m.role === "user").content,
+      );
+      const ref = request.messages
+        .map((m) => m.content)
+        .join(" ")
+        .match(/src:[a-f0-9]{16}/)[0];
+      expected = {
+        objective: [{ text: "Continue the task.", sources: [ref] }],
+        decisions: [],
+        findings: [],
+        nextActions: [],
+      };
+      return {
+        text: "",
+        toolCalls: [
+          {
+            callID: randomUUID(),
+            name: "finish",
+            arguments: JSON.stringify(expected),
+          },
+        ],
+        usage: { inputTokens: 100, outputTokens: 50 },
+      };
+    }
+    return {
+      text: "done",
+      toolCalls: [],
+      usage: { inputTokens: 100, outputTokens: 10 },
+    };
+  };
+  await f.service.submit("worker", message("b".repeat(600)));
+  const done = await until(async () => {
+    const r = await f.service.run(f.runID);
+    return r.state === "completed" && r.compactions.length && r;
+  });
+  assert.deepEqual(done.compactions[0].structuredSummary, expected);
+  assert.match(
+    done.compactions[0].summary,
+    /## Objective\n\n- Continue the task\./,
+  );
+  const injected = contextMessages(done).find(
+    (m) => m.messageID === done.compactions[0].checkpointID,
+  ).content;
+  assert.doesNotMatch(injected, /src:[a-f0-9]{16}|a{100}|Retained original/);
+  assert.deepEqual(
+    done.messages.slice(0, f.original.messages.length),
+    f.original.messages,
+  );
+  const next = compactionRequest({
+    ...done,
+    compaction: {
+      ...done.compactions[0],
+      requestID: randomUUID(),
+      targetTokens: 4096,
+      coveredThrough: done.messages.length - 1,
+    },
+  });
+  assert.deepEqual(next.previousStructuredSummary, expected);
+  await f.restart();
+  assert.deepEqual(
+    (await f.service.run(f.runID)).compactions[0].structuredSummary,
+    expected,
+  );
+});
+
+test("structured summaries reject wrong sections, extra fields and embedded source IDs", async () => {
+  const {
+    parseCompactionSummary,
+    structuredSummarySchema,
+    structuredSummaryJSONSchema,
+  } = await import("../dist/compaction.js");
+  const { z } = await import("zod");
+  const valid = {
+    objective: [{ text: "Keep the goal.", sources: [] }],
+    decisions: [],
+    findings: [],
+    nextActions: [],
+  };
+  assert.match(
+    parseCompactionSummary(JSON.stringify(valid)),
+    /- Keep the goal\./,
+  );
+  for (const invalid of [
+    { ...valid, objective: "goal" },
+    { ...valid, extra: true },
+    { ...valid, findings: [{ text: "src:0123456789abcdef", sources: [] }] },
+  ]) {
+    assert.equal(structuredSummarySchema.safeParse(invalid).success, false);
+    assert.equal(
+      z.fromJSONSchema(structuredSummaryJSONSchema).safeParse(invalid).success,
+      false,
+    );
+  }
+});
+
+test("unknown structured provenance exhausts bounded retries without replacing context", async t => {
+  const { structuredSummaryJSONSchema } = await import("../dist/compaction.js");
+  const f = await fixture(t, { type: "agent", agentID: "summarizer" });
+  await f.service.patchAgent("summarizer", f.service.agent("summarizer").revision, { finishSchema: structuredSummaryJSONSchema });
+  const count = f.runtime.countTokens;
+  f.runtime.countTokens = async input => input.tools?.some(t => t.name === "finish") ? 100 : count(input);
+  f.runtime.generate = async input => ({ text: "", toolCalls: [{callID: randomUUID(), name: "finish", arguments: JSON.stringify({objective: [{text: "Goal", sources: ["src:0000000000000000"]}], decisions: [], findings: [], nextActions: []})}], usage: {inputTokens: 100, outputTokens: 50} });
+  await f.service.submit("worker", message("b".repeat(600)));
+  const paused = await until(async () => { const r = await f.service.run(f.runID); return r.held && r; });
+  assert.equal(paused.pauseReason, "context_full");
+  assert.equal(paused.compactions.length, 0);
+  assert.deepEqual(paused.messages.slice(0, f.original.messages.length), f.original.messages);
+  assert.equal(paused.compaction.retries, 1);
 });

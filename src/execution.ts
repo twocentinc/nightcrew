@@ -90,3 +90,29 @@ export function diagnostic(
 
 export const withoutExecution = <T>(fn: () => T): T =>
   context.run(undefined, fn);
+
+// The extra pipe (fd 3) is owned only by Nightcrew. EOF also happens on SIGKILL,
+// unlike JS cleanup handlers. The guard and executable share a detached process
+// group so loss of the owner terminates descendants, including llama workers.
+export const ownedProcessGuard = `
+const {spawn} = require('node:child_process');
+const {Socket} = require('node:net');
+let stopping = false;
+const stop = () => {
+  if (stopping) return;
+  stopping = true;
+  setTimeout(() => { try { process.kill(-process.pid, 'SIGKILL'); } catch {} }, 500);
+  try { process.kill(-process.pid, 'SIGTERM'); } catch {}
+};
+process.on('SIGTERM', stop);
+process.on('SIGINT', stop);
+const owner = new Socket({fd:3, readable:true, writable:false});
+owner.on('end', stop);
+owner.on('error', stop);
+owner.resume();
+const child = spawn(process.argv[1], process.argv.slice(2), {stdio:['pipe','inherit','inherit']});
+process.stdin.pipe(child.stdin);
+child.stdin.on('error', () => {});
+child.on('error', () => process.exit(127));
+child.on('exit', (code) => { if (!stopping) process.exit(code ?? 1); });
+`;

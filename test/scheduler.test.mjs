@@ -544,3 +544,97 @@ test("fresh runs accept a reply after cancellation without replaying cancelled w
   assert.equal(run.messages.filter(m => m.messageID === next.messageID).length, 1);
   assert.ok(run.events.some(e => e.type === "cancelled"));
 });
+
+test("passive annotations preserve state and never become model input", async t => {
+  let calls=0;
+  const f=await setup(t,async()=>{calls++;return done;});
+  await f.agent("daily");
+  const accepted=await f.service.submit("daily",message("hello"));
+  await until(async()=> (await f.service.run(accepted.runID)).state==='completed');
+  const before=await f.service.run(accepted.runID);
+  const input={messageID:randomUUID(),content:'delivered notification'};
+  await f.service.annotateRun(accepted.runID,input,true);
+  assert.equal((await f.service.run(accepted.runID)).events.length,before.events.length);
+  const first=await f.service.annotateRun(accepted.runID,input);
+  assert.equal(first.replayed,false);
+  assert.equal((await f.service.annotateRun(accepted.runID,input)).replayed,true);
+  await assert.rejects(f.service.annotateRun(accepted.runID,{...input,content:'changed'}),/message_conflict/);
+  await f.restart();
+  const after=await f.service.run(accepted.runID);
+  assert.equal(after.state,'completed');assert.equal(calls,1);
+  assert.equal(after.messages.length,before.messages.length);
+  assert.equal(after.events.filter(e=>e.type==='notification').length,1);
+});
+
+test("instant unload cancels and settles interactive work before closing, then allows the same run to continue", async t => {
+  let entered = false, stopped = false, block = true, closes = 0, resident = true;
+  const f = await setup(t, async (_input, signal) => {
+    if (block) {
+      entered = true;
+      await new Promise((resolve, reject) => signal.addEventListener("abort", () => setTimeout(() => { stopped = true; reject(Error("cancelled")); }, 20), {once:true}));
+    }
+    return done;
+  });
+  f.state.away = false;
+  const next = structuredClone(f.service.storage.store);
+  next.config.slots = executionSlots(next.config);
+  await f.service.storage.exclusive(() => f.service.storage.saveConfig(next));
+  await f.agent("interactive", {enabled:false, contextMode:"fresh", slotID:next.config.slots.find(s=>s.instant).slotID});
+  f.service.runtime.status = () => [{modelID:"q",state:resident?"ready":"unloaded"}];
+  f.service.runtime.close = async () => { assert.equal(stopped,true); closes++; resident=false; };
+  const run = await f.service.submit("interactive",message("first"));
+  await until(()=>entered);
+  const preview = await manage(f.service,{command:"instant unload",request:{},dryRun:true});
+  assert.equal(preview.changed,false); assert.equal(closes,0);
+  const result = await manage(f.service,{command:"instant unload",request:{}});
+  assert.deepEqual(result.cancelledRunIDs,[run.runID]); assert.equal(closes,1);
+  assert.equal((await f.service.run(run.runID)).state,"cancelled");
+  assert.equal((await manage(f.service,{command:"instant unload",request:{}})).changed,false);
+  block=false;
+  const reply = await f.service.submit(run.runID,message("continue"),true);
+  assert.equal(reply.runID,run.runID);
+  await until(async()=>(await f.service.run(run.runID)).state === "completed");
+});
+
+test("instant unload refuses unrelated active background work", async t => {
+  let entered=false;
+  const f=await setup(t,async(_input,signal)=>{
+    entered=true;
+    await new Promise((resolve,reject)=>signal.addEventListener("abort",()=>reject(Error("abort")),{once:true}));
+    return done;
+  });
+  await f.agent("background");
+  const run=await f.service.submit("background",message("work"));
+  await until(()=>entered);
+  await assert.rejects(manage(f.service,{command:"instant unload",request:{}}),e=>e.code==="instant_model_busy_with_background_work");
+  assert.equal((await f.service.run(run.runID)).state,"running");
+});
+
+test('explicit capability refresh preserves daily history, snapshots and stopped state',async t=>{
+ const f=await setup(t,async()=>done);
+ await f.agent('interactive',{mode:'agent-loop',contextMode:'fresh',enabled:false});
+ const accepted=await f.service.submit('interactive',message('hello'));
+ await until(async()=>(await f.service.run(accepted.runID)).state==='completed');
+ const before=await f.service.run(accepted.runID);
+ await manage(f.service,{command:'tools create',request:{tool:{toolID:'current_time',description:'clock',parameters:{type:'object',properties:{},additionalProperties:false},executablePath:process.execPath,argv:['-e','console.log("clock")'],timeoutMs:1000}}});
+ const agent=f.service.agent('interactive');
+ await f.service.patchAgent('interactive',agent.revision,{toolIDs:['current_time']});
+ const command={command:'runs capabilities refresh',resourceID:accepted.runID,request:{expectedRevision:before.revision}};
+ await manage(f.service,{...command,dryRun:true});
+ assert.deepEqual((await f.service.run(accepted.runID)).agent.toolIDs,[]);
+ const result=await manage(f.service,command);
+ assert.equal(result.changed,true);
+ const after=await f.service.run(accepted.runID);
+ assert.deepEqual(after.messages,before.messages);
+ assert.equal(after.state,before.state);
+ assert.deepEqual(after.agent.toolIDs,['current_time']);
+ assert.deepEqual(after.capabilityRefreshes[0].previousTools,before.toolSnapshots);
+ assert.equal(after.capabilityRefreshes.length,1);
+ await assert.rejects(manage(f.service,command),e=>e.code==='revision_conflict');
+ await f.restart();
+ assert.deepEqual((await f.service.run(accepted.runID)).agent.toolIDs,['current_time']);
+ f.state.away=false;
+ const next=await f.service.submit('interactive',message('queued'));
+ const queued=await f.service.run(next.runID);
+ await assert.rejects(manage(f.service,{command:'runs capabilities refresh',resourceID:next.runID,request:{expectedRevision:queued.revision}}),e=>e.code==='run_not_idle');
+});

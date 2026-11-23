@@ -10,7 +10,9 @@ and HTTP must invoke those procedures. `src/commands.ts` derives management
 commands from them and owns local command definitions and discovery.
 `src/protocol.ts` owns versioned envelopes, errors and request validation.
 `src/cli.ts` owns parsing and finite command execution; `src/execution.ts` owns
-shared deadlines and diagnostics. `src/daemon.ts` owns the private control socket.
+shared deadlines, diagnostics, and the owner-pipe process guard used for llama.cpp
+and lifecycle hooks. Owner death must terminate their process groups, while
+uncertain delivery receipts remain non-retryable without review. `src/daemon.ts` owns the private control socket.
 `src/management.ts` implements configuration, trigger and queue management.
 `src/triggers.ts` owns schedule validation and next-occurrence calculation.
 `src/scheduler.ts` owns live-slot derivation, policy configuration, default planning
@@ -19,7 +21,7 @@ revalidation, per-slot execution and persistent single-run conversation segments
 `src/compaction.ts` owns compaction handler/checkpoint schemas, safe history
 projection and bounded script execution. It generates domain-independent source
 references for original records/text excerpts and restores selected evidence into
-resumed context; summaries never own source identity or wording. The service schedules linked compactor
+legacy resumed context; structured summaries retain source references only as checkpoint metadata and inject Markdown bullets. Summaries never own source identity or wording. The service schedules linked compactor
 runs; the runtime counts templated tokens and validates KV checkpoint generations.
 Managed output-limit continuation is reconstructed from durable attempt records;
 never validate/deliver partial answers or execute truncated tool calls.
@@ -54,7 +56,7 @@ Nightcrew does not provide an OS sandbox or enforce read-only behavior.
 `src/skills.ts` owns skill folder resources, canonical encoding, bounded on-demand
 reads and skill catalog projection. Run resources must remain snapshotted; inject
 only names/descriptions until requested. Auto-inject load_skills for agent loops
-and instant chat; single-turn agents stay tool-free. Instant execution owns only
+and instant chat; single-turn agents stay executable-tool-free. Opt-in `finishSchema` supplies a runtime-owned `finish` signal, never an executable registry entry. Validate its exclusive call before atomically committing completion; invalid results must not complete or dispatch sibling tools. Instant execution owns only
 load_skills, never client-defined tools. Keep model arguments as typed
 JSON on stdin. `argv` templates substitute validated parameters into individual
 arguments without shell evaluation or recursive expansion; keep missing-value

@@ -1,6 +1,6 @@
 {
   "name": "nightcrew",
-  "version": "0.31.4",
+  "version": "0.37.0",
   "private": true,
   "type": "module",
   "description": "Standalone local-agent HTTP service",

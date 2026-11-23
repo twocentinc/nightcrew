@@ -146,6 +146,11 @@ not automatically inserted as a completed assistant message; partial tool calls
 are never executed. A successful attempt references its committed message instead
 of duplicating the payload.
 
+`runs annotate` appends a bounded, UUID-deduplicated passive notification to an
+existing run's event history. It neither adds model messages nor changes run
+state, wakes inference, creates runs, or fires hooks. Reusing an annotation UUID
+with different content fails. Annotations count toward durable storage limits.
+
 ## Transcript storage limits
 
 Each agent has storageLimitMB (default 48, range 1–48). This measures serialized
@@ -216,7 +221,8 @@ Coverage ends at a complete turn/tool-exchange boundary. Later model input consi
 of instructions, the summary and remaining messages. Handler requests exclude stored
 thinking traces, decode text attachments, and identify omitted binary attachments
 without sending base64. Original transcript evidence remains unchanged. Summary
-targets reserve the retained context plus tokenizer slack; child output reservations
+targets are capped at 4096 tokens and one third of the trigger threshold, and
+reserve the retained context plus tokenizer slack. There is no fixed word cap; child output reservations
 are capped to that target plus JSON overhead when thinking is disabled. Thinking-enabled
 children retain their configured generation limit because reasoning shares that
 budget with the visible summary. Both reservations must fit the child context;
@@ -226,13 +232,15 @@ reserve room for the visible answer.
 
 A summarizer executes as a separate linked fresh run with its own model, prompt
 and output settings. The waiting parent consumes no active-time budget. Child work
-uses ordinary scheduling safeguards and dependency priority; recursive compaction
+uses ordinary scheduling safeguards and dependency priority; a same-model
+compactor for an interactive parent inherits its instant slot and interactive
+admission so it does not wait for desktop-away eligibility. Recursive compaction
 is disallowed. A script receives the versioned request and returns a nonempty
 summary JSON object. Both paths validate the resulting parent context before
 committing and invalidate incompatible KV generations.
 
 Agent summary failures get up to compaction.maxRetries retries (default 1, range
-0–2), each with half the summary token target and a new linked child run. Prior
+0–2), each preserving the summary token target and creating a new linked child run. Prior
 children and failure events remain durable across restart. Script handlers do not
 automatically retry. Missing handlers, oversized retained input, or exhausted
 summary retries hold the parent with context_full. Context preparation/runtime
@@ -580,3 +588,71 @@ supports `recent` or `afterSequence` without snapshot pagination cursors.
 truncation and incomplete UTF-8 lines. Tail output is JSONL using normal envelopes.
 Waits default to 120 minutes; tails have no default deadline. Both accept explicit
 observation timeouts up to 1440 minutes. Neither changes agent execution timeouts.
+
+### Explicit instant model unloading
+
+`nightcrew instant unload` cancels accepted nonterminal instant requests and
+interactive runs for the configured instant model, waits for their computation
+to settle, and releases the resident model regardless of its idle/keep-warm timer.
+It preserves transcripts and configuration; the next explicit message can
+continue the same daily run and reload the model. Dry-run changes nothing;
+repeating the command with no resident model or instant work is a no-op.
+It refuses while unrelated background work uses that model. Normal background
+scheduling remains enabled and may load a model again when eligible. It never
+unloads a different resident model or restarts the daemon. The shared management
+operation also exposes this behavior to authenticated HTTP clients.
+
+### Measured run context usage
+
+Run details include a nullable `contextUsage` snapshot: inputTokens, outputTokens,
+capacityTokens, measuredAt and segment. Prompt preparation records the actual
+templated token count including tool definitions, system/skill instructions and
+retained context; accepted compaction replaces it with the reduced prompt count.
+Generation completion records that inference's reported input/output usage, not
+a cumulative daily total. During generation the last measured prompt count stays
+visible; streamed text is not heuristically tokenized. Snapshots survive restart
+and unloading. Older runs remain null until their next measured inference; reads
+do not load a model merely to fill the counter. This is the latest evaluated
+context, not a claim that model memory remains resident after unloading.
+
+### Explicit capability refresh
+
+`runs capabilities refresh RUN_ID` accepts `expectedRevision` and applies the
+agent's current tool/skill definitions to a terminal run with no pending input.
+It never submits a message or changes the run's model, prompt, history, state,
+or scheduling. Prior tool/skill snapshots are retained in `capabilityRefreshes`
+for audit; the previous token measurement is invalidated. Dry-run does not write,
+revision conflicts reject, and active runs cannot be refreshed. This is an
+explicit supervisor operation; ordinary fresh-run replies still retain their
+configured capability list.
+
+### Schema-validated completion
+
+Agents may opt in with `finishSchema`, an object JSON Schema (default `null`).
+Nightcrew exposes a special `finish` tool whose arguments are the final result.
+It is not an executable tool and must not appear in `toolIDs`. A single-turn
+agent can use this signal while remaining free of executable tools. Existing
+agents without a finish schema keep their current completion behavior.
+
+A finish call must be alone in its response: mixed batches receive errors and
+none of their calls execute. Valid arguments become the serialized JSON run
+result. Receipt, result and completion commit together. Ordinary text or invalid
+finish calls cannot complete the run; three unsuccessful completion attempts
+fail it. Ordinary executable-tool budgets exclude finish, which remains available
+when the budget is exhausted. Existing output validation still applies to the
+candidate result; normal lifecycle delivery remains separate from finish.
+Configuration and resumed runs retain the snapshotted schema.
+
+Structured compaction uses four arrays: `objective`, `decisions`, `findings`,
+`nextActions`. Each bullet has `text` and `sources` (original `src:` references).
+The compactor calls finish with this object. Checkpoints retain the original
+structured result; resumed context receives section headings and Markdown text
+bullets, without source references or restored evidence excerpts. Subsequent
+compactors receive previous structured metadata. Unknown source references reject
+the summary before checkpoint adoption; existing bounded compaction retries
+apply. Legacy summary objects and checkpoints remain readable.
+
+Schema validity and resolvable references do not prove factual accuracy or that
+a particular source supports a claim. The compactor prompt preserves goals,
+explicit decisions, observed findings and committed unfinished work, and forbids
+inventing recommendations or promoting hypotheses into facts.

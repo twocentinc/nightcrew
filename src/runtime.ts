@@ -1,6 +1,6 @@
 import { executionSlots, schedulerSchema } from "./scheduler.js";
 import type { OperationalLog } from "./logging.js";
-import { remainingTimeout, executionSignal, checkpoint } from "./execution.js";
+import { remainingTimeout, executionSignal, checkpoint, ownedProcessGuard } from "./execution.js";
 import { NightcrewError } from "./protocol.js";
 import { spawn, execFile, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
@@ -97,6 +97,8 @@ export class LlamaRuntime implements Runtime {
   private transientSlots = new Set<string>();
   private provisioning: Promise<void> = Promise.resolve();
   private loadedModel?: string;
+  private loadingModel?: string;
+  private unloadingModel?: string;
   isBusy() {
     return this.busy;
   }
@@ -341,6 +343,8 @@ export class LlamaRuntime implements Runtime {
     }
   }
   private async prepare(modelID: string, signal: AbortSignal, restore = true) {
+    this.loadingModel = this.loadedModel === modelID ? undefined : modelID;
+    try {
     const switchStarted = performance.now();
     const switching =
       this.loadedModel !== undefined && this.loadedModel !== modelID;
@@ -389,6 +393,9 @@ export class LlamaRuntime implements Runtime {
         modelID,
         durationMs: Math.round(performance.now() - switchStarted),
       });
+    } finally {
+      this.loadingModel = undefined;
+    }
   }
   async snapshot(slotID: string, action: "save" | "restore", dryRun = false) {
     if (this.busy || this.used.size)
@@ -437,7 +444,7 @@ export class LlamaRuntime implements Runtime {
   status() {
     return this.config().models.map((m) => ({
       modelID: m.modelID,
-      state: this.resident.get(m.modelID) ?? "unloaded",
+      state: this.unloadingModel === m.modelID ? "unloading" : this.loadingModel === m.modelID ? "loading" : this.loadedModel === m.modelID ? "ready" : this.resident.get(m.modelID) ?? "unloaded",
     }));
   }
   private async resolveBinary() {
@@ -537,8 +544,9 @@ export class LlamaRuntime implements Runtime {
     );
     this.baseURL = `http://127.0.0.1:${port}`;
     const child = spawn(
-      binary,
+      process.execPath,
       [
+        "-e", ownedProcessGuard, binary,
         "--host",
         "127.0.0.1",
         "--port",
@@ -552,7 +560,7 @@ export class LlamaRuntime implements Runtime {
       ],
       {
         detached: true,
-        stdio: "ignore",
+        stdio: ["ignore", "ignore", "ignore", "pipe"],
         env: {
           PATH: process.env.PATH ?? "",
           HOME: this.directory,
@@ -1227,9 +1235,11 @@ export class LlamaRuntime implements Runtime {
     if (this.busy || this.used.size)
       throw new NightcrewError("runtime.busy", "Runtime is busy", 9);
     this.busy = true;
+    this.unloadingModel = this.loadedModel;
     try {
       await this.stop();
     } finally {
+      this.unloadingModel = undefined;
       this.busy = false;
     }
   }

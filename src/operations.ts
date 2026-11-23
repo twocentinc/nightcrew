@@ -187,6 +187,11 @@ function defineOperation<N extends string, O extends z.ZodType>(
   };
 }
 export const operations = {
+  "runs capabilities refresh": defineOperation(
+    "runs capabilities refresh", "Explicitly refresh tools and skills of a terminal run without inference or history loss",
+    z.object({runID:z.string(),revision:z.number().int(),changed:z.boolean(),toolIDs:z.array(z.string()),skillIDs:z.array(z.string())}),
+    true,"required",false,"daemon",
+  ),
   "runs review": defineOperation(
     "runs review",
     "Acknowledge, resolve or reopen a run review with a durable note",
@@ -623,6 +628,11 @@ export const operations = {
     false,
     "management",
   ),
+  "runs annotate": defineOperation(
+    "runs annotate", "Append a passive notification without invoking the agent",
+    z.object({messageID: z.string(), revision: z.number(), replayed: z.boolean()}),
+    true, "required", false, "daemon",
+  ),
   "runs reply": defineOperation(
     "runs reply",
     "Submit a continuation to a completed or cancelled run",
@@ -691,6 +701,12 @@ export const operations = {
     "required",
     false,
     "daemon",
+  ),
+  "instant unload": defineOperation(
+    "instant unload",
+    "Stop instant work and unload its model, ignoring keep-warm; refuse unrelated model work",
+    z.object({ modelID: z.string(), changed: z.boolean(), cancelledRunIDs: z.array(z.string()), cancelledRequestIDs: z.array(z.string()) }),
+    true, "none", false, "daemon",
   ),
   "instant cancel": defineOperation(
     "instant cancel",

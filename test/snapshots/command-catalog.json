@@ -370,6 +370,20 @@
     },
     {
       "confirmation": false,
+      "description": "Stop instant work and unload its model, ignoring keep-warm; refuse unrelated model work",
+      "mutates": true,
+      "name": "instant unload",
+      "operand": "none",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "instant.unload.request",
+      "resultSchema": "instant.unload.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
       "description": "create models",
       "mutates": true,
       "name": "models create",
@@ -450,6 +464,20 @@
     },
     {
       "confirmation": false,
+      "description": "Append a passive notification without invoking the agent",
+      "mutates": true,
+      "name": "runs annotate",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "runs.annotate.request",
+      "resultSchema": "runs.annotate.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
       "description": "Cancel managed work",
       "mutates": true,
       "name": "runs cancel",
@@ -460,6 +488,20 @@
       ],
       "requestSchema": "runs.cancel.request",
       "resultSchema": "runs.cancel.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "Explicitly refresh tools and skills of a terminal run without inference or history loss",
+      "mutates": true,
+      "name": "runs capabilities refresh",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "runs.capabilities.refresh.request",
+      "resultSchema": "runs.capabilities.refresh.result",
       "scope": "daemon"
     },
     {
@@ -946,5 +988,5 @@
     "version": false
   },
   "protocolVersion": 1,
-  "schemaVersion": 34
+  "schemaVersion": 39
 }

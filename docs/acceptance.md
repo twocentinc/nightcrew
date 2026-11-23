@@ -62,3 +62,46 @@ answer against the synthetic source facts, plus successful runtime KV restore
 operations and exact local report contents. The review also corrected tail
 backpressure and terminal-run classification in the supervisor example. No claim
 is made about an overnight production soak or external Discord delivery.
+
+## Abrupt process crashes
+
+`test/live/crash-recovery.test.mjs` is a separate opt-in SIGKILL test using a
+real chat model and an isolated runtime home. Provide `NIGHTCREW_LIVE_CONFIG`
+with a registered chat-model definition under `qwen`, stop the regular daemon,
+and run with `NIGHTCREW_ALLOW_INFERENCE=1`. Always restore the regular daemon
+when the test ends. The fixture injects away presence to isolate crash behavior;
+it does not validate presence detection or launchd supervision.
+
+It kills the service process during streamed generation, while a linked compactor
+is running, and after a local receiver accepts the second message of a multipart
+report but withholds its acknowledgement. It restarts from the same home and
+checks preserved message identity, one final answer, reuse of the compactor run,
+one committed checkpoint, and recall of the synthetic source facts. It also
+checks that the crashed service leaves no llama.cpp or delivery-hook process alive.
+The local receiver records accepted messages; it never contacts Discord.
+
+Generation and compaction resume automatically. An uncertain external delivery
+must instead remain unknown and require review: restart or retry must not resend
+it. This does not promise exactly-once delivery or automatic completion of an
+ambiguous batch. The receiver log, saved run files and `crash-recovery.json` remain
+under the printed private test home for inspection.
+
+The process guard uses a dedicated pipe whose EOF detects owner loss, including
+SIGKILL, and terminates the guarded process group. Its unit tests include a child
+that ignores SIGTERM and preservation of ordinary stdin/stdout/exit behavior.
+This covers process crashes, not power loss, filesystem failure, or network-service
+idempotency guarantees.
+
+### November 23, 2026 result
+
+The real-Qwen SIGKILL fixture passed generation, linked-agent compaction and
+ambiguous multipart delivery recovery. Generation retained one user message and
+one final assistant answer. The interrupted compactor reused its run and produced
+one checkpoint; the resumed parent recalled lavender, seven trees and a blue gate.
+The local receiver accepted two distinct message parts and saw no duplicate after
+restart or a suppressed retry. Delivery remained unknown for manual review.
+
+The first test exposed an orphaned llama.cpp process after owner death. The
+owner-pipe guard fixes that for the model server and lifecycle hooks. The final
+pass checked the complete descendant tree at each crash (three, five and five
+processes) and found no survivors. No external Discord messages were sent.

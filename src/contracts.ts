@@ -109,6 +109,22 @@ export const configSchema = z.strictObject({
   hooks: z.array(hookSchema).max(16),
 });
 export const agentSchema = z.strictObject({
+  finishSchema: z
+    .record(z.string(), z.json())
+    .superRefine((schema, ctx) => {
+      if (schema.type !== "object")
+        ctx.addIssue({
+          code: "custom",
+          message: "Finish schema must describe an object",
+        });
+      try {
+        z.fromJSONSchema(schema);
+      } catch {
+        ctx.addIssue({ code: "custom", message: "Unsupported finish schema" });
+      }
+    })
+    .nullable()
+    .default(null),
   outputValidation: outputValidationSchema.nullable().default(null),
   loopPolicy: loopPolicySchema.default(() => loopPolicySchema.parse({})),
   storageLimitMB: z.number().int().min(1).max(48).default(48),
@@ -269,6 +285,7 @@ export const eventSchema = z.strictObject({
     "resumed",
     "message",
     "toolResult",
+    "notification",
     "completed",
     "failed",
     "cancelled",
@@ -332,7 +349,29 @@ export const attemptSchema = z.strictObject({
   truncated: z.boolean(),
   messageID: uuid.nullable(),
 });
+const contextUsageSchema = z.strictObject({
+  inputTokens: z.number().int().nonnegative(),
+  outputTokens: z.number().int().nonnegative(),
+  capacityTokens: z.number().int().positive(),
+  measuredAt: timestamp,
+  segment: z.number().int().nonnegative(),
+});
 export const runSchema = z.strictObject({
+  capabilityRefreshes: z
+    .array(
+      z.strictObject({
+        at: timestamp,
+        segment: z.number().int().nonnegative(),
+        sourceAgentRevision: z.number().int().positive(),
+        previousToolIDs: z.array(id),
+        previousSkillIDs: z.array(id),
+        previousTools: z.array(z.json()),
+        previousSkills: z.array(skillSchema),
+      }),
+    )
+    .max(100)
+    .default([]),
+  contextUsage: contextUsageSchema.nullable().default(null),
   reviews: z.array(reviewRecordSchema).max(1000).default([]),
   deliveryExpected: z.boolean().default(false),
   validations: z.array(validationRecordSchema).max(10000).default([]),
@@ -572,6 +611,13 @@ export function validateConfig(store: Store) {
       );
   }
   for (const a of agents) {
+    if (
+      a.finishSchema &&
+      config.models.find((m) => m.modelID === a.modelID)?.kind !== "chat"
+    )
+      throw Error("Finish schemas require a chat model");
+    if (a.finishSchema && a.toolIDs.includes("finish"))
+      throw Error("finish is runtime-owned; omit it from toolIDs");
     if (a.compaction?.handler.type === "agent") {
       const handler = a.compaction.handler;
       const compactor = agents.find((c) => c.agentID === handler.agentID);
@@ -630,6 +676,8 @@ export const runSummarySchema = runSchema
     outcome: outcomeSchema,
   });
 export const runDetailSchema = runSummarySchema.extend({
+  capabilityRefreshes: runSchema.shape.capabilityRefreshes,
+  contextUsage: runSchema.shape.contextUsage,
   reviews: runSchema.shape.reviews,
   validations: runSchema.shape.validations,
   recovery: runSchema.shape.recovery,

@@ -72,3 +72,19 @@ smoke tests. Review changes against this policy, including behavior not captured
 by snapshots. Real inference remains opt-in. See acceptance.md for completed
 controlled live checks and the outstanding overnight/abrupt-crash validation;
 passing mocked tests must not be described as those checks passing.
+
+## Owner-approved compaction policy revision (November 23, 2026)
+
+The owner explicitly approved increasing the shared summary target ceiling from
+1024 to 4096 tokens, removing the 180-word prompt cap, and preserving the target
+on automatic retries. This narrowly reopens the execution-policy freeze for
+those changes. Request/result schemas and durable formats are unchanged. Existing
+pending compactions retain their saved target; newly prepared compactions use
+the larger ceiling subject to available context. No transcript migration or
+external action replay is required. the chat client summarizer thinking is an explicit
+agent configuration change, not a new default for other agents.
+
+Schema 39 adds opt-in nullable `finishSchema` and optional structured compaction
+checkpoint metadata. Existing agents default to ordinary text completion and old
+checkpoints retain their rendering. New finish behavior applies only to agents
+that explicitly opt in; existing run snapshots are not silently refreshed.

@@ -1,0 +1,12 @@
+import {readFile} from 'node:fs/promises';
+import {startServer} from '../../../dist/server.js';
+import {LlamaRuntime} from '../../../dist/runtime.js';
+const home=process.argv[2];
+const config=JSON.parse(await readFile(home+'/config.json','utf8')).config;
+let app;
+const runtime=new LlamaRuntime(()=>app?.service.storage.store.config??config,home);
+app=await startServer({home,port:0,runtime,quiet:true,presence:async()=>({state:'away',samplingHealthy:true,observedAt:new Date().toISOString(),reason:'isolated crash fixture',diagnostic:null})});
+process.send({port:app.server.address().port});
+let pid;
+const timer=setInterval(()=>{if(runtime.child?.pid && runtime.child.pid!==pid){pid=runtime.child.pid;process.send({runtimePID:pid});}},25);
+process.on('message',async m=>{if(m==='close'){clearInterval(timer);await app.close();process.exit(0);}});

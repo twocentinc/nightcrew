@@ -1827,3 +1827,22 @@ test("instant completion is published only after its cooldown is durable", async
   persist();await until(()=>f.app.service.chat(accepted.body.requestID).state==="completed");
   assert.ok(Date.parse(f.app.service.storage.store.cooldownUntil)>Date.now());
 });
+
+test('runtime reports loading and unloading until their operations settle', async () => {
+  const { LlamaRuntime } = await import('../dist/runtime.js');
+  const runtime = new LlamaRuntime(() => ({ models: [{modelID:'q',kind:'chat'}], slots: [] }));
+  let releaseLoad;
+  runtime.start = () => new Promise(resolve => { releaseLoad = resolve; });
+  const preparing = runtime.prepare('q', new AbortController().signal);
+  assert.equal(runtime.status()[0].state, 'loading');
+  releaseLoad();
+  await preparing;
+  assert.equal(runtime.status()[0].state, 'ready');
+  let releaseStop;
+  runtime.stop = () => new Promise(resolve => { releaseStop = () => { runtime.loadedModel=undefined; resolve(); }; });
+  const closing = runtime.close();
+  assert.equal(runtime.status()[0].state, 'unloading');
+  releaseStop();
+  await closing;
+  assert.equal(runtime.status()[0].state, 'unloaded');
+});
