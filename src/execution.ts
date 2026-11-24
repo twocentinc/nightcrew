@@ -1,3 +1,4 @@
+import { spawn, type ChildProcess } from "node:child_process";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { setTimeout as delay } from "node:timers/promises";
 import { invalidInput, timeoutFailure } from "./protocol.js";
@@ -106,13 +107,122 @@ const stop = () => {
 };
 process.on('SIGTERM', stop);
 process.on('SIGINT', stop);
-const owner = new Socket({fd:3, readable:true, writable:false});
+const ownerFD = Number(process.env.NIGHTCREW_OWNER_FD ?? 3);
+const owner = new Socket({fd:ownerFD, readable:true, writable:false});
 owner.on('end', stop);
 owner.on('error', stop);
 owner.resume();
-const child = spawn(process.argv[1], process.argv.slice(2), {stdio:['pipe','inherit','inherit']});
+const env = {...process.env}; delete env.NIGHTCREW_OWNER_FD;
+const child = spawn(process.argv[1], process.argv.slice(2), {env, stdio:['pipe','inherit','inherit', ...Array(ownerFD - 3).fill('inherit')]});
 process.stdin.pipe(child.stdin);
 child.stdin.on('error', () => {});
 child.on('error', () => process.exit(127));
 child.on('exit', (code) => { if (!stopping) process.exit(code ?? 1); });
 `;
+
+export function spawnOwned(
+  executable: string,
+  argv: string[],
+  options: {
+    env: NodeJS.ProcessEnv;
+    stdin?: "pipe" | "ignore";
+    stdout?: "pipe" | "ignore";
+    extraInputs?: string[];
+  },
+): ChildProcess {
+  const extras = options.extraInputs ?? [];
+  const child = spawn(
+    process.execPath,
+    ["-e", ownedProcessGuard, executable, ...argv],
+    {
+      detached: true,
+      env: { ...options.env, NIGHTCREW_OWNER_FD: String(3 + extras.length) },
+      stdio: [
+        options.stdin ?? "pipe",
+        options.stdout ?? "pipe",
+        "ignore",
+        ...extras.map(() => "pipe" as const),
+        "pipe",
+      ],
+    },
+  );
+  extras.forEach((input, index) => {
+    const pipe = child.stdio[index + 3] as import("node:stream").Writable;
+    pipe.on("error", () => {});
+    pipe.end(input);
+  });
+  return child;
+}
+
+export async function runExecutable(options: {
+  executable: string;
+  argv?: string[];
+  env: NodeJS.ProcessEnv;
+  input: string;
+  timeoutMs: number;
+  signal?: AbortSignal;
+  extraInputs?: string[];
+  discardOutput?: boolean;
+  errors: {
+    timeout: string;
+    interrupted: string;
+    limit: string;
+    failed:
+      | string
+      | ((code: number | null, signal: NodeJS.Signals | null) => string);
+  };
+}): Promise<Buffer> {
+  options.signal?.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const child = spawnOwned(options.executable, options.argv ?? [], {
+      env: options.env,
+      extraInputs: options.extraInputs,
+      stdout: options.discardOutput ? "ignore" : "pipe",
+    });
+    const chunks: Buffer[] = [];
+    let bytes = 0,
+      failure: Error | undefined;
+    const kill = () => {
+      if (child.pid)
+        try {
+          process.kill(-child.pid, "SIGKILL");
+        } catch {}
+    };
+    const stop = (message: string) => {
+      failure ??= Error(message);
+      kill();
+    };
+    const abort = () => stop(options.errors.interrupted);
+    const timer = setTimeout(
+      () => stop(options.errors.timeout),
+      options.timeoutMs,
+    );
+    options.signal?.addEventListener("abort", abort, { once: true });
+    if (options.signal?.aborted) abort();
+    child.stdout?.on("data", (chunk: Buffer) => {
+      bytes += chunk.length;
+      if (bytes > 1048576) stop(options.errors.limit);
+      else chunks.push(chunk);
+    });
+    child.stdin!.on("error", () => {});
+    child.once("error", (error) => {
+      failure ??= error;
+    });
+    child.once("close", (code, signal) => {
+      clearTimeout(timer);
+      options.signal?.removeEventListener("abort", abort);
+      kill();
+      if (failure) reject(failure);
+      else if (code !== 0)
+        reject(
+          Error(
+            typeof options.errors.failed === "function"
+              ? options.errors.failed(code, signal)
+              : options.errors.failed,
+          ),
+        );
+      else resolve(Buffer.concat(chunks));
+    });
+    child.stdin!.end(options.input);
+  });
+}

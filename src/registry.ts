@@ -1,6 +1,6 @@
 import { lstat, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { runExecutable } from "./execution.js";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import {
@@ -11,6 +11,18 @@ import {
 } from "./contracts.js";
 import { readJSON } from "./storage.js";
 import { readSkillFiles } from "./skills.js";
+const validators = new Map<string, z.ZodType>();
+function toolValidator(parameters: ToolDefinition["parameters"]) {
+  const key = JSON.stringify(parameters);
+  let validator = validators.get(key);
+  if (!validator) {
+    validator = z.fromJSONSchema(parameters);
+    if (validators.size >= 256)
+      validators.delete(validators.keys().next().value!);
+  } else validators.delete(key);
+  validators.set(key, validator);
+  return validator;
+}
 export const toolDefinitionSchema = z
   .strictObject({
     toolID: id,
@@ -39,7 +51,7 @@ export const toolDefinitionSchema = z
         message: "Tool parameters must be an object JSON Schema",
       });
     try {
-      z.fromJSONSchema(value.parameters);
+      toolValidator(value.parameters);
     } catch {
       ctx.addIssue({
         code: "custom",
@@ -247,77 +259,48 @@ export async function executeExternalTool(
     skills?: Skill[];
   },
 ) {
-  const validated = z.fromJSONSchema(tool.parameters).parse(input);
+  const validated = toolValidator(tool.parameters).parse(input);
   signal.throwIfAborted();
   const argv = resolveToolArgv(tool.argv, validated);
-  return new Promise<unknown>((resolve, reject) => {
-    const child = spawn(tool.executablePath, argv, {
-      stdio: [
-        "pipe",
-        "pipe",
-        "ignore",
-        ...(context?.skills ? ["pipe" as const] : []),
-      ],
-      detached: true,
-      env: {
-        PATH: process.env.PATH ?? "",
-        ...(context
-          ? {
-              NIGHTCREW_HOME: context.home,
-              ...(context.agentID
-                ? { NIGHTCREW_AGENT_ID: context.agentID }
-                : {}),
-              ...(context.runID ? { NIGHTCREW_RUN_ID: context.runID } : {}),
-              ...(context.skills ? { NIGHTCREW_SKILLS_FD: "3" } : {}),
-            }
-          : {}),
-      },
-    });
-    if (context?.skills) {
-      const input = child.stdio[3] as import("node:stream").Writable;
-      input.on("error", () => {});
-      input.end(JSON.stringify(context.skills));
-    }
-    const output: Buffer[] = [];
-    let bytes = 0;
-    let error: Error | undefined;
-    const stop = (reason: string) => {
-      error = Error(reason);
-      if (child.pid)
-        try {
-          process.kill(-child.pid, "SIGKILL");
-        } catch {}
-    };
-    const aborted = () => stop("Tool interrupted");
-    const timer = setTimeout(() => stop("Tool timed out"), tool.timeoutMs);
-    signal.addEventListener("abort", aborted, { once: true });
-    if (signal.aborted) aborted();
-    child.stdout!.on("data", (chunk: Buffer) => {
-      if (bytes + chunk.length > 1048576) stop("Tool output limit");
-      else {
-        output.push(chunk);
-        bytes += chunk.length;
-      }
-    });
-    child.stdin!.on("error", () => {});
-    child.once("error", (e) => {
-      error = e;
-    });
-    child.once("close", (code) => {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", aborted);
-      if (error || code !== 0) {
-        reject(Error(error?.message ?? "External tool failed"));
-        return;
-      }
-      try {
-        resolve(JSON.parse(Buffer.concat(output).toString("utf8")));
-      } catch {
-        reject(Error("Tool must return JSON"));
-      }
-    });
-    child.stdin!.end(JSON.stringify(validated) + "\n");
+  return executeValidatedTool(tool, validated, argv, signal, context);
+}
+async function executeValidatedTool(
+  tool: ToolDefinition,
+  validated: unknown,
+  argv: string[],
+  signal: AbortSignal,
+  context: Parameters<typeof executeExternalTool>[3],
+) {
+  const output = await runExecutable({
+    executable: tool.executablePath,
+    argv,
+    input: JSON.stringify(validated) + "\n",
+    timeoutMs: tool.timeoutMs,
+    signal,
+    extraInputs: context?.skills ? [JSON.stringify(context.skills)] : undefined,
+    env: {
+      PATH: process.env.PATH ?? "",
+      ...(context
+        ? {
+            NIGHTCREW_HOME: context.home,
+            ...(context.agentID ? { NIGHTCREW_AGENT_ID: context.agentID } : {}),
+            ...(context.runID ? { NIGHTCREW_RUN_ID: context.runID } : {}),
+            ...(context.skills ? { NIGHTCREW_SKILLS_FD: "3" } : {}),
+          }
+        : {}),
+    },
+    errors: {
+      timeout: "Tool timed out",
+      interrupted: "Tool interrupted",
+      limit: "Tool output limit",
+      failed: "External tool failed",
+    },
   });
+  try {
+    return JSON.parse(output.toString("utf8"));
+  } catch {
+    throw Error("Tool must return JSON");
+  }
 }
 
 // Model mistakes and executable failures are conversation results, not run failures.
@@ -344,10 +327,11 @@ export async function executeModelTool(
       "not_started",
     );
   let input: unknown;
+  let argv: string[];
   try {
     input = JSON.parse(args);
-    input = z.fromJSONSchema(tool.parameters).parse(input);
-    resolveToolArgv(tool.argv, input);
+    input = toolValidator(tool.parameters).parse(input);
+    argv = resolveToolArgv(tool.argv, input);
   } catch (error) {
     return failure(
       "invalid_tool_arguments",
@@ -368,7 +352,13 @@ export async function executeModelTool(
     );
   }
   try {
-    const result = await executeExternalTool(tool, input, signal, context);
+    const result = await executeValidatedTool(
+      tool,
+      input,
+      argv,
+      signal,
+      context,
+    );
     signal.throwIfAborted();
     return result;
   } catch (error) {

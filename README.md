@@ -2,7 +2,7 @@
 
 Standalone local-agent daemon and JSON-first CLI. Nightcrew owns its HTTP server,
 local control socket, llama.cpp processes, scheduling and run transcripts.
-It has no the client application or Guildscribe runtime dependency.
+It has no application-specific runtime dependencies.
 
 The public contract is frozen at protocol 1 / schema 34. See
 [compatibility and upgrade policy](docs/compatibility.md) for the stable surfaces
@@ -157,7 +157,7 @@ retry interrupted attempts.
 
 Tests use temporary homes, fake executables and isolated listeners. The [model-switch verification](docs/model-switch-verification.md) records a
 successful Qwen → Granite → Qwen test, including disk slot restoration.
-Cancellation and broader workloads still need verification before migrating the chat client.
+Cancellation and broader workloads still need verification before migrating production clients.
 
 ## Supervisor command contract
 
@@ -379,9 +379,8 @@ Agents can set `temperature` from 0 to 2 (default 0.7). Like thinking and output
 limits, temperature is captured in each run's agent snapshot. Audio models use
 the latest user message's nonempty content as the transcription endpoint's
 `prompt`; this is a transcription/vocabulary hint, not a chat system prompt.
-The Granite example uses temperature 0 and a 200-token limit to match the chat client's
-transcription request settings. Matching the chat client also requires matching audio cuts,
-participant/vocabulary hints, and cleanup; this adapter does not infer them.
+The Granite example uses temperature 0 and a 200-token output limit. Audio cuts,
+participant hints and cleanup are supplied by the client.
 
 ## Reviewing and exporting runs
 
@@ -796,7 +795,8 @@ aggregates all model rounds. Message and toolResult SSE events expose these
 exchanges too. Instant snapshots remain memory-only and expire with the request;
 they are not persisted request state.
 
-
+Application-specific agents, tools and delivery scripts are installed separately
+outside this repository.
 
 
 ## Recoverable tool-call errors

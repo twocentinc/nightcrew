@@ -2,7 +2,7 @@
 
 A portable, read-only operational reviewer for any Nightcrew installation. Ships
 in the examples distributed with Nightcrew; `init` does not activate it. No
-the client application, Discord, network service or particular model is required. A larger
+application integration, network service or particular model is required. A larger
 supervising model reads its Markdown report and decides what to do. The worker
 cannot change configuration, retry/cancel runs or send messages.
 
@@ -75,3 +75,8 @@ Reports separate current problems from recovered/historical observations. Tool
 responses include exact coverage counts for unique summary pages and detailed
 runs; the worker must use these rather than estimate. Detailed reads refresh
 current state and disclose the frozen snapshot revision for comparison.
+
+The inspector reads canonical outcomes through `nightcrew runs list/get` on PATH.
+It adds counts and review coverage without reconstructing hook retry status.
+Changed revisions during snapshot collection are reported as unreadable, not
+classified from mismatched evidence.

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import { spawn } from "node:child_process";
+import { runExecutable } from "./execution.js";
 import type { Config } from "./contracts.js";
 export const schedulerSchema = z.strictObject({
   instantModelID: z.string().min(1).max(128).nullable().default(null),
@@ -204,65 +204,25 @@ export async function policyPlan(
   checkpoint();
   const signal = executionSignal();
   try {
-    const plan = await new Promise<Plan>((resolve, reject) => {
-      const child = spawn(hook.executablePath, hook.arguments, {
-        detached: true,
-        env: { PATH: process.env.PATH ?? "/usr/bin:/bin", LANG: "C.UTF-8" },
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-      let stdout = "",
-        error: Error | null = null;
-      const kill = (message: string) => {
-        error = Error(message);
-        if (child.pid) {
-          try {
-            process.kill(-child.pid, "SIGKILL");
-          } catch {}
-        }
-      };
-      const abort = () => kill("Scheduler hook interrupted");
-      signal?.addEventListener("abort", abort, { once: true });
-      if (signal?.aborted) abort();
-      const timer = setTimeout(
-        () => kill("Scheduler hook timed out"),
-        remainingTimeout(hook.timeoutMs),
-      );
-      child.stdout.on("data", (chunk) => {
-        stdout += chunk;
-        if (Buffer.byteLength(stdout) > 1048576)
-          kill("Scheduler hook output limit");
-      });
-      child.stderr.resume();
-      child.stdin.on("error", () => {});
-      child.once("error", (e) => {
-        clearTimeout(timer);
-        signal?.removeEventListener("abort", abort);
-        reject(e);
-      });
-      child.once("close", (code) => {
-        clearTimeout(timer);
-        signal?.removeEventListener("abort", abort);
-        if (child.pid) {
-          try {
-            process.kill(-child.pid, "SIGKILL");
-          } catch {}
-        }
-        try {
-          if (error) throw error;
-          if (code !== 0) throw Error("Scheduler hook failed");
-          resolve(planSchema.parse(JSON.parse(stdout)));
-        } catch (e) {
-          reject(e);
-        }
-      });
-      child.stdin.end(
-        JSON.stringify({
-          version: 1,
-          ...snapshot,
-          settings: { ...snapshot.settings, hook: undefined },
-        }),
-      );
+    const output = await runExecutable({
+      executable: hook.executablePath,
+      argv: hook.arguments,
+      env: { PATH: process.env.PATH ?? "/usr/bin:/bin", LANG: "C.UTF-8" },
+      input: JSON.stringify({
+        version: 1,
+        ...snapshot,
+        settings: { ...snapshot.settings, hook: undefined },
+      }),
+      timeoutMs: remainingTimeout(hook.timeoutMs),
+      signal,
+      errors: {
+        timeout: "Scheduler hook timed out",
+        interrupted: "Scheduler hook interrupted",
+        limit: "Scheduler hook output limit",
+        failed: "Scheduler hook failed",
+      },
     });
+    const plan = planSchema.parse(JSON.parse(output.toString("utf8")));
     validatePlan(snapshot, plan);
     return { plan, source: "hook", diagnostic: null };
   } catch {

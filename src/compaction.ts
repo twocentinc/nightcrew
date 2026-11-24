@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { spawn } from "node:child_process";
+import { runExecutable } from "./execution.js";
 import { z } from "zod";
 import type { Message, Run } from "./contracts.js";
 
@@ -539,58 +539,21 @@ export async function executeCompactionScript(
   signal: AbortSignal,
 ): Promise<string> {
   signal.throwIfAborted();
-  return new Promise((resolve, reject) => {
-    const child = spawn(handler.executablePath, handler.arguments, {
-      detached: true,
-      env: { PATH: process.env.PATH ?? "/usr/bin:/bin", LANG: "C.UTF-8" },
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-    let output = "",
-      failure: Error | undefined;
-    const kill = () => {
-      if (child.pid) {
-        try {
-          process.kill(-child.pid, "SIGKILL");
-        } catch {}
-      }
-    };
-    const abort = () => {
-      failure = Error("Compaction interrupted");
-      kill();
-    };
-    signal.addEventListener("abort", abort, { once: true });
-    const timer = setTimeout(() => {
-      failure = Error("Compaction script timed out");
-      kill();
-    }, handler.timeoutMs);
-    child.stdout.on("data", (chunk) => {
-      output += chunk;
-      if (Buffer.byteLength(output) > 1048576) {
-        failure = Error("Compaction output limit");
-        kill();
-      }
-    });
-    child.stderr.resume();
-    child.stdin.on("error", () => {});
-    child.once("error", (error) => {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", abort);
-      reject(error);
-    });
-    child.once("close", (code) => {
-      clearTimeout(timer);
-      signal.removeEventListener("abort", abort);
-      kill();
-      try {
-        if (failure) throw failure;
-        if (code !== 0) throw Error("Compaction script failed");
-        resolve(parseCompactionSummary(output));
-      } catch (error) {
-        reject(error);
-      }
-    });
-    child.stdin.end(JSON.stringify(request));
+  const output = await runExecutable({
+    executable: handler.executablePath,
+    argv: handler.arguments,
+    env: { PATH: process.env.PATH ?? "/usr/bin:/bin", LANG: "C.UTF-8" },
+    input: JSON.stringify(request),
+    timeoutMs: handler.timeoutMs,
+    signal,
+    errors: {
+      timeout: "Compaction script timed out",
+      interrupted: "Compaction interrupted",
+      limit: "Compaction output limit",
+      failed: "Compaction script failed",
+    },
   });
+  return parseCompactionSummary(output.toString("utf8"));
 }
 
 export function validateCompactionState(run: Run) {

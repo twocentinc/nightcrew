@@ -3,7 +3,7 @@
 Verified November 9, 2026, with Nightcrew 0.7.0 and the installed llama.cpp
 0.6.0 build. This was an explicit, isolated test using existing model weights;
 the installed daemon was stopped for the test and restarted afterward. No
-production conversations or recordings were used. the chat client integration was unchanged.
+production conversations or recordings were used. Client integration was unchanged.
 
 The runtime used Qwen 3.5 4B Q4_K_M with its projector and a 4096-token slot,
 and Granite Speech 4.1 2B Q8_0 with its projector and an 8192-token slot. Granite

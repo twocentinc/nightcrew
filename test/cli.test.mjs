@@ -348,11 +348,13 @@ test("CLI-only daemon serves local CRUD without an HTTP listener and shuts down 
     probe.once("error", reject);
     probe.listen(port, "127.0.0.1", resolve);
   });
-  await new Promise(resolve => probe.close(resolve));
+  await new Promise((resolve) => probe.close(resolve));
   const overview = await call(home, ["status", "--details"], undefined, env);
-  assert.equal(overview.ok,true);
+  assert.equal(overview.ok, true);
   assert.ok(overview.result.scheduler);
-  assert.ok(["present","away"].includes(overview.result.runtime.presence.state));
+  assert.ok(
+    ["present", "away"].includes(overview.result.runtime.presence.state),
+  );
   const listed = await call(
     home,
     [
@@ -659,4 +661,30 @@ test("argv placeholders preserve boundaries and typed stdin without shell evalua
     ),
     /Missing tool parameter/,
   );
+});
+
+test("tool schema edits invalidate cached argument validation", async () => {
+  const tool = {
+    toolID: "schema-cache",
+    description: "test",
+    executablePath: process.execPath,
+    argv: ["-e", `process.stdin.pipe(process.stdout)`],
+    timeoutMs: 5000,
+    parameters: {
+      type: "object",
+      properties: { value: { type: "string" } },
+      required: ["value"],
+      additionalProperties: false,
+    },
+  };
+  const signal = new AbortController().signal;
+  assert.deepEqual(
+    await executeExternalTool(tool, { value: "first" }, signal),
+    { value: "first" },
+  );
+  tool.parameters.properties.value.type = "number";
+  await assert.rejects(executeExternalTool(tool, { value: "first" }, signal));
+  assert.deepEqual(await executeExternalTool(tool, { value: 42 }, signal), {
+    value: 42,
+  });
 });

@@ -56,7 +56,7 @@ general automatic migration or downgrade command promised by this policy.
 Private implementation modules, control-socket internals, process/PID files,
 operational log wording, disposable KV caches, model-generated prose and example
 agent prompts are not stable integration APIs. Use management commands rather
-than editing run files. Examples and optional the client application workflows may improve;
+than editing run files. Examples and external integration workflows may improve;
 they must still respect documented executable interfaces and delivery safety.
 Model quality, throughput and external service availability are not guarantees.
 
@@ -81,10 +81,15 @@ on automatic retries. This narrowly reopens the execution-policy freeze for
 those changes. Request/result schemas and durable formats are unchanged. Existing
 pending compactions retain their saved target; newly prepared compactions use
 the larger ceiling subject to available context. No transcript migration or
-external action replay is required. the chat client summarizer thinking is an explicit
-agent configuration change, not a new default for other agents.
+external action replay is required.
 
 Schema 39 adds opt-in nullable `finishSchema` and optional structured compaction
 checkpoint metadata. Existing agents default to ordinary text completion and old
 checkpoints retain their rendering. New finish behavior applies only to agents
 that explicitly opt in; existing run snapshots are not silently refreshed.
+
+## Application boundary cleanup
+
+The owner explicitly approved removing bundled application integrations and their
+executable from the package. Nightcrew commands and schemas are unchanged; external
+integrations consume the public CLI and own their credentials and delivery logic.

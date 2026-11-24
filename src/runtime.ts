@@ -1,8 +1,14 @@
+import { atomicJSON } from "./storage.js";
 import { executionSlots, schedulerSchema } from "./scheduler.js";
 import type { OperationalLog } from "./logging.js";
-import { remainingTimeout, executionSignal, checkpoint, ownedProcessGuard } from "./execution.js";
+import {
+  remainingTimeout,
+  executionSignal,
+  checkpoint,
+  spawnOwned,
+} from "./execution.js";
 import { NightcrewError } from "./protocol.js";
-import { spawn, execFile, type ChildProcess } from "node:child_process";
+import { execFile, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
 import { userInfo, tmpdir, homedir } from "node:os";
 import {
@@ -15,7 +21,6 @@ import {
   mkdir,
   readFile,
   readdir,
-  rename,
   unlink,
 } from "node:fs/promises";
 import { constants } from "node:fs";
@@ -298,17 +303,12 @@ export class LlamaRuntime implements Runtime {
       const info = await lstat(path.join(directory, filename));
       if (!info.isFile() || info.isSymbolicLink())
         throw Error("Invalid saved snapshot");
-      const temp = manifest + "." + randomUUID() + ".tmp";
-      await writeFile(
-        temp,
-        JSON.stringify({ signature, filename, contextEpoch }),
-        {
-          mode: 0o600,
-          flag: "wx",
-        },
-      );
       signal.throwIfAborted();
-      await rename(temp, manifest);
+      await atomicJSON(
+        manifest,
+        { signature, filename, contextEpoch },
+        1024 * 1024,
+      );
       if (previous && previous !== filename)
         await unlink(path.join(directory, previous)).catch(() => {});
     }
@@ -444,7 +444,14 @@ export class LlamaRuntime implements Runtime {
   status() {
     return this.config().models.map((m) => ({
       modelID: m.modelID,
-      state: this.unloadingModel === m.modelID ? "unloading" : this.loadingModel === m.modelID ? "loading" : this.loadedModel === m.modelID ? "ready" : this.resident.get(m.modelID) ?? "unloaded",
+      state:
+        this.unloadingModel === m.modelID
+          ? "unloading"
+          : this.loadingModel === m.modelID
+            ? "loading"
+            : this.loadedModel === m.modelID
+              ? "ready"
+              : (this.resident.get(m.modelID) ?? "unloaded"),
     }));
   }
   private async resolveBinary() {
@@ -543,10 +550,9 @@ export class LlamaRuntime implements Runtime {
       socket.close((e) => (e ? reject(e) : resolve())),
     );
     this.baseURL = `http://127.0.0.1:${port}`;
-    const child = spawn(
-      process.execPath,
+    const child = spawnOwned(
+      binary,
       [
-        "-e", ownedProcessGuard, binary,
         "--host",
         "127.0.0.1",
         "--port",
@@ -559,8 +565,8 @@ export class LlamaRuntime implements Runtime {
         this.key,
       ],
       {
-        detached: true,
-        stdio: ["ignore", "ignore", "ignore", "pipe"],
+        stdin: "ignore",
+        stdout: "ignore",
         env: {
           PATH: process.env.PATH ?? "",
           HOME: this.directory,

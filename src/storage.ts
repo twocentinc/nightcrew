@@ -106,46 +106,65 @@ export async function readJSON<T>(
   max: number,
 ): Promise<T> {
   return boundedRead(async () => {
-  await regular(file, max);
-  const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+    await regular(file, max);
+    const handle = await open(file, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      return schema.parse(JSON.parse(await handle.readFile("utf8")));
+    } finally {
+      await handle.close();
+    }
+  });
+}
+async function syncDirectory(directory: string) {
+  const handle = await open(directory, "r");
   try {
-    return schema.parse(JSON.parse(await handle.readFile("utf8")));
+    await handle.sync();
   } finally {
     await handle.close();
   }
-  });
 }
 export async function atomicJSON(file: string, value: unknown, max: number) {
   checkpoint();
   const data = JSON.stringify(value);
-  if (Buffer.byteLength(data) > max) throw new Error("resource_limit");
-  const dir = path.dirname(file);
-  const temporary = path.join(dir, "." + randomUUID() + ".tmp");
-  const h = await open(temporary, "wx", 0o600);
+  if (Buffer.byteLength(data) > max) throw Error("resource_limit");
+  const directory = path.dirname(file),
+    temporary = path.join(directory, "." + randomUUID() + ".tmp");
   try {
-    await h.writeFile(data);
-    await h.sync();
-  } finally {
-    await h.close();
-  }
-  try {
+    const handle = await open(temporary, "wx", 0o600);
+    try {
+      await handle.writeFile(data);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
     checkpoint();
     await rename(temporary, file);
-    const d = await open(dir, "r");
-    try {
-      await d.sync();
-    } finally {
-      await d.close();
-    }
-  } catch (e) {
+    await syncDirectory(directory);
+  } catch (error) {
     await unlink(temporary).catch(() => {});
-    throw e;
+    throw error;
   }
+}
+// Unlike replacement, an exclusive claim must never overwrite an existing file.
+// A failed write leaves the claim present: its outcome is uncertain, not retryable.
+export async function claimJSON(file: string, value: unknown, max: number) {
+  checkpoint();
+  const data = JSON.stringify(value);
+  if (Buffer.byteLength(data) > max) throw Error("resource_limit");
+  const handle = await open(file, "wx", 0o600);
+  try {
+    await handle.writeFile(data);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  await syncDirectory(path.dirname(file));
 }
 export class Storage {
   store!: Store;
   summaries = new Map<string, Summary>();
   messages = new Map<string, { runID: string; index: number }>();
+  private messageIDsByRun = new Map<string, Set<string>>();
   unreadable: string[] = [];
   readonly pendingRunIDs = new Set<string>();
   readonly compactingRunIDs = new Set<string>();
@@ -263,23 +282,36 @@ export class Storage {
       throw e;
     }
   }
+  private checkedMessageIDs(r: Run) {
+    const indexedMessages = [
+      ...r.messages,
+      ...r.pendingInputs.map((p) => ({ ...p.message, role: "user" })),
+    ];
+    const nextIDs = new Set<string>();
+    indexedMessages.forEach((m) => {
+      if (m.role !== "user") return;
+      const existing = this.messages.get(m.messageID);
+      if (nextIDs.has(m.messageID) || (existing && existing.runID !== r.runID))
+        throw Error("Duplicate message UUID");
+      nextIDs.add(m.messageID);
+    });
+    return nextIDs;
+  }
   private index(r: Run) {
     const indexedMessages = [
       ...r.messages,
       ...r.pendingInputs.map((p) => ({ ...p.message, role: "user" })),
     ];
-    for (const [messageID, record] of this.messages)
-      if (record.runID === r.runID) this.messages.delete(messageID);
-    indexedMessages.forEach((m, index) => {
-      if (m.role !== "user") return;
-      const existing = this.messages.get(m.messageID);
-      if (existing && (existing.runID !== r.runID || existing.index !== index))
-        throw new Error("Duplicate message UUID");
-    });
+    const nextIDs = this.checkedMessageIDs(r);
+    for (const messageID of this.messageIDsByRun.get(r.runID) ?? [])
+      this.messages.delete(messageID);
+    this.messageIDsByRun.set(r.runID, nextIDs);
     this.summaries.set(r.runID, summarize(r));
-    if (r.pendingInputs.some(p => !p.cancelled)) this.pendingRunIDs.add(r.runID);
+    if (r.pendingInputs.some((p) => !p.cancelled))
+      this.pendingRunIDs.add(r.runID);
     else this.pendingRunIDs.delete(r.runID);
-    if (r.compaction?.status === "waiting" && r.compaction.childRunID) this.compactingRunIDs.add(r.runID);
+    if (r.compaction?.status === "waiting" && r.compaction.childRunID)
+      this.compactingRunIDs.add(r.runID);
     else this.compactingRunIDs.delete(r.runID);
     indexedMessages.forEach((m, index) => {
       if (m.role === "user")
@@ -399,6 +431,7 @@ export class Storage {
   async write(r: Run, initial = false) {
     r.version = 2;
     runSchema.parse(r);
+    this.checkedMessageIDs(r);
     const root = path.join(this.home, "runs");
     if (initial) {
       const staging = path.join(root, "." + randomUUID());
@@ -475,12 +508,6 @@ export async function initializeHome(
     cooldownUntil: null,
   });
   validateConfig(store);
-  const file = await open(path.join(home, "config.json"), "wx", 0o600);
-  try {
-    await file.writeFile(JSON.stringify(store));
-    await file.sync();
-  } finally {
-    await file.close();
-  }
+  await claimJSON(path.join(home, "config.json"), store, 8 * 1024 * 1024);
   return { token };
 }

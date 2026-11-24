@@ -1,8 +1,8 @@
 # Nightcrew
 
 Nightcrew is a standalone project. Use its spec and the owner's direct
-instructions for planning and implementation; do not use an application-specific planning system.
-Keep it independent of the client application and Guildscribe runtime imports.
+instructions for planning and implementation. Keep application integrations and
+their executable tools outside this repository.
 
 `src/operations.ts` owns shared oRPC procedures, results and management command
 metadata; `src/operationInputs.ts` owns their request schemas. CLI, control socket
@@ -11,7 +11,7 @@ commands from them and owns local command definitions and discovery.
 `src/protocol.ts` owns versioned envelopes, errors and request validation.
 `src/cli.ts` owns parsing and finite command execution; `src/execution.ts` owns
 shared deadlines, diagnostics, and the owner-pipe process guard used for llama.cpp
-and lifecycle hooks. Owner death must terminate their process groups, while
+tools and script hooks. Owner death must terminate their process groups, while
 uncertain delivery receipts remain non-retryable without review. `src/daemon.ts` owns the private control socket.
 `src/management.ts` implements configuration, trigger and queue management.
 `src/triggers.ts` owns schedule validation and next-occurrence calculation.
@@ -43,7 +43,7 @@ tool data, run lifecycle, configuration dumps, or facts reconstructible from
 transcripts/state files. Log only additional daemon operational evidence.
 `src/startup.ts` owns the per-user macOS LaunchAgent. Runtime files must remain
 outside the source checkout. Default home is `~/.nightcrew`; this installation
-may select a home below a private runtime directory with `--home`.
+may select another private runtime directory with `--home`.
 
 Finite CLI commands emit one JSON envelope; diagnostics go to stderr. Reject
 unknown options. Credentials never go in command flags, plists or logs. Keep
@@ -74,10 +74,6 @@ behavior without an actual model-specific check.
 
 Real-model tests live under `test/live/`, outside the default suite. Do not run
 them without explicit authorization for inference.
-
-
-
-
 
 The public contract is frozen at schema 34; follow `docs/compatibility.md`.
 Do not remove or rename public commands, tighten accepted inputs, or change

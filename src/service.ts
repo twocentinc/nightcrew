@@ -25,11 +25,7 @@ import {
 import { withSkillCatalog } from "./skills.js";
 import { nextFireAt } from "./triggers.js";
 import type { OperationalLog } from "./logging.js";
-import {
-  checkpoint,
-  withoutExecution,
-  ownedProcessGuard,
-} from "./execution.js";
+import { checkpoint, withoutExecution, runExecutable } from "./execution.js";
 import {
   builtinTools,
   loadRegistry,
@@ -38,7 +34,6 @@ import {
   executeModelTool,
   type ToolDefinition,
 } from "./registry.js";
-import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import path from "node:path";
@@ -153,7 +148,13 @@ type Chat = {
   expires: number;
   deadline: number;
 };
-type Page = { key: string; items: unknown[]; offset: number; expires: number };
+type PageSnapshot = {
+  key: string;
+  items: unknown[];
+  expires: number;
+  bytes: number;
+};
+type Page = { snapshot: PageSnapshot; offset: number };
 export class Service {
   readonly skills = new Map<string, Skill>();
   readonly tools = new Map<string, ToolDefinition>();
@@ -563,32 +564,40 @@ export class Service {
     { limit, cursor }: { limit: number; cursor?: string },
     get: () => Promise<T[]> | T[],
   ) {
-    for (const [id, p] of this.pages)
-      if (p.expires < Date.now()) this.pages.delete(id);
+    for (const [id, page] of this.pages)
+      if (page.snapshot.expires < Date.now()) this.pages.delete(id);
     let p: Page;
     if (cursor) {
       p = this.pages.get(cursor) ?? fail("cursor_expired", 410);
-      if (p.key !== key + "|" + limit) fail("cursor_query_mismatch");
+      if (p.snapshot.key !== key + "|" + limit) fail("cursor_query_mismatch");
     } else {
+      const items = structuredClone(await get());
       p = {
-        key: key + "|" + limit,
-        items: structuredClone(await get()),
+        snapshot: {
+          key: key + "|" + limit,
+          items,
+          expires: Date.now() + 300000,
+          bytes: Buffer.byteLength(JSON.stringify(items)),
+        },
         offset: 0,
-        expires: Date.now() + 300000,
       };
     }
-    const result = p.items.slice(p.offset, p.offset + limit) as T[];
+    const result = p.snapshot.items.slice(p.offset, p.offset + limit) as T[];
     const offset = p.offset + limit;
     let nextCursor: string | null = null;
-    if (offset < p.items.length) {
-      if (
-        this.pages.size >= 100 ||
-        Buffer.byteLength(JSON.stringify([...this.pages.values(), p])) >
-          128 * 1024 * 1024
-      )
+    if (offset < p.snapshot.items.length) {
+      const snapshots = new Set(
+        [...this.pages.values()].map((page) => page.snapshot),
+      );
+      snapshots.add(p.snapshot);
+      const bytes = [...snapshots].reduce(
+        (sum, snapshot) => sum + snapshot.bytes,
+        0,
+      );
+      if (this.pages.size >= 100 || bytes > 128 * 1024 * 1024)
         fail("cursor_capacity", 429);
       nextCursor = randomUUID();
-      this.pages.set(nextCursor, { ...p, offset });
+      this.pages.set(nextCursor, { snapshot: p.snapshot, offset });
     }
     return { items: result, nextCursor };
   }
@@ -3760,58 +3769,44 @@ export class Service {
         return blocked ? -1 : index;
       });
       if (accepted < 0) continue;
-      const hookResult = await new Promise<{
-        ok: boolean;
-        diagnostic: string | null;
-      }>((resolve) => {
-        const child = spawn(
-          process.execPath,
-          ["-e", ownedProcessGuard, hook.executablePath],
-          {
-            stdio: ["pipe", "ignore", "ignore", "pipe"],
-            env: { PATH: process.env.PATH ?? "" },
-            detached: true,
+      let hookResult: { ok: boolean; diagnostic: string | null };
+      try {
+        await runExecutable({
+          executable: hook.executablePath,
+          env: { PATH: process.env.PATH ?? "" },
+          discardOutput: true,
+          timeoutMs: hook.timeoutMs,
+          input:
+            JSON.stringify({
+              version: 1,
+              event: eventName,
+              runID: r.runID,
+              agentID: r.agent.agentID,
+              segment: event.segment,
+              state: eventType === "storageLimit" ? "paused" : eventType,
+              eventSequence: event.sequence,
+              ...(eventType === "storageLimit" ? { storage: event.data } : {}),
+              result: r.result,
+              error: r.error,
+            }) + "\n",
+          errors: {
+            timeout: `Hook timed out after ${hook.timeoutMs} ms`,
+            interrupted: "Hook interrupted",
+            limit: "Hook output limit",
+            failed: (code, signal) =>
+              `Hook exited with code ${code}, signal ${signal ?? "none"}`,
           },
-        );
-        let finished = false;
-        let diagnostic: string | null = null;
-        const done = (value: boolean) => {
-          if (finished) return;
-          finished = true;
-          clearTimeout(timer);
-          resolve({ ok: value, diagnostic: value ? null : diagnostic });
+        });
+        hookResult = { ok: true, diagnostic: null };
+      } catch (error) {
+        hookResult = {
+          ok: false,
+          diagnostic:
+            error instanceof Error
+              ? error.message.slice(0, 2000)
+              : "Hook failed",
         };
-        const timer = setTimeout(() => {
-          diagnostic = `Hook timed out after ${hook.timeoutMs} ms`;
-          if (child.pid)
-            try {
-              process.kill(-child.pid, "SIGKILL");
-            } catch {}
-        }, hook.timeoutMs);
-        child.once("error", (error) => {
-          diagnostic = error.message.slice(0, 2000);
-          done(false);
-        });
-        child.once("exit", (code, signal) => {
-          diagnostic ??= `Hook exited with code ${code}, signal ${signal ?? "none"}`;
-          done(code === 0);
-        });
-        child.stdin!.on("error", () => {});
-        child.stdin!.end(
-          JSON.stringify({
-            version: 1,
-            event: eventName,
-            runID: r.runID,
-            agentID: r.agent.agentID,
-            segment: event.segment,
-            state: eventType === "storageLimit" ? "paused" : eventType,
-            eventSequence: event.sequence,
-            ...(eventType === "storageLimit" ? { storage: event.data } : {}),
-            result: r.result,
-            error: r.error,
-          }) + "\n",
-        );
-      });
+      }
       await this.storage.exclusive(async () => {
         const current = this.liveRuns.get(r.runID) ?? (await this.run(r.runID));
         const receipt = current.hookReceipts[accepted]!;

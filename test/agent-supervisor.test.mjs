@@ -1,10 +1,45 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
+import {
+  mkdtemp,
+  readdir,
+  mkdir,
+  writeFile,
+  readFile,
+  rm,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { inspect, metrics } from "../examples/agent-supervisor/inspect.mjs";
+import {
+  inspect,
+  metrics as projectMetrics,
+} from "../examples/agent-supervisor/inspect.mjs";
 import { report } from "../examples/agent-supervisor/report.mjs";
+import { runOutcome, reviewFingerprint } from "../dist/supervision.js";
+const canonical = (r) =>
+  runOutcome({
+    segment: 0,
+    hookReceipts: [],
+    validations: [],
+    reviews: [],
+    ...r,
+  });
+const metrics = (r, parent) => projectMetrics(r, parent, canonical(r));
+const readOutcome = async (home, id) => {
+  const r = JSON.parse(
+    await readFile(path.join(home, "runs", id, "state.json")),
+  );
+  return { ...r, outcome: canonical(r) };
+};
+const readOutcomes = async (home) =>
+  new Map(
+    await Promise.all(
+      (await readdir(path.join(home, "runs"))).map(async (id) => [
+        id,
+        await readOutcome(home, id),
+      ]),
+    ),
+  );
 const now = Date.parse("2026-11-12T00:00:00Z");
 const run = (id, overrides = {}) => ({
   runID: id,
@@ -15,6 +50,10 @@ const run = (id, overrides = {}) => ({
   createdAt: new Date(now - 20000).toISOString(),
   updatedAt: new Date(now - 10000).toISOString(),
   activeMs: 4000,
+  segment: 0,
+  hookReceipts: [],
+  validations: [],
+  reviews: [],
   messages: [],
   events: [],
   result: "ok",
@@ -46,7 +85,7 @@ test("supervisor freezes metrics, excludes itself and old healthy work, checkpoi
     }),
   );
   await writeFile(path.join(home, "config.json"), "secret sentinel");
-  const opts = { home, runID: "review", now };
+  const opts = { home, runID: "review", now, readOutcome, readOutcomes };
   const overview = await inspect({ action: "overview" }, opts);
   assert.equal(overview.totalRuns, 8);
   assert.equal(overview.totalPages, 2);
@@ -162,7 +201,7 @@ test("supervisor exposes requested quality reviews without equating them with fa
     }),
   );
   assert.equal(result.state, "completed");
-  assert.deepEqual(result.quality.flags, ["review_requested"]);
+  assert.deepEqual(result.quality.flags, []); // A stale review is not current canonical status.
   assert.equal(result.lastReview.note, "Unsupported recommendation");
 });
 
@@ -181,6 +220,8 @@ test("recovered delivery and validation supersede historical failures and dated 
     events: [
       { sequence: 1, segment: 0 },
       { sequence: 2, segment: 1 },
+      { sequence: 3, segment: 1 },
+      { sequence: 4, segment: 1 },
     ],
     hookReceipts: [
       {
@@ -223,8 +264,7 @@ test("recovered delivery and validation supersede historical failures and dated 
   });
   const m = metrics(r);
   assert.equal(m.current.delivery.status, "succeeded");
-  assert.equal(m.current.delivery.receipts.length, 1);
-  assert.equal(m.current.delivery.receipts[0].recovered, true);
+  assert.deepEqual(m.outcome, canonical(r));
   assert.equal(m.historical.hookFailures, 3);
   assert.equal(m.current.validation.status, "passed");
   assert.equal(m.historical.validationFailures, 1);
@@ -235,11 +275,6 @@ test("recovered delivery and validation supersede historical failures and dated 
   assert.equal(metrics(r).current.delivery.status, "unknown");
   r.hookReceipts.at(-1).status = "pending";
   assert.equal(metrics(r).current.delivery.status, "pending");
-  r.hookReceipts.at(-1).retryOf = 99;
-  assert.equal(
-    metrics(r).current.delivery.unknownScopeReceipts[0].status,
-    "unknown",
-  );
 });
 
 test("parent evidence distinguishes stale children from required and unverified children", async (t) => {
@@ -251,7 +286,7 @@ test("parent evidence distinguishes stale children from required and unverified 
   });
   await put(child);
   await put(run("parent", { state: "completed", compaction: null }));
-  const opts = { home, runID: "review", now };
+  const opts = { home, runID: "review", now, readOutcome, readOutcomes };
   const detail = await inspect({ action: "run", runID: "child" }, opts);
   assert.equal(detail.statusMeaning, "stale_compactor_child");
   assert.equal(detail.current.parent.awaitsThisChild, false);
@@ -269,7 +304,7 @@ test("coverage counts distinct pages and detailed runs, and detail refreshes sna
   const { home, put } = await fixture(t);
   await put(run("one", { state: "failed", error: { code: "old" } }));
   await put(run("two"));
-  const opts = { home, runID: "review", now };
+  const opts = { home, runID: "review", now, readOutcome, readOutcomes };
   await inspect({ action: "page", page: 0 }, opts);
   await inspect({ action: "page", page: 0 }, opts);
   await put(run("one", { revision: 2, state: "completed" }));

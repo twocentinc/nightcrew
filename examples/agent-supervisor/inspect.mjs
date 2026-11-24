@@ -7,6 +7,8 @@ import {
   lstat,
   rename,
 } from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { homedir } from "node:os";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
@@ -22,73 +24,35 @@ async function json(file) {
 }
 const terminal = (state) =>
   ["completed", "failed", "timedOut", "cancelled"].includes(state);
-// Resolve retry chains before projecting statuses. Keep paths private and keep
-// receipts from older conversation segments out of the current delivery result.
-export function hookEvidence(r) {
-  const receipts = r.hookReceipts ?? [];
-  const groups = new Map();
-  for (const [index, receipt] of receipts.entries()) {
-    let root = index;
-    const seen = new Set();
-    let valid = true;
-    while (
-      receipts[root]?.retryOf !== null &&
-      receipts[root]?.retryOf !== undefined
-    ) {
-      const previous = receipts[root].retryOf;
-      if (
-        !Number.isInteger(previous) ||
-        previous < 0 ||
-        previous >= root ||
-        seen.has(previous)
-      ) {
-        valid = false;
-        break;
-      }
-      seen.add(previous);
-      root = previous;
-    }
-    const original = receipts[root];
-    const key = valid
-      ? `${original.eventSequence}:${original.executablePath}`
-      : `invalid:${index}`;
-    const segment = (r.events ?? []).find(
-      (e) => e.sequence === original.eventSequence,
-    )?.segment;
-    groups.set(key, {
-      receiptIndex: index,
-      rootReceiptIndex: root,
-      purpose: receipt.purpose ?? "notification",
-      status: valid ? receipt.status : "unknown",
-      segment: segment ?? null,
-      recovered: valid && receipt.status === "succeeded" && seen.size > 0,
-    });
-  }
-  const current = [...groups.values()].filter(
-    (h) => h.segment === (r.segment ?? 0),
+// Public CLI outcomes are authoritative; this example only adds operational metrics.
+async function call(home, args) {
+  const { stdout } = await promisify(execFile)(
+    "nightcrew",
+    [...args, "--home", home],
+    {
+      timeout: 30000,
+      maxBuffer: 16 * 1024 * 1024,
+    },
   );
-  const unknownScope = [...groups.values()].filter((h) => h.segment === null);
-  const delivery = current.filter((h) => h.purpose === "delivery");
-  const status = delivery.some((h) => h.status === "unknown")
-    ? "unknown"
-    : delivery.some((h) => h.status === "failed")
-      ? "failed"
-      : delivery.some((h) => ["pending", "started"].includes(h.status))
-        ? "pending"
-        : unknownScope.some((h) => h.purpose === "delivery")
-          ? "unknown"
-          : delivery.length && delivery.every((h) => h.status === "succeeded")
-            ? "succeeded"
-            : r.deliveryExpected
-              ? "pending"
-              : "notConfigured";
-  return {
-    status,
-    receipts: current,
-    unknownScopeReceipts: unknownScope,
-    basis:
-      "Effective receipts for the current segment. Hook success alone does not independently verify the external destination.",
-  };
+  const result = JSON.parse(stdout);
+  if (!result.ok) throw Error("Nightcrew inspection failed");
+  return result.result;
+}
+async function outcomes(home) {
+  const runs = new Map();
+  let cursor;
+  do {
+    const page = await call(home, [
+      "runs",
+      "list",
+      "--limit",
+      "100",
+      ...(cursor ? ["--cursor", cursor] : []),
+    ]);
+    for (const run of page.items) runs.set(run.runID, run);
+    cursor = page.nextCursor;
+  } while (cursor);
+  return runs;
 }
 function coverage(snapshot) {
   return {
@@ -109,7 +73,11 @@ async function saveSnapshot(file, snapshot) {
   });
   await rename(temporary, file);
 }
-async function project(r, home) {
+async function project(r, home, summary) {
+  if (!summary || summary.revision !== r.revision)
+    throw Error(
+      "Run changed during inspection; retry with a new review snapshot",
+    );
   let parent;
   if (r.parentRunID && ID.test(r.parentRunID)) {
     try {
@@ -118,9 +86,10 @@ async function project(r, home) {
       /* Explicitly unverified; never infer a missing parent's state. */
     }
   }
-  return metrics(r, parent);
+  return metrics(r, parent, summary.outcome);
 }
-export function metrics(r, parent) {
+export function metrics(r, parent, outcome) {
+  if (!outcome) throw Error("Canonical run outcome is required");
   const groups = new Map();
   for (const m of r.messages ?? [])
     for (const c of m.toolCalls ?? []) {
@@ -150,7 +119,7 @@ export function metrics(r, parent) {
   const lastReview = (r.reviews ?? [])
     .filter((review) => review.segment === (r.segment ?? 0))
     .at(-1);
-  if (lastReview && ["open", "acknowledged"].includes(lastReview.status))
+  if (["open", "acknowledged"].includes(outcome.review))
     qualityFlags.push("review_requested");
   if (r.state === "completed") {
     if (!r.result?.trim()) qualityFlags.push("empty_output");
@@ -180,13 +149,18 @@ export function metrics(r, parent) {
         }
       : { runID: r.parentRunID, relationship: "unverified" }
     : null;
-  const delivery = hookEvidence(r);
+  const delivery = {
+    status: outcome.delivery,
+    basis:
+      "Canonical Nightcrew run outcome; external delivery is not independently verified.",
+  };
   const validation = (r.validations ?? [])
     .filter((v) => v.segment === (r.segment ?? 0))
     .at(-1);
   return {
+    outcome,
     current: {
-      execution: r.state,
+      execution: outcome.execution,
       activeHold: !!r.held && !terminal(r.state),
       error:
         terminal(r.state) && !["failed", "timedOut"].includes(r.state)
@@ -268,6 +242,9 @@ export async function inspect(
     home = homeDefault(),
     runID = process.env.NIGHTCREW_RUN_ID,
     now = Date.now(),
+    readOutcomes = outcomes,
+    readOutcome = async (home, id) =>
+      (await call(home, ["runs", "get", id])).run,
   } = {},
 ) {
   if (!ID.test(runID ?? "")) throw Error("Run ID required");
@@ -299,6 +276,7 @@ export async function inspect(
     }
     const baselineAt =
       previous.baselineAt ?? new Date(now - 86400000).toISOString();
+    const summaries = await readOutcomes(home);
     const items = [];
     let unreadableRuns = 0;
     for (const entry of await readdir(path.join(home, "runs"), {
@@ -316,7 +294,7 @@ export async function inspect(
           !["failed", "timedOut"].includes(r.state)
         )
           continue;
-        items.push(await project(r, home));
+        items.push(await project(r, home, summaries.get(r.runID)));
       } catch {
         unreadableRuns++;
       }
@@ -388,7 +366,7 @@ export async function inspect(
   if (!snapshot.items.some((r) => r.runID === input.runID))
     throw Error("Run is outside this review snapshot");
   const r = await json(path.join(home, "runs", input.runID, "state.json"));
-  const projected = await project(r, home);
+  const projected = await project(r, home, await readOutcome(home, r.runID));
   snapshot.detailsExamined ??= {};
   snapshot.detailsExamined[r.runID] = r.revision;
   await saveSnapshot(file, snapshot);

@@ -27,6 +27,7 @@ try {
   );
   for (const name of ["inspect.mjs", "report.mjs", "agent.json", "skill.json"])
     assert.ok(pack.files.some((f) => f.path === "examples/agent-supervisor/" + name));
+  assert.deepEqual(Object.keys(JSON.parse(await readFile(path.join(root, "package.json"), "utf8")).bin), ["nightcrew"]);
   const install = path.join(temp, "install");
   await mkdir(install);
   await exec(

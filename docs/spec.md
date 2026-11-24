@@ -13,7 +13,7 @@ approved implementation scope.
 
 Nightcrew is a standalone CLI and daemon that owns local llama.cpp model serving,
 interactive inference, and recurring background agents. It has no dependency on
-the client application, the chat client, or Guildscribe. Clients submit requests; Nightcrew controls
+particular applications. Clients submit requests; Nightcrew controls
 model residency, physical slots, scheduling and durable agent transcripts.
 
 The daemon resolves llama-server from PATH and provisions it on demand. Model
@@ -477,9 +477,11 @@ eligible revisions, discloses coverage limits and checkpoints only metric pages
 returned before a successfully exported report. Checkpointing is not a factual
 review guarantee. Nothing is activated by init; users install and configure the
 example with the existing CLI. Its scripts use only Node APIs and the Nightcrew
-home, without the client application or Discord dependencies.
+home, without application dependencies.
 
-
+The supervisor example is manual-only by default and emits local Markdown.
+See examples/agent-supervisor for installation and scope. Installed copies are
+not overwritten by package updates. Application-specific agents live externally.
 
 
 ### Source-linked compaction evidence
@@ -531,7 +533,6 @@ Compaction source packets retain bounded ancestor scalar metadata with each
 original excerpt, preserving schema names, units, citation identity and scope
 without domain-specific compactor rules.
 
-The combined Loose Threads example replaces duplicate Discord Activity analysis.
 Supervisor metrics distinguish normal compaction waiting from held runs and flag
 empty structured result collections for review. Such flags are advisory, not
 execution failures; bounded final-report excerpts allow review of useful output
@@ -544,8 +545,6 @@ through messages actually summarized; the parent repeats compaction if its
 remaining context is still over threshold. Original transcript messages remain
 intact. A single exchange that cannot fit is held with an explicit diagnostic;
 it is never silently truncated or recursively compacted by the child.
-
-
 
 ## CLI simplification, schema 31
 

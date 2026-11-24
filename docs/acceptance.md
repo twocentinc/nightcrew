@@ -105,3 +105,7 @@ The first test exposed an orphaned llama.cpp process after owner death. The
 owner-pipe guard fixes that for the model server and lifecycle hooks. The final
 pass checked the complete descendant tree at each crash (three, five and five
 processes) and found no survivors. No external Discord messages were sent.
+
+The current core crash fixture uses a generic HTTP delivery hook. The earlier
+multipart transport check belongs to the separately maintained integration;
+Nightcrew itself owns the durable hook receipt and uncertain-outcome hold.

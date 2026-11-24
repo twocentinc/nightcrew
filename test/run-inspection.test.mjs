@@ -269,51 +269,142 @@ test("log pagination is bounded, replayable, and rejects rotation or changed que
   await assert.rejects(startupLogs(root, 100, 2, "bad"), /Invalid log cursor/);
 });
 
-test('idle scheduling does not reread archived transcripts', async t => {
-  const {storage,service,makeRun} = await fixture(t);
+test("idle scheduling does not reread archived transcripts", async (t) => {
+  const { storage, service, makeRun } = await fixture(t);
   await makeRun(randomUUID());
-  let reads=0;
-  const original=storage.read.bind(storage);
-  storage.read=async (...args)=>{reads++;return original(...args)};
+  let reads = 0;
+  const original = storage.read.bind(storage);
+  storage.read = async (...args) => {
+    reads++;
+    return original(...args);
+  };
   await service.reconcileCompactions();
   await service.activatePending();
-  assert.equal(reads,0);
+  assert.equal(reads, 0);
 });
 
-test('pending work index survives reload and clears after cancellation', async t => {
-  const {storage,home,makeRun}=await fixture(t);
-  const run=await makeRun(randomUUID());
-  run.pendingInputs.push({message:{messageID:randomUUID(),content:'next',attachments:[]},source:null});
+test("pending work index survives reload and clears after cancellation", async (t) => {
+  const { storage, home, makeRun } = await fixture(t);
+  const run = await makeRun(randomUUID());
+  run.pendingInputs.push({
+    message: { messageID: randomUUID(), content: "next", attachments: [] },
+    source: null,
+  });
   await storage.write(run);
   assert.ok(storage.pendingRunIDs.has(run.runID));
   await storage.close();
-  const reopened=new Storage(home);await reopened.initialize();
-  try {assert.ok(reopened.pendingRunIDs.has(run.runID));}
-  finally {await reopened.close();}
-  run.pendingInputs[0].cancelled=true;
+  const reopened = new Storage(home);
+  await reopened.initialize();
+  try {
+    assert.ok(reopened.pendingRunIDs.has(run.runID));
+  } finally {
+    await reopened.close();
+  }
+  run.pendingInputs[0].cancelled = true;
   await storage.write(run);
-  assert.equal(storage.pendingRunIDs.has(run.runID),false);
+  assert.equal(storage.pendingRunIDs.has(run.runID), false);
 });
 
-test('a stalled read releases the serialization queue without accepting late results', async t => {
-  const {boundedRead}=await import('../dist/storage.js');
-  const {storage}=await fixture(t);
-  let finish,committed=false;
-  const stalled=storage.exclusive(async()=>{
-    await boundedRead(()=>new Promise(resolve=>{finish=resolve}),20);
-    committed=true;
+test("a stalled read releases the serialization queue without accepting late results", async (t) => {
+  const { boundedRead } = await import("../dist/storage.js");
+  const { storage } = await fixture(t);
+  let finish,
+    committed = false;
+  const stalled = storage.exclusive(async () => {
+    await boundedRead(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      20,
+    );
+    committed = true;
   });
-  const next=storage.exclusive(async()=> 'queue recovered');
-  await assert.rejects(stalled,e=>e.code==='storage.readTimeout');
-  assert.equal(await next,'queue recovered');
-  finish('late');await new Promise(resolve=>setImmediate(resolve));
-  assert.equal(committed,false);
+  const next = storage.exclusive(async () => "queue recovered");
+  await assert.rejects(stalled, (e) => e.code === "storage.readTimeout");
+  assert.equal(await next, "queue recovered");
+  finish("late");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(committed, false);
   await storage.close();
 });
 
-test('run read boundary times out an unresolved filesystem read', {timeout:15000}, async t => {
-  const {storage}=await fixture(t);
-  storage.readRun=()=>new Promise(()=>{});
-  await assert.rejects(storage.exclusive(()=>storage.read(randomUUID())), e=>e.code==='storage.readTimeout');
-  assert.equal(await storage.exclusive(async()=>true),true);
+test(
+  "run read boundary times out an unresolved filesystem read",
+  { timeout: 15000 },
+  async (t) => {
+    const { storage } = await fixture(t);
+    storage.readRun = () => new Promise(() => {});
+    await assert.rejects(
+      storage.exclusive(() => storage.read(randomUUID())),
+      (e) => e.code === "storage.readTimeout",
+    );
+    assert.equal(await storage.exclusive(async () => true), true);
+  },
+);
+
+test("durable replacement and exclusive claims preserve distinct semantics", async (t) => {
+  const { atomicJSON, claimJSON } = await import("../dist/storage.js");
+  const root = await mkdtemp(path.join(tmpdir(), "nc-durable-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const file = path.join(root, "state.json");
+  await claimJSON(file, { claimed: true }, 100);
+  await assert.rejects(claimJSON(file, { claimed: false }, 100), {
+    code: "EEXIST",
+  });
+  assert.deepEqual(JSON.parse(await readFile(file, "utf8")), { claimed: true });
+  await atomicJSON(file, { revision: 2 }, 100);
+  await assert.rejects(
+    atomicJSON(file, { large: "x".repeat(200) }, 100),
+    /resource_limit/,
+  );
+  assert.deepEqual(JSON.parse(await readFile(file, "utf8")), { revision: 2 });
+  assert.equal((await stat(file)).mode & 0o777, 0o600);
+});
+test("updating one run leaves other message ownership indexed and rejects collisions before writing", async (t) => {
+  const { storage, makeRun } = await fixture(t);
+  const a = await makeRun("index-a"),
+    b = await makeRun("index-b");
+  a.revision++;
+  a.messages.push({ ...a.messages[0], messageID: randomUUID() });
+  await storage.write(a);
+  assert.equal(storage.messages.get(b.messages[0].messageID).runID, b.runID);
+  const bad = structuredClone(a);
+  bad.messages[0].messageID = b.messages[0].messageID;
+  await assert.rejects(storage.write(bad), /Duplicate message UUID/);
+  assert.equal(
+    (await storage.read(a.runID)).messages[0].messageID,
+    a.messages[0].messageID,
+  );
+  assert.equal(storage.messages.get(a.messages[1].messageID).runID, a.runID);
+});
+test("pagination shares one frozen snapshot across replayed cursors", async (t) => {
+  const { service } = await fixture(t);
+  const items = Array.from({ length: 8 }, (_, i) => ({
+    id: i,
+    payload: "x".repeat(1024 * 1024),
+  }));
+  let calls = 0;
+  const first = await service.paginate("large", { limit: 1 }, () => {
+    calls++;
+    return items;
+  });
+  const second = await service.paginate(
+    "large",
+    { limit: 1, cursor: first.nextCursor },
+    () => {
+      throw Error("Should not rebuild snapshot");
+    },
+  );
+  items[1].id = 99;
+  for (let i = 0; i < 20; i++) {
+    const page = await service.paginate(
+      "large",
+      { limit: 1, cursor: first.nextCursor },
+      () => [],
+    );
+    assert.equal(page.items[0].id, 1);
+  }
+  assert.equal(calls, 1);
+  assert.equal(second.items[0].id, 1);
 });
