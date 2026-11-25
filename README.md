@@ -21,8 +21,9 @@ npm run lint
 npm test
 ```
 
-The package exposes a `nightcrew` executable. `src/operations.ts` owns shared oRPC procedures and command metadata;
-`src/operationInputs.ts` owns request schemas. `help` and `schema get <resource.action>` work before
+The package exposes a `nightcrew` executable. Each top-level command has a module
+in `src/commands/` owning its schemas, metadata and handlers. The shared oRPC
+router and CLI discovery are assembled from those definitions. `help` and `schema get <resource.action>` work before
 initialization. Every finite command emits one JSON envelope; diagnostics go to
 stderr. Unknown options are rejected. Use `--request <file|->` for JSON inputs,
 `--request-id`, `--home <absolute-path>`, and `--timeout 30s` as needed.
@@ -226,7 +227,7 @@ presence. These commands do not load models or override presence detection.
 
 Command and JSON Schema snapshots live under `test/snapshots`. `npm run
 contracts:check` rejects drift. When intentionally changing the contract,
-first review [compatibility.md](docs/compatibility.md), then increment `SCHEMA_VERSION` in `src/protocol.ts`, then run `npm run
+first review [compatibility.md](docs/compatibility.md), then increment `SCHEMA_VERSION` in `src/engine/protocol.ts`, then run `npm run
 contracts:update`; old version archives must remain unchanged. Package versions
 are independent. `npm test` checks the contracts and integration behavior.
 `npm run test:package` packs the allowlisted distribution, independently installs
@@ -357,7 +358,7 @@ but preserves existing logs. `nightcrew daemon logs --lines 100` reads these
 files as well as legacy launchd stdout/stderr; existing launchd files are not
 rewritten or rotated by this logger.
 
-The event/field allowlist in `src/logging.ts` is authoritative. Error/warn logs
+The event/field allowlist in `src/server/logging.ts` is authoritative. Error/warn logs
 cover unexpected worker exits, storage failures, snapshot failures and unhealthy
 presence sampling. Info adds daemon lifecycle, presence recovery and model
 switch duration; debug adds runtime readiness diagnostics. Missing or knowingly
@@ -654,10 +655,21 @@ compaction events appear in transcripts. There is no separate compaction queue o
 state database. Runtime adapter tests use local mocks; real-model summary quality
 and throughput require separate validation.
 
+## Source organization
+
+`src/cli.ts` is the executable entry point. `src/commands/` owns command families
+and their shared contracts, `src/engine/` owns agent execution and scheduling,
+`src/storage/` owns persistence and artifacts, and `src/server/` owns HTTP, the
+control socket and daemon hosting. See [the spec](docs/spec.md#source-organization)
+for module boundaries. The service facade delegates to run control, generation,
+instant inference, dispatch, context management and hook components, each with
+explicit dependencies and owned state. npm exports remain `nightcrew` and `nightcrew/operations`.
+
 ## Shared contracts, evidence and storage (0.14)
 
 Management CLI commands and HTTP operations derive from the same oRPC procedures
-in src/operations.ts, with request schemas in src/operationInputs.ts. The private
+defined by the command-family modules in src/commands/. operations.ts and
+inputs.ts aggregate those procedures and request schemas. The private
 control socket and offline CLI invoke these same procedures. HTTP mounts eligible
 operations at POST /v1/operations/<resource>/<action>; the body contains request,
 optional resourceID, and optional dryRun and yes flags. Legacy HTTP resource

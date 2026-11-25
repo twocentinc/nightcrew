@@ -10,13 +10,13 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
-import { skillSchema } from "../dist/contracts.js";
+import { skillSchema } from "../dist/engine/contracts.js";
 import {
   writeSkillFolder,
   readSkillFiles,
   loadSkillContent,
-} from "../dist/skills.js";
-import { loadRegistry } from "../dist/registry.js";
+} from "../dist/engine/skills.js";
+import { loadRegistry } from "../dist/engine/registry.js";
 
 test("skill folders round-trip text/binary resources, preserve unrelated files, and reject traversal", async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "nightcrew-skills-"));
@@ -131,7 +131,7 @@ test("skill folders enforce aggregate size and preserve existing folder on rejec
 });
 
 test("model tool boundary returns bounded errors without replaying failures or swallowing cancellation", async () => {
-  const { executeModelTool } = await import("../dist/registry.js");
+  const { executeModelTool } = await import("../dist/engine/registry.js");
   const definition = {
     toolID: "test",
     description: "test",

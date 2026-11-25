@@ -11,7 +11,7 @@ import {
   commandDefinitions,
   globalOptions,
   type CommandContext,
-} from "./commands.js";
+} from "./commands/registry.js";
 import {
   packageVersion,
   invalidInput,
@@ -19,7 +19,7 @@ import {
   normalizeError,
   successEnvelopeSchema,
   errorEnvelopeSchema,
-} from "./protocol.js";
+} from "./engine/protocol.js";
 import {
   Execution,
   parseDuration,
@@ -27,9 +27,9 @@ import {
   pause,
   executionSignal,
   type Verbosity,
-} from "./execution.js";
-import { tailLogs } from "./startup.js";
-export { control, runDaemon } from "./daemon.js";
+} from "./engine/execution.js";
+import { tailLogs } from "./server/startup.js";
+export { control, runDaemon } from "./server/daemon.js";
 export const version = packageVersion;
 const optionTypes: Record<string, string | false> = {
   ...globalOptions,

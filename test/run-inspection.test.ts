@@ -13,13 +13,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { Storage, initializeHome } from "../dist/storage.js";
-import { Service } from "../dist/service.js";
-import { manage as rawmanage } from "../dist/management.js";
+import { Storage, initializeHome } from "../dist/storage/store.js";
+import { Service } from "../dist/engine/service.js";
+import { manage as rawmanage } from "../dist/commands/management.js";
 const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
   rawmanage;
-import { runSchema } from "../dist/contracts.js";
-import { startupLogs } from "../dist/startup.js";
+import { runSchema } from "../dist/engine/contracts.js";
+import { startupLogs } from "../dist/server/startup.js";
 
 async function fixture(t: import("node:test").TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), "nc-inspect-"));
@@ -291,8 +291,8 @@ test("idle scheduling does not reread archived transcripts", async (t) => {
     reads++;
     return original(...args);
   };
-  await service["reconcileCompactions"]();
-  await service["activatePending"]();
+  await service["context"]["reconcileCompactions"]();
+  await service["runs"]["activatePending"]();
   assert.equal(reads, 0);
 });
 
@@ -320,7 +320,7 @@ test("pending work index survives reload and clears after cancellation", async (
 });
 
 test("a stalled read releases the serialization queue without accepting late results", async (t) => {
-  const { boundedRead } = await import("../dist/storage.js");
+  const { boundedRead } = await import("../dist/storage/store.js");
   const { storage } = await fixture(t);
   let finish: any,
     committed = false;
@@ -358,7 +358,7 @@ test(
 );
 
 test("durable replacement and exclusive claims preserve distinct semantics", async (t) => {
-  const { atomicJSON, claimJSON } = await import("../dist/storage.js");
+  const { atomicJSON, claimJSON } = await import("../dist/storage/store.js");
   const root = await mkdtemp(path.join(tmpdir(), "nc-durable-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, "state.json");
@@ -403,22 +403,24 @@ test("pagination shares one frozen snapshot across replayed cursors", async (t) 
     payload: "x".repeat(1024 * 1024),
   }));
   let calls = 0;
-  const first = await service["paginate"]("large", { limit: 1 }, () => {
+  const first = await service.page("large", { limit: 1 }, () => {
     calls++;
     return items;
   });
-  const second = await service["paginate"](
+  const cursor = first.nextCursor;
+  assert.ok(cursor);
+  const second = await service.page<(typeof items)[number]>(
     "large",
-    { limit: 1, cursor: first.nextCursor },
+    { limit: 1, cursor },
     () => {
       throw Error("Should not rebuild snapshot");
     },
   );
   items[1].id = 99;
   for (let i = 0; i < 20; i++) {
-    const page = await service["paginate"](
+    const page: typeof first = await service.page<(typeof items)[number]>(
       "large",
-      { limit: 1, cursor: first.nextCursor },
+      { limit: 1, cursor },
       () => [],
     );
     assert.equal(page.items[0].id, 1);

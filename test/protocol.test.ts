@@ -5,10 +5,10 @@ import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { commandDefinitions, help, exportSchemas } from "../dist/commands.js";
+import { commandDefinitions, help, exportSchemas } from "../dist/commands/registry.js";
 import { parseCLI } from "../dist/cli.js";
-import { Execution, withoutExecution, checkpoint } from "../dist/execution.js";
-import { Storage } from "../dist/storage.js";
+import { Execution, withoutExecution, checkpoint } from "../dist/engine/execution.js";
+import { Storage } from "../dist/storage/store.js";
 const cli = new URL("../dist/cli.js", import.meta.url).pathname;
 const call = (args: string[], { keepStdin = false } = {}) =>
   new Promise<any>((resolve, reject) => {
@@ -148,7 +148,7 @@ test("eval CLI deadline accommodates suites while ordinary command limits remain
 
 test("simplified CLI removes obsolete names and hides advanced and internal operations", async () => {
   const { parseCLI } = await import("../dist/cli.js");
-  const { help } = await import("../dist/commands.js");
+  const { help } = await import("../dist/commands/registry.js");
   for (const args of [
     ["startup", "status"],
     ["inference", "submit"],
@@ -171,7 +171,7 @@ test("simplified CLI removes obsolete names and hides advanced and internal oper
 });
 
 test("command names use words without hyphens and removed commands are rejected", async () => {
-  const { help } = await import("../dist/commands.js");
+  const { help } = await import("../dist/commands/registry.js");
   for (const name of help("", true).commands)
     assert.equal(name.includes("-"), false, name);
   for (const args of [

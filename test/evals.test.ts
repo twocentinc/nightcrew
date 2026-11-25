@@ -14,14 +14,14 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { randomUUID } from "node:crypto";
-import { evalSuiteSchema, runEval as rawRunEval } from "../dist/evals.js";
-import { Storage, initializeHome } from "../dist/storage.js";
-import { Service } from "../dist/service.js";
-import { callOperation as rawcallOperation } from "../dist/operations.js";
+import { evalSuiteSchema, runEval as rawRunEval } from "../dist/engine/evals.js";
+import { Storage, initializeHome } from "../dist/storage/store.js";
+import { Service } from "../dist/engine/service.js";
+import { callOperation as rawcallOperation } from "../dist/commands/operations.js";
 const callOperation: (
   ...args: Parameters<typeof rawcallOperation>
 ) => Promise<any> = rawcallOperation;
-import { normalizeError } from "../dist/protocol.js";
+import { normalizeError } from "../dist/engine/protocol.js";
 const runEval: (...args: Parameters<typeof rawRunEval>) => Promise<any> =
   rawRunEval;
 const suite = (): any => ({

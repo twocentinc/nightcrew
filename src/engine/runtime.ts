@@ -1,6 +1,6 @@
-import { atomicJSON } from "./storage.js";
+import { atomicJSON } from "../storage/store.js";
 import { executionSlots, schedulerSchema } from "./scheduler.js";
-import type { OperationalLog } from "./logging.js";
+import type { OperationalLog } from "../server/logging.js";
 import {
   remainingTimeout,
   executionSignal,
@@ -30,7 +30,7 @@ import { randomBytes, randomUUID, createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { z } from "zod";
 import { toolCallSchema, type Config } from "./contracts.js";
-import type { Runtime, Presence, Result } from "./service.js";
+import type { Runtime, Presence, Result } from "./runtimeTypes.js";
 const exec = promisify(execFile);
 export async function samplePresence(): Promise<Presence> {
   const base = { observedAt: new Date().toISOString(), diagnostic: null };

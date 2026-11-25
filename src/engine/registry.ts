@@ -1,16 +1,20 @@
 import { lstat, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
-import { runExecutable } from "./execution.js";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { Storage, readJSON } from "../storage/store.js";
 import {
   id,
-  skillSchema,
   skillLoadInputSchema,
+  skillSchema,
+  type Agent,
+  type Run,
   type Skill,
 } from "./contracts.js";
-import { readJSON } from "./storage.js";
+import { runExecutable } from "./execution.js";
+import { fail } from "./protocol.js";
 import { readSkillFiles } from "./skills.js";
+
 const validators = new Map<string, z.ZodType>();
 function toolValidator(parameters: ToolDefinition["parameters"]) {
   const key = JSON.stringify(parameters);
@@ -380,5 +384,57 @@ export async function executeModelTool(
           : ""),
       "unknown",
     );
+  }
+}
+
+interface Dependencies {
+  readonly storage: Storage;
+}
+export class AgentRegistry {
+  constructor(private readonly ports: Dependencies) {}
+  readonly skills = new Map<string, Skill>();
+  readonly tools = new Map<string, ToolDefinition>();
+  agentToolIDs(agent: Agent) {
+    return [
+      ...new Set([
+        ...agent.toolIDs,
+        ...(agent.mode === "agent-loop" ? ["load_skills"] : []),
+      ]),
+    ];
+  }
+  runTools(run: Run) {
+    const selected = this.agentToolIDs(run.agent);
+    const snapshots = run.toolSnapshots.map(normalizeStoredTool);
+    return selected.map(
+      (id) =>
+        snapshots.find((t) => t.toolID === id) ??
+        this.tools.get(id) ??
+        fail("tool_not_found"),
+    );
+  }
+  async reloadRegistry(dryRun = false) {
+    const registry = await loadRegistry(this.ports.storage.home);
+    validateRegistry(
+      this.ports.storage.store.agents,
+      registry.skills,
+      registry.tools,
+    );
+    const result = { skills: registry.skills.size, tools: registry.tools.size };
+    if (dryRun) return result;
+    this.skills.clear();
+    for (const [id, s] of registry.skills) this.skills.set(id, s);
+    this.tools.clear();
+    for (const [id, t] of registry.tools) this.tools.set(id, t);
+    return result;
+  }
+  validateAgent(a: Agent) {
+    validateRegistry([a], this.skills, this.tools);
+    for (const s of a.skillIDs) {
+      const skill = this.skills.get(s) ?? fail("skill_not_found", 400);
+      if (
+        skill.toolIDs.some((t) => t !== "load_skills" && !a.toolIDs.includes(t))
+      )
+        fail("skill_tool_not_allowed");
+    }
   }
 }

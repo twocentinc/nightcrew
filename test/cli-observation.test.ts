@@ -16,9 +16,9 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { parseCLI, tailCommand } from "../dist/cli.js";
-import { help } from "../dist/commands.js";
-import { Execution } from "../dist/execution.js";
-import { tailLogs } from "../dist/startup.js";
+import { help } from "../dist/commands/registry.js";
+import { Execution } from "../dist/engine/execution.js";
+import { tailLogs } from "../dist/server/startup.js";
 const cli = new URL("../dist/cli.js", import.meta.url).pathname;
 const now = new Date().toISOString();
 

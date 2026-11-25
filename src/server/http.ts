@@ -1,5 +1,5 @@
-import { operationInputs } from "./operationInputs.js";
-import { httpOperationRouter, managementClient } from "./operations.js";
+import { operationInputs } from "../commands/inputs.js";
+import { httpOperationRouter, managementClient } from "../commands/operations.js";
 import { OperationalLog, loggingSchema } from "./logging.js";
 import { readFileSync } from "node:fs";
 import { createServer, type IncomingMessage } from "node:http";
@@ -34,13 +34,13 @@ import {
   chatAcceptanceSchema,
   pageOutput,
   skillSchema,
-} from "./contracts.js";
-import { Storage, tokenHash } from "./storage.js";
-import { Service, fail, type Runtime, type Presence } from "./service.js";
-import { LlamaRuntime, samplePresence } from "./runtime.js";
+} from "../engine/contracts.js";
+import { Storage, tokenHash } from "../storage/store.js";
+import { Service, fail, type Runtime, type Presence } from "../engine/service.js";
+import { LlamaRuntime, samplePresence } from "../engine/runtime.js";
 
 const packageVersion = JSON.parse(
-  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
 ).version as string;
 type Context = { request: IncomingMessage; service: Service };
 
@@ -636,4 +636,4 @@ export async function startServer(options: {
   }
 }
 
-export { initializeHome } from "./storage.js";
+export { initializeHome } from "../storage/store.js";

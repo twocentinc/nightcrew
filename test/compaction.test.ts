@@ -7,16 +7,16 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { Storage, initializeHome } from "../dist/storage.js";
-import { Service } from "../dist/service.js";
-import { manage as rawmanage } from "../dist/management.js";
+import { Storage, initializeHome } from "../dist/storage/store.js";
+import { Service } from "../dist/engine/service.js";
+import { manage as rawmanage } from "../dist/commands/management.js";
 const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
   rawmanage;
 import {
   executeCompactionScript,
   contextMessages,
   validateSummaryEvidence,
-} from "../dist/compaction.js";
+} from "../dist/engine/compaction.js";
 const message = (content: string) => ({
   messageID: randomUUID(),
   content,
@@ -65,7 +65,7 @@ async function fixture(
     generate: (
       input: any,
       ...args: any[]
-    ) => Promise<import("../dist/service.js").Result>;
+    ) => Promise<import("../dist/engine/service.js").Result>;
     countTokens: (input: any, ...args: any[]) => Promise<number>;
     close: () => Promise<void>;
     status: () => [];
@@ -375,7 +375,7 @@ test("compactor can switch models then restore the parent model", async (t) => {
 });
 
 test("compaction accepts harmless metadata but rejects unusable summaries", async () => {
-  const { summarySchema } = await import("../dist/compaction.js");
+  const { summarySchema } = await import("../dist/engine/compaction.js");
   assert.deepEqual(
     summarySchema.parse({ summary: " useful ", version: 1, extra: { a: 1 } }),
     { summary: "useful" },
@@ -392,7 +392,7 @@ test("compaction accepts harmless metadata but rejects unusable summaries", asyn
 });
 
 test("compaction normalizes JSON strings and fenced JSON without accepting arbitrary prose", async () => {
-  const { parseCompactionSummary } = await import("../dist/compaction.js");
+  const { parseCompactionSummary } = await import("../dist/engine/compaction.js");
   assert.equal(parseCompactionSummary('"summary text"'), "summary text");
   assert.equal(
     parseCompactionSummary(
@@ -412,7 +412,7 @@ test("compaction normalizes JSON strings and fenced JSON without accepting arbit
 });
 
 test("compaction projects evidence without thinking or base64 and preserves originals", async () => {
-  const { compactionRequest } = await import("../dist/compaction.js");
+  const { compactionRequest } = await import("../dist/engine/compaction.js");
   const run: any = {
     runID: "parent",
     compactions: [],
@@ -893,7 +893,7 @@ test("summary scanned/total notation accepts only existing component counts", ()
 
 test("source references restore exact generic records, not model-written claim/ID pairs", async () => {
   const { sourceEvidence, retainedSourceEvidence, evidenceContext } =
-    await import("../dist/compaction.js");
+    await import("../dist/engine/compaction.js");
   const records = [
     { id: "issue-a", owner: "A", text: "Could we ship before Friday?" },
     {
@@ -941,7 +941,7 @@ test("source references restore exact generic records, not model-written claim/I
 
 test("source evidence is bounded, omissions explicit, and unknown references cannot inject text", async () => {
   const { sourceEvidence, retainedSourceEvidence } =
-    await import("../dist/compaction.js");
+    await import("../dist/engine/compaction.js");
   const messages = [
     {
       messageID: "m",
@@ -978,7 +978,7 @@ test("source evidence is bounded, omissions explicit, and unknown references can
 });
 
 test("compaction request and resumed context use the same original source references", async (t) => {
-  const { compactionRequest } = await import("../dist/compaction.js");
+  const { compactionRequest } = await import("../dist/engine/compaction.js");
   const f = await fixture(t, null);
   const run = structuredClone(f.original);
   run.messages[1].content = JSON.stringify({
@@ -1016,7 +1016,7 @@ test("compaction request and resumed context use the same original source refere
 
 test("source reference limits apply per message so later compactions remain resolvable", async () => {
   const { sourceEvidence, retainedSourceEvidence } =
-    await import("../dist/compaction.js");
+    await import("../dist/engine/compaction.js");
   const old = {
     messageID: "old",
     role: "tool" as const,
@@ -1086,7 +1086,7 @@ test("an output continuation survives compaction without losing or summarizing i
 
 test("retained source leaves preserve exact ancestor schema, units and evidence scope", async () => {
   const { sourceEvidence, retainedSourceEvidence } =
-    await import("../dist/compaction.js");
+    await import("../dist/engine/compaction.js");
   const messages = [
     {
       messageID: "source-units",
@@ -1193,7 +1193,7 @@ test("oversized annotated requests compact complete prefixes without losing tran
 
 test("interactive same-model compaction runs while the owner is present", async (t) => {
   const f = await fixture(t, { type: "agent" as const, agentID: "summarizer" });
-  const { executionSlots } = await import("../dist/scheduler.js");
+  const { executionSlots } = await import("../dist/engine/scheduler.js");
   const next = structuredClone(f.service.storage.store);
   next.config.slots = executionSlots(runtimeConfig(next.config));
   await f.service.storage.exclusive(() => f.service.storage.saveConfig(next));
@@ -1278,7 +1278,7 @@ test("large-context compaction offers 4096 summary tokens without a word cap", a
     toolCalls: [],
     toolCallID: null,
   });
-  const ready = await f.service["prepareContext"](
+  const ready = await f.service["context"]["prepareContext"](
     run,
     { messages: run.messages, maxOutputTokens: 2048 },
     65536,
@@ -1286,7 +1286,7 @@ test("large-context compaction offers 4096 summary tokens without a word cap", a
   );
   assert.equal(ready, false);
   assert.equal(run.compaction!.targetTokens, 4096);
-  await f.service["reconcileCompactions"]();
+  await f.service["context"]["reconcileCompactions"]();
   const child = await f.service.run(run.compaction!.childRunID!);
   assert.match(child.messages[0].content, /within 4096 tokens/);
   assert.doesNotMatch(child.messages[0].content, /180|words/);
@@ -1296,7 +1296,7 @@ test("large-context compaction offers 4096 summary tokens without a word cap", a
 
 test("structured finish compaction preserves provenance but injects only Markdown bullets", async (t) => {
   const { structuredSummaryJSONSchema, compactionRequest } =
-    await import("../dist/compaction.js");
+    await import("../dist/engine/compaction.js");
   const f = await fixture(t, { type: "agent" as const, agentID: "summarizer" });
   await f.service.patchAgent(
     "summarizer",
@@ -1383,7 +1383,7 @@ test("structured summaries reject wrong sections, extra fields and embedded sour
     parseCompactionSummary,
     structuredSummarySchema,
     structuredSummaryJSONSchema,
-  } = await import("../dist/compaction.js");
+  } = await import("../dist/engine/compaction.js");
   const { z } = await import("zod");
   const valid = {
     objective: [{ text: "Keep the goal.", sources: [] }],
@@ -1413,7 +1413,7 @@ test("structured summaries reject wrong sections, extra fields and embedded sour
 });
 
 test("unknown structured provenance exhausts bounded retries without replacing context", async (t) => {
-  const { structuredSummaryJSONSchema } = await import("../dist/compaction.js");
+  const { structuredSummaryJSONSchema } = await import("../dist/engine/compaction.js");
   const f = await fixture(t, { type: "agent" as const, agentID: "summarizer" });
   await f.service.patchAgent(
     "summarizer",

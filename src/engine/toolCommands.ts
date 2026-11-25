@@ -16,7 +16,7 @@ async function cli(command: string[], request: unknown = {}) {
     const child = spawn(
       process.execPath,
       [
-        fileURLToPath(new URL("./cli.js", import.meta.url)),
+        fileURLToPath(new URL("../cli.js", import.meta.url)),
         ...command,
         "--home",
         home,

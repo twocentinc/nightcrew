@@ -13,7 +13,7 @@ import {
 } from "./compaction.js";
 import { executionSlots, schedulerSchema } from "./scheduler.js";
 import { scheduleSchema } from "./triggers.js";
-import { loggingSchema } from "./logging.js";
+import { loggingSchema } from "../server/logging.js";
 import { z } from "zod";
 
 export const id = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/);

@@ -1,14 +1,14 @@
-import { executionSlots } from "./scheduler.js";
+import { executionSlots } from "../engine/scheduler.js";
 import path from "node:path";
 import { access, lstat, readFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { z } from "zod";
-import { storeSchema, validateConfig, type Store } from "./contracts.js";
-import { readJSON } from "./storage.js";
-import { loadRegistry, validateRegistry } from "./registry.js";
-import { LlamaRuntime, samplePresence } from "./runtime.js";
-import { checkpoint, remainingTimeout } from "./execution.js";
-import { normalizeError } from "./protocol.js";
+import { storeSchema, validateConfig, type Store } from "../engine/contracts.js";
+import { readJSON } from "../storage/store.js";
+import { loadRegistry, validateRegistry } from "../engine/registry.js";
+import { LlamaRuntime, samplePresence } from "../engine/runtime.js";
+import { checkpoint, remainingTimeout } from "../engine/execution.js";
+import { normalizeError } from "../engine/protocol.js";
 const capability = z.strictObject({
   adapterSupported: z.boolean(),
   modelVerified: z.literal(false),

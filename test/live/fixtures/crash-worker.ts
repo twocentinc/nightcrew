@@ -1,7 +1,7 @@
 import { runtimeConfig } from "../../fixtures.ts";
 import { readFile } from "node:fs/promises";
-import { startServer } from "../../../dist/server.js";
-import { LlamaRuntime } from "../../../dist/runtime.js";
+import { startServer } from "../../../dist/server/http.js";
+import { LlamaRuntime } from "../../../dist/engine/runtime.js";
 const home = process.argv[2];
 const config = JSON.parse(
   (await readFile(home + "/config.json", "utf8")).toString(),

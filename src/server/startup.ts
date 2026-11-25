@@ -3,8 +3,8 @@ import {
   executionSignal,
   checkpoint,
   pause,
-} from "./execution.js";
-import { NightcrewError, invalidInput, timeoutFailure } from "./protocol.js";
+} from "../engine/execution.js";
+import { NightcrewError, invalidInput, timeoutFailure } from "../engine/protocol.js";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { homedir } from "node:os";
@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID, createHash } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 export const label = "dev.nightcrew.daemon";
-export const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+export const projectRoot = fileURLToPath(new URL("../../", import.meta.url));
 export const cliFile = path.join(projectRoot, "dist", "cli.js");
 export const plistPath = path.join(
   homedir(),

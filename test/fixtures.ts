@@ -2,8 +2,8 @@ import {
   agentDraftSchema,
   configSchema,
   messageSchema,
-} from "../dist/contracts.js";
-import type { CompactionRequest } from "../dist/compaction.js";
+} from "../dist/engine/contracts.js";
+import type { CompactionRequest } from "../dist/engine/compaction.js";
 
 // Tests author input objects; normalize defaults exactly as runtime admission does.
 export const settings = configSchema

@@ -13,7 +13,7 @@ import {
   id,
   type Message,
 } from "./contracts.js";
-import { canonical } from "./storage.js";
+import { canonical } from "../storage/store.js";
 import {
   checkpoint,
   pause,

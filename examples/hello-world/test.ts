@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 test("bundled examples use ordinary validated commands and remain opt-in", async () => {
-  const { requestSchemas } = await import("../../dist/operationInputs.js");
+  const { requestSchemas } = await import("../../dist/commands/inputs.js");
   const request = JSON.parse(
     await readFile(new URL("./agent.json", import.meta.url), "utf8"),
   );

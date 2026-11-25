@@ -6,8 +6,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { startServer } from "../dist/server.js";
-import { tokenHash } from "../dist/storage.js";
+import { startServer } from "../dist/server/http.js";
+import { tokenHash } from "../dist/storage/store.js";
 const token = "test-only-token";
 const message = (content = "hello") => ({
   messageID: randomUUID(),
@@ -440,7 +440,7 @@ test("malformed state blocks new admission without hiding healthy history", asyn
 });
 
 test("managed llama router provisions from PATH and parses streamed completions", async (t) => {
-  const { LlamaRuntime } = await import("../dist/runtime.js");
+  const { LlamaRuntime } = await import("../dist/engine/runtime.js");
   const { chmod } = await import("node:fs/promises");
   const directory = await mkdtemp(
     path.join(tmpdir(), "nightcrew-process-test-"),
@@ -564,7 +564,7 @@ test("active timeout settles a run and hook delivery survives restart without re
 });
 
 test("custom executable tools run with snapshotted definitions and appear in discovery", async (t) => {
-  const { manage } = await import("../dist/management.js");
+  const { manage } = await import("../dist/commands/management.js");
   let calls = 0;
   const f = await fixture(t, async (input?: any) => {
     calls++;
@@ -886,7 +886,7 @@ test("daemon logging changes live without changing unrelated configuration", asy
 });
 
 test("audio adapter sends output settings and the WAV attachment to transcription", async (t) => {
-  const { LlamaRuntime } = await import("../dist/runtime.js");
+  const { LlamaRuntime } = await import("../dist/engine/runtime.js");
   const { chmod } = await import("node:fs/promises");
   const home = await mkdtemp(path.join(tmpdir(), "nightcrew-audio-"));
   const binary = path.join(home, "llama-server");
@@ -959,7 +959,7 @@ test("audio adapter sends output settings and the WAV attachment to transcriptio
 });
 
 test("stream parser separates thinking from answers and tool calls across byte chunks", async () => {
-  const { LlamaRuntime } = await import("../dist/runtime.js");
+  const { LlamaRuntime } = await import("../dist/engine/runtime.js");
   const runtime = new LlamaRuntime(() =>
     runtimeConfig({ models: [], slots: [] }),
   );
@@ -1019,8 +1019,8 @@ test("stream parser separates thinking from answers and tool calls across byte c
 
 test("management HTTP and CLI share every oRPC operation contract", async (t) => {
   const f = await fixture(t);
-  const { operationDefinitions } = await import("../dist/operations.js");
-  const { getCommand } = await import("../dist/commands.js");
+  const { operationDefinitions } = await import("../dist/commands/operations.js");
+  const { getCommand } = await import("../dist/commands/registry.js");
   for (const op of operationDefinitions) {
     const command = getCommand(op.name);
     if (["evals sample", "evals release"].includes(op.name)) {
@@ -1107,7 +1107,7 @@ test("failed generation retains partial answer, thinking and tool fragments as v
     },
   });
   f.state.away = true;
-  await f.app.service.tick();
+  await f.app.service["dispatch"].tick();
   const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
     message: message(),
   });
@@ -1121,7 +1121,7 @@ test("failed generation retains partial answer, thinking and tool fragments as v
   assert.equal(run.attempts[0].reasoningContent, "unfinished reasoning");
   assert.equal(run.attempts[0].status, "failed");
   assert.equal(run.error.message, "stream disconnected");
-  const visible = await f.app.service.invokeTool(
+  const visible = await f.app.service["runner"].invokeTool(
     run,
     "runs_transcript",
     JSON.stringify({ runID, limit: 20 }),
@@ -1141,7 +1141,7 @@ test("failed generation retains partial answer, thinking and tool fragments as v
     transcript.find((e?: any) => e.attempt)?.attempt.text,
     "partial answer",
   );
-  const { exportRun, verifyRun } = await import("../dist/runArtifacts.js");
+  const { exportRun, verifyRun } = await import("../dist/storage/artifacts.js");
   const destination = path.join(f.home, "exports", "evidence");
   const { mkdir } = await import("node:fs/promises");
   await mkdir(path.dirname(destination));
@@ -1176,7 +1176,7 @@ test("storage limit holds a persistent run and delivers one bounded hook with us
   });
   assert.equal(patched.status, 200);
   f.state.away = true;
-  await f.app.service.tick();
+  await f.app.service["dispatch"].tick();
   const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
     message: message(),
   });
@@ -1256,7 +1256,7 @@ test("cancelled attempts keep partial answers but omit disabled thinking", async
   });
   assert.equal(changed.status, 200);
   f.state.away = true;
-  await f.app.service.tick();
+  await f.app.service["dispatch"].tick();
   const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
     message: message(),
   });
@@ -1330,7 +1330,7 @@ test("agent loops automatically discover and load snapshotted skill files on dem
       usage: { inputTokens: 1, outputTokens: 1 },
     };
   });
-  const { managementClient } = await import("../dist/operations.js");
+  const { managementClient } = await import("../dist/commands/operations.js");
   const api = managementClient(f.app.service);
   const skill = {
     skillID: "review",
@@ -1370,7 +1370,7 @@ test("agent loops automatically discover and load snapshotted skill files on dem
   });
   assert.equal(changed.status, 200);
   f.state.away = true;
-  await f.app.service.tick();
+  await f.app.service["dispatch"].tick();
   const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
     message: message(),
   });
@@ -1387,7 +1387,7 @@ test("agent loops automatically discover and load snapshotted skill files on dem
   );
   assert.deepEqual(run.agent.toolIDs, []);
   assert.equal(run.skills[0].files[0].content, "REFERENCE CONTENT");
-  const { verifyRun } = await import("../dist/runArtifacts.js");
+  const { verifyRun } = await import("../dist/storage/artifacts.js");
   assert.equal((await verifyRun(f.app.service, run.runID)).valid, true);
 });
 
@@ -1441,7 +1441,7 @@ test("instant chats execute selected skills automatically and return client-owne
       usage: { inputTokens: 2, outputTokens: 1 },
     };
   });
-  const { managementClient } = await import("../dist/operations.js");
+  const { managementClient } = await import("../dist/commands/operations.js");
   await managementClient(f.app.service)["skills create"]({
     resourceID: undefined,
     request: {
@@ -1580,7 +1580,7 @@ for (const instant of [false, true]) {
         usage: { inputTokens: 1, outputTokens: 1 },
       };
     });
-    const { managementClient } = await import("../dist/operations.js");
+    const { managementClient } = await import("../dist/commands/operations.js");
     await managementClient(f.app.service)["skills create"]({
       resourceID: undefined,
       request: {
@@ -1609,7 +1609,7 @@ for (const instant of [false, true]) {
         changes: { mode: "agent-loop", skillIDs: ["review"] },
       });
       f.state.away = true;
-      await f.app.service.tick();
+      await f.app.service["dispatch"].tick();
       const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
         message: message(),
       });
@@ -1617,7 +1617,7 @@ for (const instant of [false, true]) {
         const r = await f.app.service.storage.read(submitted.body.runID);
         return ["completed", "failed"].includes(r.state) && r;
       });
-      const { verifyRun } = await import("../dist/runArtifacts.js");
+      const { verifyRun } = await import("../dist/storage/artifacts.js");
       assert.equal(
         (await verifyRun(f.app.service, completed.runID)).valid,
         true,
@@ -1643,9 +1643,9 @@ test("history tools exclude the current nonterminal run", async (t) => {
   });
   const run = await f.app.service.storage.read(submitted.body.runID);
   const signal = new AbortController().signal;
-  const list = await f.app.service.invokeTool(run, "runs_list", "{}", signal);
+  const list = await f.app.service["runner"].invokeTool(run, "runs_list", "{}", signal);
   assert.deepEqual(list, []);
-  const history = await f.app.service.invokeTool(
+  const history = await f.app.service["runner"].invokeTool(
     run,
     "runs_transcript",
     JSON.stringify({ runID: run.runID }),
@@ -1667,7 +1667,7 @@ test("worker history bounds long evidence while administrator transcripts remain
     changes: { mode: "agent-loop", toolIDs: ["runs_transcript"] },
   });
   f.state.away = true;
-  await f.app.service.tick();
+  await f.app.service["dispatch"].tick();
   const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
     message: message(),
   });
@@ -1675,7 +1675,7 @@ test("worker history bounds long evidence while administrator transcripts remain
     const r = await f.app.service.storage.read(submitted.body.runID);
     return r.state === "completed" && r;
   });
-  const output = await f.app.service.invokeTool(
+  const output = await f.app.service["runner"].invokeTool(
     run,
     "runs_transcript",
     JSON.stringify({ runID: run.runID, limit: 100 }),
@@ -1703,7 +1703,7 @@ test("worker history bounds long evidence while administrator transcripts remain
       (e?: any) => e.message?.messageID === run.messages.at(-1).messageID,
     );
   assert(offset >= 0);
-  const oversized = await f.app.service.invokeTool(
+  const oversized = await f.app.service["runner"].invokeTool(
     run,
     "runs_transcript",
     JSON.stringify({ runID: run.runID, offset, limit: 100 }),
@@ -1738,7 +1738,7 @@ test("agent sampling settings are validated, snapshotted and forwarded to infere
   });
   assert.equal(changed.status, 200);
   f.state.away = true;
-  await f.app.service.tick();
+  await f.app.service["dispatch"].tick();
   const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
     message: message(),
   });
@@ -1748,7 +1748,7 @@ test("agent sampling settings are validated, snapshotted and forwarded to infere
   });
   assert.deepEqual(sampled, sampling);
   assert.deepEqual(run.agent.sampling, sampling);
-  const { agentSchema } = await import("../dist/contracts.js");
+  const { agentSchema } = await import("../dist/engine/contracts.js");
   assert.equal(agentSchema.safeParse(run.agent).success, true);
   assert.equal(
     agentSchema.safeParse({ ...run.agent, sampling: { presencePenalty: 3 } })
@@ -1783,13 +1783,13 @@ test("tool budget rejects excess batch calls and requests a tool-free final answ
     changes: { mode: "agent-loop", toolIDs: ["runs_list"], maxToolCalls: 1 },
   });
   let invoked = 0;
-  const invoke = f.app.service.invokeTool.bind(f.app.service);
-  f.app.service.invokeTool = (...args: any[]) => {
+  const invoke = f.app.service["runner"].invokeTool.bind(f.app.service["runner"]);
+  f.app.service["runner"].invokeTool = (...args: any[]) => {
     invoked++;
     return invoke(...args);
   };
   f.state.away = true;
-  await f.app.service.tick();
+  await f.app.service["dispatch"].tick();
   const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
     message: message(),
   });
@@ -1834,7 +1834,7 @@ for (const emptyAgain of [false, true])
       changes: { mode: "agent-loop" },
     });
     f.state.away = true;
-    await f.app.service.tick();
+    await f.app.service["dispatch"].tick();
     const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
       message: message(),
     });
@@ -1869,7 +1869,7 @@ test("fleet overview HTTP uses the same authenticated outcome contract as the CL
 });
 
 test("length finish reasons are recoverable only for managed continuations; broken streams still fail", async () => {
-  const { LlamaRuntime } = await import("../dist/runtime.js");
+  const { LlamaRuntime } = await import("../dist/engine/runtime.js");
   const runtime = new LlamaRuntime(() => runtimeConfig({}));
   const response = (done = true, finish = "length") =>
     new Response(
@@ -1967,7 +1967,7 @@ test("instant completion is published only after its cooldown is durable", async
 });
 
 test("runtime reports loading and unloading until their operations settle", async () => {
-  const { LlamaRuntime } = await import("../dist/runtime.js");
+  const { LlamaRuntime } = await import("../dist/engine/runtime.js");
   const runtime = new LlamaRuntime(() =>
     runtimeConfig({ models: [{ modelID: "q", kind: "chat" }], slots: [] }),
   );

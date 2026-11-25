@@ -1,9 +1,11 @@
-import { z } from "zod";
+import { ORPCError } from "@orpc/server";
 import { readFileSync } from "node:fs";
+import { z } from "zod";
+
 export const PROTOCOL_VERSION = 1;
 export const SCHEMA_VERSION = 40;
 export const packageVersion = JSON.parse(
-  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  readFileSync(new URL("../../package.json", import.meta.url), "utf8"),
 ).version as string;
 export const EXIT_CODES = {
   success: 0,
@@ -180,4 +182,8 @@ export function normalizeError(
     mutation ? "unsafe" : "safe",
     { outcomeUnknown: mutation },
   );
+}
+
+export function fail(code: string, status = 400): never {
+  throw new ORPCError(code, { status, message: code });
 }

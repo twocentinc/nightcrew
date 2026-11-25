@@ -5,12 +5,12 @@ import {
   commandCatalog,
   exportSchemas,
   globalOptions,
-} from "../dist/commands.js";
+} from "../dist/commands/registry.js";
 import {
   SCHEMA_VERSION,
   PROTOCOL_VERSION,
   EXIT_CODES,
-} from "../dist/protocol.js";
+} from "../dist/engine/protocol.js";
 export function canonical<T>(value: T): T {
   if (Array.isArray(value)) return value.map(canonical) as T;
   if (value && typeof value === "object")

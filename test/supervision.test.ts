@@ -6,23 +6,23 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { Storage, initializeHome } from "../dist/storage.js";
-import { Service } from "../dist/service.js";
-import { manage as rawmanage } from "../dist/management.js";
+import { Storage, initializeHome } from "../dist/storage/store.js";
+import { Service } from "../dist/engine/service.js";
+import { manage as rawmanage } from "../dist/commands/management.js";
 const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
   rawmanage;
 import {
   operations,
   callOperation as rawcallOperation,
-} from "../dist/operations.js";
+} from "../dist/commands/operations.js";
 const callOperation: (
   ...args: Parameters<typeof rawcallOperation>
 ) => Promise<any> = rawcallOperation;
-import { runOutcome, loopProblem } from "../dist/supervision.js";
+import { runOutcome, loopProblem } from "../dist/engine/supervision.js";
 import {
   validateSummaryEvidence,
   compactionInstructions,
-} from "../dist/compaction.js";
+} from "../dist/engine/compaction.js";
 const input = () => ({
   messageID: randomUUID(),
   content: "perform the task",
@@ -657,7 +657,7 @@ test("output-limit chunks form one validated JSON answer and remain inspectable"
   assert.equal(r.attempts[0].reason, "output_limit");
   assert.equal(r.attempts[0].text, '{"answer":');
   assert.equal(r.attempts[0].messageID, r.messages.at(-1).messageID);
-  const { verifyRun } = await import("../dist/runArtifacts.js");
+  const { verifyRun } = await import("../dist/storage/artifacts.js");
   assert.equal((await verifyRun(f.service, r.runID)).valid, true);
 });
 

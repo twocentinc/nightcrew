@@ -21,10 +21,54 @@ definitions reference existing weights and optional projector files. Nightcrew
 does not implicitly download weights. One model is resident for background work;
 model priorities, residency preference and wait aging avoid unnecessary swaps.
 
+## Source organization
+
+- `src/cli.ts`: executable entry point, argument parsing and command observation.
+- `src/commands/`: one module per top-level command (agents, runs, models,
+  daemon, evals, triggers, and the remaining command families), plus shared
+  discovery, procedure construction and atomic resource transactions.
+- `src/engine/`: agent loops, scheduling, inference, compaction, executable
+  tools, skills, eval execution and domain schemas.
+- `src/storage/`: durable configuration/run state, transcripts and run bundles.
+- `src/server/`: HTTP/oRPC hosting, private control socket, LaunchAgent lifecycle,
+  operational logging and readiness diagnostics.
+
+Transport adapters call the command procedures; command handlers call the engine
+and storage. Engine execution does not depend on CLI registration. Public npm
+exports remain `nightcrew` and `nightcrew/operations`; internal module paths are
+not public compatibility entry points.
+
+### Engine ownership
+
+`engine/service.ts` is the composition root and service-facing facade. It starts
+and stops the engine; each component receives only its declared dependencies.
+
+| Module | Ownership |
+| --- | --- |
+| `engine/runs.ts` | Submission, persistent segments, pending inputs, trigger firing and run controls |
+| `engine/runner.ts` | Background generation, tool recovery, output continuation, live runs and attempt settlement |
+| `engine/instant.ts` | Instant/eval requests, their deadlines, events and generation |
+| `engine/dispatch.ts` | Timer admission, scheduling, active execution handles, interruption, presence and cooldown |
+| `engine/context.ts` | Context limits, compactor execution handoffs and checkpoint recovery |
+| `engine/hooks.ts` | Hook receipts, delivery, explicit retry and shutdown draining |
+| `engine/configuration.ts` | Shared agent/configuration validation and mutation |
+| `engine/registry.ts` | Executable tools and loaded agent capabilities |
+| `engine/runtimeTypes.ts` | Runtime adapter, generation result and presence interfaces |
+| `storage/records.ts` | Run reads/projections, search, pagination, event/save helpers and startup recovery |
+
+The runner separates tool recovery, final-output validation, turn preparation,
+attempt persistence, generation, output recording and interruption/terminal
+settlement. These phases keep the existing storage-lock boundaries and write
+ordering. Compaction hands execution back through dispatch; it does not start a
+second independent scheduler. Shutdown stops and settles execution before closing
+the model runtime, drains outstanding hooks, then closes storage. Startup recovery
+marks uncertain delivery receipts unknown rather than replaying messages.
+
 ## Canonical contracts and transport
 
-src/operations.ts defines the shared oRPC procedures, their output schemas and
-command metadata; src/operationInputs.ts defines their input schemas. The CLI
+Each top-level command module in src/commands/ owns its input/output schemas,
+metadata and handlers. src/commands/definition.ts builds their shared oRPC
+procedures; operations.ts and inputs.ts aggregate the family definitions. The CLI
 takes request/result schemas directly from these procedures. Offline management
 and the private daemon control socket execute the same procedures through oRPC.
 The control socket remains local newline-delimited JSON; sharing contracts does
@@ -39,7 +83,7 @@ configured external transport. There are no per-client properties or grants.
 
 TypeScript consumers may import the ManagementRouter type from
 nightcrew/operations. OpenAPI is generated from the same router. Legacy resource
-routes in src/server.ts remain compatibility adapters, with their historical
+routes in src/server/http.ts remain compatibility adapters, with their historical
 envelopes and pagination; managed actions delegate to the shared procedures.
 Streaming run/chat events remain dedicated oRPC routes.
 
@@ -84,8 +128,8 @@ Substitution is nonrecursive and does not invoke a shell. Structured input is
 still supplied on stdin; arrays do not spread and optional flags are not omitted.
 
 Models define chat or audio behavior, paths, idle unloading, priority, optional KV
-snapshots, and compactionThresholdTokens. Configuration schemas in src/contracts.ts,
-src/scheduler.ts, src/triggers.ts and src/compaction.ts define limits and defaults.
+snapshots, and compactionThresholdTokens. Configuration schemas in src/engine/contracts.ts,
+src/engine/scheduler.ts, src/engine/triggers.ts and src/engine/compaction.ts define limits and defaults.
 Examples are opt-in files under examples; init does not install bespoke agents.
 
 ## On-demand skills
@@ -200,7 +244,7 @@ minimum residency and aging. A bounded external scheduler hook may propose
 starts and pauses. Nightcrew revalidates every plan against presence, cooldown,
 model compatibility, slot ownership, dependency and capacity constraints.
 Failure policy chooses built-in fallback or hold. Scheduler hook configuration
-and its request/result schemas live in src/scheduler.ts.
+and its request/result schemas live in src/engine/scheduler.ts.
 
 KV snapshots are disposable acceleration data. They are not authoritative run
 history. Model snapshot settings choose whether/where to save them; the default

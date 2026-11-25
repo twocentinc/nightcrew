@@ -7,10 +7,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { startServer } from "../../dist/server.js";
-import { LlamaRuntime, samplePresence } from "../../dist/runtime.js";
-import { storeSchema, validateAttachments } from "../../dist/contracts.js";
-import { tokenHash } from "../../dist/storage.js";
+import { startServer } from "../../dist/server/http.js";
+import { LlamaRuntime, samplePresence } from "../../dist/engine/runtime.js";
+import { storeSchema, validateAttachments } from "../../dist/engine/contracts.js";
+import { tokenHash } from "../../dist/storage/store.js";
 
 test(
   "unattended real-model acceptance: timer, priority, cooldown, restart, compaction, delivery and KV restore",

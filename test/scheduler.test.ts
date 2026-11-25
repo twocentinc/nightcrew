@@ -7,9 +7,9 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { Storage, initializeHome } from "../dist/storage.js";
-import { Service } from "../dist/service.js";
-import { manage as rawmanage } from "../dist/management.js";
+import { Storage, initializeHome } from "../dist/storage/store.js";
+import { Service } from "../dist/engine/service.js";
+import { manage as rawmanage } from "../dist/commands/management.js";
 const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
   rawmanage;
 import {
@@ -18,7 +18,7 @@ import {
   defaultPlan,
   validatePlan,
   policyPlan,
-} from "../dist/scheduler.js";
+} from "../dist/engine/scheduler.js";
 const message = (content: string) => ({
   messageID: randomUUID(),
   content,
@@ -365,16 +365,16 @@ test("time slices pause without failing and timer admission has no catch-up", as
       },
     },
   });
-  await f.service["dispatchTimers"]();
-  assert.ok(f.service["triggerDue"].get("timer").at > Date.now());
-  f.service["triggerDue"].set("timer", {
+  await f.service["dispatch"]["dispatchTimers"]();
+  assert.ok(f.service["dispatch"]["triggerDue"].get("timer").at > Date.now());
+  f.service["dispatch"]["triggerDue"].set("timer", {
     revision: 1,
     at: Date.now() - 100000,
   });
-  await f.service["dispatchTimers"]();
+  await f.service["dispatch"]["dispatchTimers"]();
   assert.equal((await f.service.run(run.runID)).segment, 0);
-  f.service["triggerDue"].set("timer", { revision: 1, at: Date.now() - 100 });
-  await f.service["dispatchTimers"]();
+  f.service["dispatch"]["triggerDue"].set("timer", { revision: 1, at: Date.now() - 100 });
+  await f.service["dispatch"]["dispatchTimers"]();
   await until(async () => (await f.service.run(run.runID)).segment === 1);
   assert.equal(f.service.storage.summaries.size, 1);
 });
@@ -420,7 +420,7 @@ test("scheduler partial updates preserve existing limits and hook configuration"
     contextTokens: 8192,
     maxWaitMs: 123456,
   });
-  const { requestSchemas } = await import("../dist/operationInputs.js");
+  const { requestSchemas } = await import("../dist/commands/inputs.js");
   const request: any = requestSchemas["config update"].parse({
     expectedRevision: f.service.storage.store.config.revision,
     changes: { scheduler: { timersEnabled: false } },

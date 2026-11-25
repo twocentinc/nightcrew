@@ -1,4 +1,4 @@
-import { validateCompactionState } from "./compaction.js";
+import { validateCompactionState } from "../engine/compaction.js";
 import path from "node:path";
 import { constants } from "node:fs";
 import { createHash } from "node:crypto";
@@ -12,18 +12,18 @@ import {
   rmdir,
 } from "node:fs/promises";
 import { z } from "zod";
-import { normalizeStoredTool } from "./registry.js";
+import { normalizeStoredTool } from "../engine/registry.js";
 import {
   agentSchema,
   skillSchema,
   runSchema,
   transcriptEntrySchema,
   type Run,
-} from "./contracts.js";
-import { type Service } from "./service.js";
-import { canonical } from "./storage.js";
-import { checkpoint } from "./execution.js";
-import { invalidInput, NightcrewError } from "./protocol.js";
+} from "../engine/contracts.js";
+import { type Service } from "../engine/service.js";
+import { canonical } from "./store.js";
+import { checkpoint } from "../engine/execution.js";
+import { invalidInput, NightcrewError } from "../engine/protocol.js";
 
 const filenames = [
   "run.json",

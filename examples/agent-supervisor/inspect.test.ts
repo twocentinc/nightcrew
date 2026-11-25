@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { inspect, metrics as projectMetrics } from "./inspect.ts";
 import { report } from "./report.ts";
-import { runOutcome, reviewFingerprint } from "../../dist/supervision.js";
+import { runOutcome, reviewFingerprint } from "../../dist/engine/supervision.js";
 const canonical = (r?: any) =>
   runOutcome({
     segment: 0,

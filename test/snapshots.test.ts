@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, writeFile, readFile, chmod, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { LlamaRuntime } from "../dist/runtime.js";
-import { modelSchema } from "../dist/contracts.js";
+import { LlamaRuntime } from "../dist/engine/runtime.js";
+import { modelSchema } from "../dist/engine/contracts.js";
 
 test("slot snapshots survive model switches, use the selected home, and reject stale settings", async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "nightcrew-slots-"));
@@ -154,7 +154,7 @@ test("named KV contexts move between concurrent live slots and respect the disk 
   await chmod(binary, 0o700);
   const previous = process.env.PATH;
   process.env.PATH = home + path.delimiter + previous;
-  const { schedulerSchema } = await import("../dist/scheduler.js");
+  const { schedulerSchema } = await import("../dist/engine/scheduler.js");
   const config = {
     scheduler: schedulerSchema.parse({ snapshotBudgetMB: 1 }),
     models: [

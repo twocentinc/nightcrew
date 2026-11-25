@@ -1,6 +1,6 @@
 # Eval format v1
 
-Executable graders added in Nightcrew 0.39.0 (schema 40). `src/evals.ts` owns validation and execution.
+Executable graders added in Nightcrew 0.39.0 (schema 40). `src/engine/evals.ts` owns validation and execution.
 
 An eval suite supplies an agent with initial context, substitutes deterministic
 responses for every tool, and records expectations separately from model-visible
@@ -35,7 +35,7 @@ information the agent is supposed to use must appear there, in its snapshotted
 prompt, or in a tool response. Objectives and expected answers are not silently
 appended from the evaluator's metadata.
 
-Reuse the semantic fields of `messageSchema` from `src/contracts.ts` for context
+Reuse the semantic fields of `messageSchema` from `src/engine/contracts.ts` for context
 messages: role, content, attachments, tool calls, and tool-call linkage. The
 authoring form may omit generated message IDs and empty arrays. Validate tool
 history as complete linked exchanges, rather than allowing orphan tool results.

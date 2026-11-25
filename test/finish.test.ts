@@ -6,23 +6,23 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { Storage, initializeHome } from "../dist/storage.js";
-import { Service } from "../dist/service.js";
-import { manage as rawmanage } from "../dist/management.js";
+import { Storage, initializeHome } from "../dist/storage/store.js";
+import { Service } from "../dist/engine/service.js";
+import { manage as rawmanage } from "../dist/commands/management.js";
 const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
   rawmanage;
 import {
   operations,
   callOperation as rawcallOperation,
-} from "../dist/operations.js";
+} from "../dist/commands/operations.js";
 const callOperation: (
   ...args: Parameters<typeof rawcallOperation>
 ) => Promise<any> = rawcallOperation;
-import { runOutcome, loopProblem } from "../dist/supervision.js";
+import { runOutcome, loopProblem } from "../dist/engine/supervision.js";
 import {
   validateSummaryEvidence,
   compactionInstructions,
-} from "../dist/compaction.js";
+} from "../dist/engine/compaction.js";
 const input = () => ({
   messageID: randomUUID(),
   content: "perform the task",
@@ -177,7 +177,7 @@ test("finish validates and commits a result without executable dispatch, survive
     );
     return finish({ answer: 42 });
   });
-  f.service["invokeTool"] = async () => {
+  f.service["runner"]["invokeTool"] = async () => {
     throw Error("finish must not dispatch");
   };
   const r = await f.submit();
@@ -232,7 +232,7 @@ test("mixed finish batch executes neither finish nor sibling", async (t) => {
     { mode: "agent-loop" },
   );
   let invoked = 0;
-  f.service["invokeTool"] = async () => {
+  f.service["runner"]["invokeTool"] = async () => {
     invoked++;
     return { ok: true };
   };
@@ -262,7 +262,7 @@ test("finish remains available after the ordinary tool budget", async (t) => {
     { mode: "agent-loop", maxToolCalls: 1 },
   );
   let invoked = 0;
-  f.service["invokeTool"] = async () => {
+  f.service["runner"]["invokeTool"] = async () => {
     invoked++;
     return { ok: true };
   };
@@ -325,7 +325,7 @@ test("duplicate finish fields are rejected with specific repair feedback before 
 });
 test("structured JSON detects escaped duplicate keys without rejecting siblings or string contents", async () => {
   const { parseOutputJSON, DuplicateJSONKeyError } =
-    await import("../dist/supervision.js");
+    await import("../dist/engine/supervision.js");
   for (const text of [
     '{"items":[{"title":"a","title":"b"}]}',
     '{"a":1,"\\u0061":2}',
@@ -345,7 +345,7 @@ test("structured JSON detects escaped duplicate keys without rejecting siblings 
 });
 
 test("ordinary JSON output validation rejects duplicate keys even when last value matches schema", async () => {
-  const { validateOutput } = await import("../dist/supervision.js");
+  const { validateOutput } = await import("../dist/engine/supervision.js");
   const verdict = await validateOutput(
     {
       agent: { outputValidation: validation },

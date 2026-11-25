@@ -1,9 +1,9 @@
-import { runOutcome, type outcomeSchema } from "./supervision.js";
+import { runOutcome, type outcomeSchema } from "../engine/supervision.js";
 import type { z } from "zod";
-import { validateCompactionState } from "./compaction.js";
-import type { OperationalLog } from "./logging.js";
-import { NightcrewError } from "./protocol.js";
-import { checkpoint } from "./execution.js";
+import { validateCompactionState } from "../engine/compaction.js";
+import type { OperationalLog } from "../server/logging.js";
+import { NightcrewError } from "../engine/protocol.js";
+import { checkpoint } from "../engine/execution.js";
 import { createHash, randomUUID, randomBytes } from "node:crypto";
 import { constants } from "node:fs";
 import {
@@ -24,7 +24,7 @@ import {
   type Store,
   type Run,
   type Config,
-} from "./contracts.js";
+} from "../engine/contracts.js";
 
 export const tokenHash = (token: string) =>
   createHash("sha256").update(token).digest("hex");

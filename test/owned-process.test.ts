@@ -5,7 +5,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { ownedProcessGuard } from "../dist/execution.js";
+import { ownedProcessGuard } from "../dist/engine/execution.js";
 const alive = (pid?: any) => {
   try {
     process.kill(pid, 0);
@@ -93,7 +93,7 @@ test(
 );
 
 test("shared runner preserves auxiliary skill pipe and bounds byte output", async () => {
-  const { runExecutable } = await import("../dist/execution.js");
+  const { runExecutable } = await import("../dist/engine/execution.js");
   const errors = {
     timeout: "deadline",
     interrupted: "aborted",

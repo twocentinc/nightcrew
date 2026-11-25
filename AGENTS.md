@@ -4,49 +4,70 @@ Nightcrew is a standalone project. Use its spec and the owner's direct
 instructions for planning and implementation. Keep application integrations and
 their executable tools outside this repository.
 
-`src/operations.ts` owns shared oRPC procedures, results and management command
-metadata; `src/operationInputs.ts` owns their request schemas. CLI, control socket
-and HTTP must invoke those procedures. `src/commands.ts` derives management
-commands from them and owns local command definitions and discovery.
-`src/protocol.ts` owns versioned envelopes, errors and request validation.
-`src/cli.ts` owns parsing and finite command execution; `src/execution.ts` owns
+`src/commands/` has one module per top-level CLI command. Each family owns its
+request/result schemas, metadata and handlers; local-only families register their
+commands there too. `definition.ts` builds shared authenticated oRPC procedures;
+`operations.ts` aggregates them and `inputs.ts` aggregates their request schemas.
+CLI, control socket and HTTP must invoke those same procedures. `registry.ts`
+owns discovery, registration and offline dispatch. `resources.ts` owns shared
+atomic resource transactions; resource-specific mutations stay in family modules.
+`src/engine/protocol.ts` owns versioned envelopes, errors and request validation.
+`src/cli.ts` owns parsing and finite command execution; `src/engine/execution.ts` owns
 shared deadlines, diagnostics, and the owner-pipe process guard used for llama.cpp
 tools and script hooks. Owner death must terminate their process groups, while
-uncertain delivery receipts remain non-retryable without review. `src/daemon.ts` owns the private control socket.
-`src/management.ts` implements configuration, trigger and queue management.
-`src/triggers.ts` owns schedule validation and next-occurrence calculation.
-`src/scheduler.ts` owns live-slot derivation, policy configuration, default planning
-and bounded external policy hooks. `src/service.ts` owns timer admission, plan
-revalidation, per-slot execution and persistent single-run conversation segments.
-`src/compaction.ts` owns compaction handler/checkpoint schemas, safe history
+uncertain delivery receipts remain non-retryable without review. `src/server/daemon.ts` owns the private control socket. `src/server/http.ts` owns
+HTTP/oRPC hosting and transport adapters; it must not own scheduling or agent
+execution. `src/engine/` owns execution and domain behavior; `src/storage/` owns
+durable state, transcripts and run artifacts.
+`src/commands/management.ts` dispatches internal management calls to command families.
+`src/engine/triggers.ts` owns schedule validation and next-occurrence calculation.
+`src/engine/scheduler.ts` owns live-slot derivation, policy configuration, default planning
+and bounded external policy hooks. `src/engine/service.ts` composes the engine and
+keeps the shared service-facing API, initialization and shutdown order. Components
+receive explicit, narrow dependencies, never the entire Service.
+`src/engine/dispatch.ts` owns active executions, cancellation handles, timer
+admission, plan revalidation, presence and interaction cooldown.
+`src/engine/runs.ts` owns submissions, persistent conversation segments, pending
+inputs and administrative run transitions. `src/engine/runner.ts` owns background
+execution, live runs, streamed output and turn preparation/settlement. Its phases
+must preserve the order of durable attempt, tool-result and message writes.
+`src/engine/instant.ts` owns instant/eval request state, deadlines and generation.
+`src/engine/context.ts` owns context budgets, linked compactor admission and
+checkpoint reconciliation. `src/engine/hooks.ts` owns delivery tasks, durable
+receipts, explicit retries and draining on shutdown.
+`src/storage/records.ts` owns run projections, pagination snapshots, search,
+event/save helpers and interrupted-run recovery inside the startup transaction.
+`src/engine/configuration.ts` owns shared agent/configuration validation and
+mutation; `src/engine/runtimeTypes.ts` owns the runtime adapter interfaces.
+`src/engine/compaction.ts` owns compaction handler/checkpoint schemas, safe history
 projection and bounded script execution. It generates domain-independent source
 references for original records/text excerpts and restores selected evidence into
-legacy resumed context; structured summaries retain source references only as checkpoint metadata and inject Markdown bullets. Summaries never own source identity or wording. The service schedules linked compactor
+legacy resumed context; structured summaries retain source references only as checkpoint metadata and inject Markdown bullets. Summaries never own source identity or wording. The context component schedules linked compactor
 runs; the runtime counts templated tokens and validates KV checkpoint generations.
 Managed output-limit continuation is reconstructed from durable attempt records;
 never validate/deliver partial answers or execute truncated tool calls.
 Runs carry holds, pending inputs, compaction checkpoints, configuration and trigger
 occurrence snapshots.
-`src/supervision.ts` owns output-validation configuration/execution, loop detection
+`src/engine/supervision.ts` owns output-validation configuration/execution, loop detection
 and derived run outcomes, review fingerprints and effective hook retry chains. Keep validation evidence durable and never equate schema
 validation or hook execution with factual correctness or confirmed external delivery.
-`src/evals.ts` owns versioned eval suites, exact argument mock dispatch and
+`src/engine/evals.ts` owns versioned eval suites, exact argument mock dispatch and
 create-only result bundles and optional executable end-of-case graders. Graders
 are trusted local programs, separate from intercepted model tools. Snapshot their
 identity, bound execution, and preserve failures and unreviewed criteria. Keep
 agent-specific fixtures, tests, and TypeScript graders beside the example agent.
 Keep tests of Nightcrew runtime, CLI contracts, and reusable infrastructure under
-`test/`, even when their fixtures use named mock agents. Eval sampling in `src/service.ts` uses the instant
+`test/`, even when their fixtures use named mock agents. Eval sampling in `src/engine/instant.ts` uses the instant
 scheduler but never executes tools, skills, hooks or compaction. Keep evaluation
 expectations out of model inputs and unreviewed criteria distinct from passes.
-`src/diagnostics.ts` owns capability and readiness reporting.
-`src/runArtifacts.ts` owns create-only run bundles, checksum manifests and
+`src/server/diagnostics.ts` owns capability and readiness reporting.
+`src/storage/artifacts.ts` owns create-only run bundles, checksum manifests and
 read-only run/bundle integrity verification.
-`src/logging.ts` owns the operational event/field allowlist, severity filtering,
+`src/server/logging.ts` owns the operational event/field allowlist, severity filtering,
 rate limiting and private bounded log rotation. Never log prompts, responses,
 tool data, run lifecycle, configuration dumps, or facts reconstructible from
 transcripts/state files. Log only additional daemon operational evidence.
-`src/startup.ts` owns the per-user macOS LaunchAgent. Runtime files must remain
+`src/server/startup.ts` owns the per-user macOS LaunchAgent. Runtime files must remain
 outside the source checkout. Default home is `~/.nightcrew`; this installation
 may select another private runtime directory with `--home`.
 
@@ -56,9 +77,10 @@ configuration writes atomic and serialized with daemon writes. Preserve run
 snapshots, reject dangling references, and never delete run/model data when
 uninstalling a service. External tools are trusted executables running with the local user’s permissions;
 Nightcrew does not provide an OS sandbox or enforce read-only behavior.
-`src/registry.ts` owns executable-only tool definitions and process execution;
-`src/toolCommands.ts` owns bundled executable helpers.
-`src/skills.ts` owns skill folder resources, canonical encoding, bounded on-demand
+`src/engine/registry.ts` owns executable-only tool definitions, process execution
+and the AgentRegistry that loads, validates and selects agent capabilities;
+`src/engine/toolCommands.ts` owns bundled executable helpers.
+`src/engine/skills.ts` owns skill folder resources, canonical encoding, bounded on-demand
 reads and skill catalog projection. Run resources must remain snapshotted; inject
 only names/descriptions until requested. Auto-inject load_skills for agent loops
 and instant chat; single-turn agents stay executable-tool-free. Opt-in `finishSchema` supplies a runtime-owned `finish` signal, never an executable registry entry. Validate its exclusive call before atomically committing completion; invalid results must not complete or dispatch sibling tools. Reject duplicate object keys before accepting structured results; repair feedback must explain the lost-item risk. Instant execution owns only

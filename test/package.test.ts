@@ -26,7 +26,7 @@ test(
       for (const file of pack.files)
         assert.match(
           file.path,
-          /^(package\.json|README\.md|docs\/(?:model-switch-verification|eval-format|acceptance|compatibility)\.md|examples\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_.-]+\.(?:md|json|ts)|dist\/[a-zA-Z0-9_-]+\.(js|d\.ts))$/,
+          /^(package\.json|README\.md|docs\/(?:model-switch-verification|eval-format|acceptance|compatibility)\.md|examples\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_.-]+\.(?:md|json|ts)|dist\/(?:commands\/|engine\/|storage\/|server\/)?[a-zA-Z0-9_-]+\.(js|d\.ts))$/,
           "Unexpected packed file: " + file.path,
         );
       assert.ok(pack.files.some((f?: any) => f.path === "dist/cli.js"));
@@ -163,6 +163,21 @@ test(
           path.join(example, "test.ts"),
         ]);
       }
+      const { stdout: exportsOutput } = await exec(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          `const main=await import("nightcrew");const operations=await import("nightcrew/operations");console.log(JSON.stringify({server:typeof main.startServer,initialize:typeof main.initializeHome,router:typeof operations.managementClient,hasAgents:!!operations.operationRouter["agents list"]}));`,
+        ],
+        { cwd: install, timeout: 10000 },
+      );
+      assert.deepEqual(JSON.parse(exportsOutput), {
+        server: "function",
+        initialize: "function",
+        router: "function",
+        hasAgents: true,
+      });
       const home = path.join(temp, "home");
       await mkdir(home, { mode: 0o700 });
       const runtime = path.join(temp, "r");
