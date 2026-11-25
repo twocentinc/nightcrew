@@ -5,7 +5,7 @@ import {
   commandCatalog,
   exportSchemas,
   globalOptions,
-} from "../dist/commands/registry.js";
+} from "../dist/utils/commands/registry.js";
 import {
   SCHEMA_VERSION,
   PROTOCOL_VERSION,
@@ -35,7 +35,7 @@ export function contract() {
   });
 }
 export async function updateSnapshots() {
-  const root = new URL("../test/snapshots/", import.meta.url);
+  const root = new URL("./snapshots/", import.meta.url);
   const archive = new URL(`versions/v${SCHEMA_VERSION}.json`, root);
   const current = contract();
   const encode = (value: unknown) => JSON.stringify(value, null, 2) + "\n";

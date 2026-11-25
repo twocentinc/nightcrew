@@ -16,8 +16,8 @@ import {
 import { storeSchema, validateConfig } from "../schemas/config.js";
 import { type Run } from "../schemas/run.js";
 import { canonical } from "../utils/json.js";
-import { createOperations } from "./definition.js";
-import { type ManagementInput } from "./resources.js";
+import { createOperations } from "../utils/commands/definition.js";
+import { type ManagementInput } from "../utils/commands/resources.js";
 
 export const operationInputs = {
   "triggers create": z.strictObject({ trigger: triggerDraftSchema }),

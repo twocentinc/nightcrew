@@ -1,4 +1,4 @@
-import {readStream} from "../dist/engine/models/stream.js";
+import { readStream } from "../dist/engine/models/stream.js";
 import { runtimeConfig } from "./fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -565,7 +565,7 @@ test("active timeout settles a run and hook delivery survives restart without re
 });
 
 test("custom executable tools run with snapshotted definitions and appear in discovery", async (t) => {
-  const { manage } = await import("../dist/commands/management.js");
+  const { manage } = await import("../dist/utils/commands/management.js");
   let calls = 0;
   const f = await fixture(t, async (input?: any) => {
     calls++;
@@ -1020,8 +1020,9 @@ test("stream parser separates thinking from answers and tool calls across byte c
 
 test("management HTTP and CLI share every oRPC operation contract", async (t) => {
   const f = await fixture(t);
-  const { operationDefinitions } = await import("../dist/commands/operations.js");
-  const { getCommand } = await import("../dist/commands/registry.js");
+  const { operationDefinitions } =
+    await import("../dist/utils/commands/operations.js");
+  const { getCommand } = await import("../dist/utils/commands/registry.js");
   for (const op of operationDefinitions) {
     const command = getCommand(op.name);
     if (["evals sample", "evals release"].includes(op.name)) {
@@ -1331,7 +1332,7 @@ test("agent loops automatically discover and load snapshotted skill files on dem
       usage: { inputTokens: 1, outputTokens: 1 },
     };
   });
-  const { managementClient } = await import("../dist/commands/operations.js");
+  const { managementClient } = await import("../dist/utils/commands/operations.js");
   const api = managementClient(f.app.service);
   const skill = {
     skillID: "review",
@@ -1442,7 +1443,7 @@ test("instant chats execute selected skills automatically and return client-owne
       usage: { inputTokens: 2, outputTokens: 1 },
     };
   });
-  const { managementClient } = await import("../dist/commands/operations.js");
+  const { managementClient } = await import("../dist/utils/commands/operations.js");
   await managementClient(f.app.service)["skills create"]({
     resourceID: undefined,
     request: {
@@ -1581,7 +1582,7 @@ for (const instant of [false, true]) {
         usage: { inputTokens: 1, outputTokens: 1 },
       };
     });
-    const { managementClient } = await import("../dist/commands/operations.js");
+    const { managementClient } = await import("../dist/utils/commands/operations.js");
     await managementClient(f.app.service)["skills create"]({
       resourceID: undefined,
       request: {
@@ -1644,7 +1645,12 @@ test("history tools exclude the current nonterminal run", async (t) => {
   });
   const run = await f.app.service.storage.read(submitted.body.runID);
   const signal = new AbortController().signal;
-  const list = await f.app.service["toolStep"].invokeTool(run, "runs_list", "{}", signal);
+  const list = await f.app.service["toolStep"].invokeTool(
+    run,
+    "runs_list",
+    "{}",
+    signal,
+  );
   assert.deepEqual(list, []);
   const history = await f.app.service["toolStep"].invokeTool(
     run,
@@ -1784,7 +1790,9 @@ test("tool budget rejects excess batch calls and requests a tool-free final answ
     changes: { mode: "agent-loop", toolIDs: ["runs_list"], maxToolCalls: 1 },
   });
   let invoked = 0;
-  const invoke = f.app.service["toolStep"].invokeTool.bind(f.app.service["toolStep"]);
+  const invoke = f.app.service["toolStep"].invokeTool.bind(
+    f.app.service["toolStep"],
+  );
   f.app.service["toolStep"].invokeTool = (...args: any[]) => {
     invoked++;
     return invoke(...args);
@@ -1995,4 +2003,25 @@ test("runtime reports loading and unloading until their operations settle", asyn
   releaseStop();
   await closing;
   assert.equal(runtime.status()[0].state, "unloaded");
+});
+
+test("SSE library handles comments, multiline data, CR framing and ignores post-DONE events", async () => {
+  const text =
+    ': keepalive\revent: message\rdata: {"choices":\rdata: [{"index":0,"delta":{"content":"π"},"finish_reason":"stop"}]}\r\rdata: [DONE]\r\rdata: invalid after done\r\r';
+  const bytes = Buffer.from(text);
+  const response = new Response(
+    new ReadableStream({
+      start(controller) {
+        for (const byte of bytes) controller.enqueue(Uint8Array.of(byte));
+        controller.close();
+      },
+    }),
+  );
+  const result = await readStream(response, new AbortController().signal);
+  assert.equal(result.text, "π");
+  assert.deepEqual(result.toolCalls, []);
+  await assert.rejects(
+    readStream(new Response("data: [DONE]"), new AbortController().signal),
+    /Incomplete generation/,
+  );
 });

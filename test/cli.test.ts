@@ -48,7 +48,7 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
   t.after(() => rm(home, { recursive: true, force: true }));
   assert.throws(
     () => parseCLI(["startup", "stop", "--bogus"]),
-    /Unknown option/,
+    /unknown option/i,
   );
   assert.throws(() => parseCLI(["help", "--timeout", "20"]), /requires/);
   assert.equal((await call(home, ["init"])).ok, true);

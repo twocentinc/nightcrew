@@ -2,8 +2,8 @@ import { chmod, lstat, unlink } from "node:fs/promises";
 import { createConnection, createServer } from "node:net";
 import path from "node:path";
 import { z } from "zod";
-import { type ManagementInput } from "../commands/management.js";
-import { callOperation } from "../commands/operations.js";
+import { type ManagementInput } from "../utils/commands/management.js";
+import { callOperation } from "../utils/commands/operations.js";
 import {
   Execution,
   checkpoint,
@@ -177,11 +177,11 @@ export async function runDaemon(home: string, quiet = false) {
         try {
           if (closing) throw Error("Daemon stopping");
           const input = controlSchema.parse(JSON.parse(buffer.split("\n")[0]!));
-          const { getCommand } = await import("../commands/registry.js");
+          const { getCommand } = await import("../utils/commands/registry.js");
           const definition =
             getCommand(input.command) ??
             (["evals sample", "evals release"].includes(input.command)
-              ? (await import("../commands/operations.js")).getOperation(
+              ? (await import("../utils/commands/operations.js")).getOperation(
                   input.command,
                 )
               : undefined);

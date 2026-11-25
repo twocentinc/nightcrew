@@ -16,7 +16,7 @@ import { spawnSync } from "node:child_process";
 import { Storage } from "../dist/storage/store.js";
 import { initializeHome } from "../dist/storage/config.js";
 import { Service } from "../dist/engine/service.js";
-import { manage as rawmanage } from "../dist/commands/management.js";
+import { manage as rawmanage } from "../dist/utils/commands/management.js";
 const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
   rawmanage;
 import { runSchema } from "../dist/schemas/run.js";

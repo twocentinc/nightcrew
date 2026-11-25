@@ -1,10 +1,10 @@
 import { eventIterator } from "@orpc/server";
 import { z } from "zod";
-import { operationInputs } from "../commands/inputs.js";
+import { operationInputs } from "../utils/commands/inputs.js";
 import {
   httpOperationRouter,
   managementClient,
-} from "../commands/operations.js";
+} from "../utils/commands/operations.js";
 import { packageVersion } from "../engine/protocol.js";
 import { Service } from "../engine/service.js";
 import {

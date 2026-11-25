@@ -5,9 +5,17 @@ import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { commandDefinitions, help, exportSchemas } from "../dist/commands/registry.js";
+import {
+  commandDefinitions,
+  help,
+  exportSchemas,
+} from "../dist/utils/commands/registry.js";
 import { parseCLI } from "../dist/cli.js";
-import { Execution, withoutExecution, checkpoint } from "../dist/engine/execution/process.js";
+import {
+  Execution,
+  withoutExecution,
+  checkpoint,
+} from "../dist/engine/execution/process.js";
 import { Storage } from "../dist/storage/store.js";
 const cli = new URL("../dist/cli.js", import.meta.url).pathname;
 const call = (args: string[], { keepStdin = false } = {}) =>
@@ -148,7 +156,7 @@ test("eval CLI deadline accommodates suites while ordinary command limits remain
 
 test("simplified CLI removes obsolete names and hides advanced and internal operations", async () => {
   const { parseCLI } = await import("../dist/cli.js");
-  const { help } = await import("../dist/commands/registry.js");
+  const { help } = await import("../dist/utils/commands/registry.js");
   for (const args of [
     ["startup", "status"],
     ["inference", "submit"],
@@ -171,7 +179,7 @@ test("simplified CLI removes obsolete names and hides advanced and internal oper
 });
 
 test("command names use words without hyphens and removed commands are rejected", async () => {
-  const { help } = await import("../dist/commands/registry.js");
+  const { help } = await import("../dist/utils/commands/registry.js");
   for (const name of help("", true).commands)
     assert.equal(name.includes("-"), false, name);
   for (const args of [
@@ -181,4 +189,23 @@ test("command names use words without hyphens and removed commands are rejected"
     ["auth", "rotate"],
   ])
     assert.throws(() => parseCLI(args), /Unknown command/);
+});
+
+test("Commander handles repeated options, aliases and literal operands", () => {
+  assert.equal(
+    parseCLI(["version", "--request-id=first", "--request-id", "last"]).values[
+      "request-id"
+    ],
+    "last",
+  );
+  assert.equal(parseCLI(["-hV"]).command, "version");
+  assert.equal(
+    parseCLI(["runs", "get", "--", "literal"]).resourceID,
+    "literal",
+  );
+  assert.throws(() => parseCLI(["version", "--quiet=true"]), /unknown option/i);
+  assert.throws(
+    () => parseCLI(["version", "--request-id"]),
+    /argument missing/i,
+  );
 });

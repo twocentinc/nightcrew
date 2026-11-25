@@ -4,9 +4,10 @@ Nightcrew is a standalone project. Use its spec and the owner's direct
 instructions for planning and implementation. Keep application integrations and
 their executable tools outside this repository.
 
-`src/commands/` has one module per top-level CLI command. Each family owns its
+`src/commands/` contains only one module per top-level CLI command; do not add
+shared helpers or aggregate modules there. Each family owns its
 request/result schemas, metadata and handlers; local-only families register their
-commands there too. `definition.ts` builds shared authenticated oRPC procedures;
+commands there too. Shared infrastructure lives in `src/utils/commands/`: `definition.ts` builds shared authenticated oRPC procedures;
 `operations.ts` aggregates them and `inputs.ts` aggregates their request schemas.
 CLI, control socket and HTTP must invoke those same procedures. `registry.ts`
 owns discovery, registration and offline dispatch. `resources.ts` owns shared
@@ -27,7 +28,7 @@ helpers own configuration-change admission policy. Bearer-token verification is
 shared through `src/storage/config.ts`, while transports retain their error responses.
 Transcript projections build per-call message and attempt indexes.
 
-`src/commands/management.ts` dispatches internal management calls to command families.
+`src/utils/commands/management.ts` dispatches internal management calls to command families.
 `src/engine/scheduling/schedule.ts` owns schedule validation and next-occurrence calculation.
 `src/engine/scheduling/policy.ts` owns live-slot derivation, policy configuration, default planning
 and bounded external policy hooks. `src/engine/service.ts` composes the engine and
@@ -137,7 +138,7 @@ behavior without an actual model-specific check.
 Real-model tests live under `test/live/`, outside the default suite. Do not run
 them without explicit authorization for inference.
 
-The public contract is frozen at schema 34; follow `docs/compatibility.md`.
+The public contract is frozen at schema 41; follow `docs/compatibility.md`.
 Do not remove or rename public commands, tighten accepted inputs, or change
 execution semantics without explicitly reopening the freeze. Schema increments
 alone do not authorize breaking changes. Keep
@@ -172,7 +173,12 @@ TypeScript (`.ts`), never `.mjs`. Run standalone TypeScript with Node's
 `--experimental-strip-types` flag on the minimum supported Node version.
 Dependencies, generated `dist/`, and historical Git contents are outside this rule.
 `test/contracts.test.ts` enforces the source-file ban and verifies immutable
-contract snapshots; `scripts/contracts.ts --update` remains the explicit updater.
+contract snapshots; `test/contracts.ts --update` remains the explicit updater.
 `test/package.test.ts` is opt-in through `npm run test:package`; ordinary tests
 must not perform package installation. Keep strict type checks for tests and
 scripts in `tsconfig.tests.json`, alongside the core source check.
+
+Commander owns option parsing, cron-parser owns cron syntax and next-occurrence
+semantics, and eventsource-parser owns SSE framing. Follow their native behavior
+without compatibility exceptions. Nightcrew retains command contracts, scheduler
+admission/no-catch-up policies, generation limits and completion validation.

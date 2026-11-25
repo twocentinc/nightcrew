@@ -5,14 +5,14 @@ import {
 } from "../engine/capabilities/registry.js";
 import { Service, fail } from "../engine/service.js";
 import { fingerprint } from "../utils/json.js";
-import { createOperations } from "./definition.js";
+import { createOperations } from "../utils/commands/definition.js";
 import {
   mutateRegistration,
   resourceCommand,
   type ManagementInput,
   type ResourceActions,
   type ResourceContext,
-} from "./resources.js";
+} from "../utils/commands/resources.js";
 
 export const operationInputs = {
   "tools create": z.strictObject({ tool: toolDefinitionSchema }),

@@ -1,3 +1,4 @@
+import { createParser } from "eventsource-parser";
 import { z } from "zod";
 import { toolCallSchema } from "../../schemas/common.js";
 import type { Result, Runtime } from "./types.js";
@@ -12,8 +13,7 @@ export async function readStream(
 ): Promise<Result> {
   const reader = response.body!.getReader();
   const decoder = new TextDecoder();
-  let buffer = "",
-    text = "",
+  let text = "",
     reasoningContent = "",
     finish = "";
   let total = 0;
@@ -56,9 +56,9 @@ export async function readStream(
       .nullable()
       .optional(),
   });
-  const line = (value: string) => {
-    if (!value.startsWith("data:")) return;
-    const payload = value.slice(5).trim();
+  const event = (payload: string) => {
+    if (ended) return;
+    payload = payload.trim();
     if (payload === "[DONE]") {
       ended = true;
       return;
@@ -109,6 +109,14 @@ export async function readStream(
       });
     }
   };
+  const parser = createParser({
+    onEvent: ({ data }) => event(data),
+    maxBufferSize: 4 * 1024 * 1024,
+    onError: (error) => {
+      if (error.type === "max-buffer-size-exceeded")
+        throw Error("Output limit");
+    },
+  });
   try {
     while (!ended) {
       signal.throwIfAborted();
@@ -116,14 +124,9 @@ export async function readStream(
       if (done) break;
       total += value.length;
       if (total > 4 * 1024 * 1024) throw Error("Output limit");
-      buffer += decoder.decode(value, { stream: true });
-      let index;
-      while ((index = buffer.indexOf("\n")) >= 0) {
-        line(buffer.slice(0, index).replace(/\r$/, ""));
-        buffer = buffer.slice(index + 1);
-      }
+      parser.feed(decoder.decode(value, { stream: true }));
     }
-    if (buffer.trim()) line(buffer.trim());
+    parser.feed(decoder.decode());
   } finally {
     await reader.cancel();
   }

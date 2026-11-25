@@ -11,9 +11,9 @@ import type { Service } from "../engine/service.js";
 import { fail } from "../engine/service.js";
 import { id } from "../schemas/common.js";
 import { chatAcceptanceSchema } from "../schemas/run.js";
-import { createOperations } from "./definition.js";
-import type { Define } from "./registry.js";
-import { type ManagementInput } from "./resources.js";
+import { createOperations } from "../utils/commands/definition.js";
+import type { Define } from "../utils/commands/registry.js";
+import { type ManagementInput } from "../utils/commands/resources.js";
 
 const control: typeof import("../server/daemon.js").control = async (...args) =>
   (await import("../server/daemon.js")).control(...args);

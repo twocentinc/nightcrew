@@ -1,19 +1,19 @@
 import { createRouterClient, type AnyProcedure } from "@orpc/server";
-import { NightcrewError } from "../engine/protocol.js";
-import type { Service } from "../engine/service.js";
-import { operations as agents } from "./agents.js";
-import { operations as config } from "./config.js";
-import { operations as evals } from "./evals.js";
-import { operations as init } from "./init.js";
-import { operations as instant } from "./instant.js";
+import { NightcrewError } from "../../engine/protocol.js";
+import type { Service } from "../../engine/service.js";
+import { operations as agents } from "../../commands/agents.js";
+import { operations as config } from "../../commands/config.js";
+import { operations as evals } from "../../commands/evals.js";
+import { operations as init } from "../../commands/init.js";
+import { operations as instant } from "../../commands/instant.js";
 import { type ManagementInput } from "./management.js";
-import { operations as models } from "./models.js";
-import { operations as runs } from "./runs.js";
-import { operations as scheduler } from "./scheduler.js";
-import { operations as skills } from "./skills.js";
-import { operations as statusCommands } from "./status.js";
-import { operations as tools } from "./tools.js";
-import { operations as triggers } from "./triggers.js";
+import { operations as models } from "../../commands/models.js";
+import { operations as runs } from "../../commands/runs.js";
+import { operations as scheduler } from "../../commands/scheduler.js";
+import { operations as skills } from "../../commands/skills.js";
+import { operations as statusCommands } from "../../commands/status.js";
+import { operations as tools } from "../../commands/tools.js";
+import { operations as triggers } from "../../commands/triggers.js";
 
 export const operations = {
   ...statusCommands,

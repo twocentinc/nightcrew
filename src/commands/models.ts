@@ -4,7 +4,7 @@ import { revision } from "../schemas/common.js";
 import { configMutation } from "../schemas/config.js";
 import { modelSchema, slotSchema } from "../schemas/model.js";
 import { capabilities, capabilitiesSchema } from "../server/diagnostics.js";
-import { createOperations } from "./definition.js";
+import { createOperations } from "../utils/commands/definition.js";
 import {
   configurationChangePolicy,
   resourceCommand,
@@ -12,7 +12,7 @@ import {
   type ManagementInput,
   type ResourceActions,
   type ResourceContext,
-} from "./resources.js";
+} from "../utils/commands/resources.js";
 
 export const operationInputs = {
   "models create": z.strictObject({

@@ -5,13 +5,13 @@ import { agentDraftSchema, agentSchema } from "../schemas/agent.js";
 import { id, revision, userMessageSchema } from "../schemas/common.js";
 import { configMutation } from "../schemas/config.js";
 import { acceptanceSchema } from "../schemas/run.js";
-import { createOperations } from "./definition.js";
+import { createOperations } from "../utils/commands/definition.js";
 import {
   resourceCommand,
   type ManagementInput,
   type ResourceActions,
   type ResourceContext,
-} from "./resources.js";
+} from "../utils/commands/resources.js";
 
 export const operationInputs = {
   "agents run": z.strictObject({ message: userMessageSchema }),

@@ -26,7 +26,7 @@ test(
       for (const file of pack.files)
         assert.match(
           file.path,
-          /^(package\.json|README\.md|docs\/(?:model-switch-verification|eval-format|acceptance|compatibility)\.md|examples\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_.-]+\.(?:md|json|ts)|dist\/(?:commands\/|engine\/(?:runs\/|execution\/|instant\/|scheduling\/|models\/|compaction\/|capabilities\/|evals\/)?|schemas\/|storage\/|server\/|utils\/)?[a-zA-Z0-9_-]+\.(js|d\.ts))$/,
+          /^(package\.json|README\.md|docs\/(?:model-switch-verification|eval-format|acceptance|compatibility)\.md|examples\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_.-]+\.(?:md|json|ts)|dist\/(?:commands\/|engine\/(?:runs\/|execution\/|instant\/|scheduling\/|models\/|compaction\/|capabilities\/|evals\/)?|schemas\/|storage\/|server\/|utils\/(?:commands\/)?)?[a-zA-Z0-9_-]+\.(js|d\.ts))$/,
           "Unexpected packed file: " + file.path,
         );
       assert.ok(pack.files.some((f?: any) => f.path === "dist/cli.js"));
@@ -77,6 +77,15 @@ test(
           path.join(temp, pack.filename),
         ],
         { cwd: install, timeout: 120000, maxBuffer: 4 * 1024 * 1024 },
+      );
+      await exec(
+        process.execPath,
+        [
+          "--input-type=module",
+          "-e",
+          "import { strict as assert } from 'node:assert'; import { startServer } from 'nightcrew'; import { operationRouter, managementClient } from 'nightcrew/operations'; assert.equal(typeof startServer, 'function'); assert.equal(typeof managementClient, 'function'); assert.ok(operationRouter['agents list']);",
+        ],
+        { cwd: install },
       );
       // Examples are copied out before editing/running: Node does not strip
       // TypeScript directly under node_modules.

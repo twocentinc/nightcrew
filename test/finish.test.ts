@@ -9,13 +9,13 @@ import { setTimeout as delay } from "node:timers/promises";
 import { Storage } from "../dist/storage/store.js";
 import { initializeHome } from "../dist/storage/config.js";
 import { Service } from "../dist/engine/service.js";
-import { manage as rawmanage } from "../dist/commands/management.js";
+import { manage as rawmanage } from "../dist/utils/commands/management.js";
 const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
   rawmanage;
 import {
   operations,
   callOperation as rawcallOperation,
-} from "../dist/commands/operations.js";
+} from "../dist/utils/commands/operations.js";
 const callOperation: (
   ...args: Parameters<typeof rawcallOperation>
 ) => Promise<any> = rawcallOperation;

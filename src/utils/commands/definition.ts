@@ -1,9 +1,9 @@
 import { ORPCError, os, type InferSchemaInput } from "@orpc/server";
 import { z } from "zod";
-import { currentExecution, Execution } from "../engine/execution/process.js";
-import { NightcrewError } from "../engine/protocol.js";
-import type { Service } from "../engine/service.js";
-import { verifyBearerToken } from "../storage/config.js";
+import { currentExecution, Execution } from "../../engine/execution/process.js";
+import { NightcrewError } from "../../engine/protocol.js";
+import type { Service } from "../../engine/service.js";
+import { verifyBearerToken } from "../../storage/config.js";
 import type { ManagementInput } from "./management.js";
 
 type Handler = (service: Service, input: ManagementInput) => Promise<unknown>;

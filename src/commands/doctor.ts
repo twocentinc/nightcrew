@@ -1,5 +1,5 @@
 import { doctor, doctorSchema } from "../server/diagnostics.js";
-import type { Define } from "./registry.js";
+import type { Define } from "../utils/commands/registry.js";
 
 const control: typeof import("../server/daemon.js").control = async (...args) =>
   (await import("../server/daemon.js")).control(...args);

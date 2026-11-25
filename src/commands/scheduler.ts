@@ -4,8 +4,8 @@ import {
 } from "../engine/scheduling/policy.js";
 import type { Service } from "../engine/service.js";
 import { fail } from "../engine/service.js";
-import { createOperations } from "./definition.js";
-import { type ManagementInput } from "./resources.js";
+import { createOperations } from "../utils/commands/definition.js";
+import { type ManagementInput } from "../utils/commands/resources.js";
 
 export const operationInputs = {};
 export async function handle(

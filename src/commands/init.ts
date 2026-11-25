@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { adminConfig, configSchema } from "../schemas/config.js";
 import { initializeHome } from "../storage/config.js";
-import type { Define } from "./registry.js";
+import type { Define } from "../utils/commands/registry.js";
 
 export const operationInputs = {
   init: configSchema

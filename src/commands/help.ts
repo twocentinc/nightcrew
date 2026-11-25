@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { Define } from "./registry.js";
-import { help } from "./registry.js";
+import type { Define } from "../utils/commands/registry.js";
+import { help } from "../utils/commands/registry.js";
 
 export const operationInputs = {};
 

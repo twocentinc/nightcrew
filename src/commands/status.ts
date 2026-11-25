@@ -5,8 +5,8 @@ import { fail } from "../engine/service.js";
 import { triggerSchema } from "../schemas/agent.js";
 import { now, terminal } from "../schemas/common.js";
 import { runSummarySchema, statusSchema } from "../schemas/run.js";
-import { createOperations } from "./definition.js";
-import { type ManagementInput } from "./resources.js";
+import { createOperations } from "../utils/commands/definition.js";
+import { type ManagementInput } from "../utils/commands/resources.js";
 import { handle as triggerHandler } from "./triggers.js";
 
 export const operationInputs = {

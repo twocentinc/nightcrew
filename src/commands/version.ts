@@ -4,7 +4,7 @@ import {
   SCHEMA_VERSION,
   packageVersion,
 } from "../engine/protocol.js";
-import type { Define } from "./registry.js";
+import type { Define } from "../utils/commands/registry.js";
 
 export const operationInputs = {};
 

@@ -1,6 +1,6 @@
 # Nightcrew specification
 
-Status: frozen public baseline 0.31.4, protocol 1, schema 34.
+Status: protocol 1, schema 41; parser behavior revision approved for 0.40.0.
 See [compatibility.md](compatibility.md) for stable surfaces and change policy.
 Runtime schemas and registered procedures are authoritative; this document
 explains behavior rather than maintaining another endpoint inventory.
@@ -24,7 +24,9 @@ model priorities, residency preference and wait aging avoid unnecessary swaps.
 ## Source organization
 
 `src/cli.ts` is the executable entry point. `commands/` has one module per
-public command family. Shared types and validators live in `schemas/`; import
+public command family and no shared helper modules. `utils/commands/` owns shared
+procedure definitions, discovery, dispatch, request aggregation and resource
+transactions. Shared types and validators live in `schemas/`; import
 schemas directly from their owners rather than through re-export barrels.
 
 `engine/service.ts` composes the components and retains the service-facing API.
@@ -86,7 +88,7 @@ Transcript projections build per-call message and attempt indexes.
 ## Canonical contracts and transport
 
 Each top-level command module in src/commands/ owns its input/output schemas,
-metadata and handlers. src/commands/definition.ts builds their shared oRPC
+metadata and handlers. src/utils/commands/definition.ts builds their shared oRPC
 procedures; operations.ts and inputs.ts aggregate the family definitions. The CLI
 takes request/result schemas directly from these procedures. Offline management
 and the private daemon control socket execute the same procedures through oRPC.
@@ -237,7 +239,7 @@ run is not implemented.
 
 The queue is a view of run state and pending inputs. Trigger, queue and scheduler
 commands operate on those resources. Timer triggers support fixed intervals and
-cron; external scripts and HTTP callers submit ordinary agent runs. No separate
+cron using cron-parser syntax and timezone/DST behavior; external scripts and HTTP callers submit ordinary agent runs. No separate
 polling-script trigger is required: an agent can begin with a tool and finish
 quickly when there is no work.
 
@@ -612,7 +614,7 @@ it is never silently truncated or recursively compacted by the child.
 ## CLI simplification, schema 31
 
 The schema 31 simplification removed superseded names without aliases.
-The schema 34 freeze now governs further changes. Public
+The compatibility freeze, including approved schema 41 parser semantics, governs further changes. Public
 commands use `instant` for interactive requests and `daemon` for LaunchAgent
 management plus foreground execution. `status` includes fleet/runtime/presence;
 `--details` includes scheduling. `daemon status` reports local service installation.

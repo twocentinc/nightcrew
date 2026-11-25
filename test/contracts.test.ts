@@ -1,5 +1,5 @@
 import test from "node:test";
-import { contract } from "../scripts/contracts.ts";
+import { contract } from "./contracts.ts";
 import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
@@ -42,4 +42,18 @@ test("repository-owned source contains no mjs files", async () => {
     }
   }
   await visit(root);
+});
+
+test("commands directory contains exactly the top-level CLI families", async () => {
+  const files = (await readdir(new URL("../src/commands/", import.meta.url)))
+    .filter((name) => !name.startsWith("._"))
+    .sort();
+  const families = [
+    ...new Set(
+      contract().commands.map((command) => command.name.split(" ")[0]),
+    ),
+  ]
+    .map((name) => name + ".ts")
+    .sort();
+  assert.deepEqual(files, families);
 });

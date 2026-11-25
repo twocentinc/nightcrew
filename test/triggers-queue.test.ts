@@ -9,10 +9,13 @@ import { setTimeout as delay } from "node:timers/promises";
 import { Storage } from "../dist/storage/store.js";
 import { initializeHome } from "../dist/storage/config.js";
 import { Service } from "../dist/engine/service.js";
-import { manage as rawmanage } from "../dist/commands/management.js";
+import { manage as rawmanage } from "../dist/utils/commands/management.js";
 const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
   rawmanage;
-import { nextFireAt, scheduleSchema } from "../dist/engine/scheduling/schedule.js";
+import {
+  nextFireAt,
+  scheduleSchema,
+} from "../dist/engine/scheduling/schedule.js";
 
 async function fixture(t: import("node:test").TestContext) {
   const home = await mkdtemp(path.join(tmpdir(), "nc-trigger-"));
@@ -159,7 +162,7 @@ test("fixed intervals and cron use explicit zones, skip missed ticks, and handle
   };
   assert.equal(
     nextFireAt(cron, anchor, Date.parse("2026-03-08T06:59:00Z")),
-    "2026-03-09T06:30:00.000Z",
+    "2026-03-08T07:30:00.000Z",
   );
   assert.equal(
     nextFireAt(
@@ -167,7 +170,7 @@ test("fixed intervals and cron use explicit zones, skip missed ticks, and handle
       anchor,
       Date.parse("2026-11-01T05:30:00Z"),
     ),
-    "2026-11-01T06:30:00.000Z",
+    "2026-11-02T06:30:00.000Z",
   );
   assert.equal(
     nextFireAt(
@@ -181,7 +184,12 @@ test("fixed intervals and cron use explicit zones, skip missed ticks, and handle
     ),
     "2026-01-02T09:15:00.000Z",
   );
-  for (const expression of ["* * *", "61 * * * *", "*/0 * * * *", "0 0 32 * *"])
+  for (const expression of [
+    "* * * * * * *",
+    "61 * * * *",
+    "*/0 * * * *",
+    "0 0 32 * *",
+  ])
     assert.equal(
       scheduleSchema.safeParse({ ...cron, expression }).success,
       false,
@@ -365,5 +373,39 @@ test("concurrent skip firing admits one run and enqueue preserves distinct submi
   await assert.rejects(
     f.invoke("runs pause", run.runID, { expectedRevision: run.revision + 1 }),
     /revision_conflict/,
+  );
+});
+
+test("cron syntax and calendar validation follow cron-parser", () => {
+  const anchor = "2026-01-01T00:00:00.000Z";
+  for (const expression of ["@hourly", "0 9 * JAN MON", "*/10 * * * * *"])
+    assert.equal(
+      scheduleSchema.safeParse({ type: "cron", expression, timezone: "UTC" })
+        .success,
+      true,
+    );
+  assert.equal(
+    scheduleSchema.safeParse({
+      type: "cron",
+      expression: "0 0 30 2 *",
+      timezone: "UTC",
+    }).success,
+    false,
+  );
+  assert.equal(
+    nextFireAt(
+      { type: "cron", expression: "*/10 * * * * *", timezone: "UTC" },
+      anchor,
+      Date.parse(anchor),
+    ),
+    "2026-01-01T00:00:10.000Z",
+  );
+  assert.equal(
+    nextFireAt(
+      { type: "cron", expression: "0 9 * * *", timezone: "Asia/Kathmandu" },
+      anchor,
+      Date.parse(anchor),
+    ),
+    "2026-01-01T03:15:00.000Z",
   );
 });

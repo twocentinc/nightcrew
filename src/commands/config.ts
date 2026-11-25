@@ -9,7 +9,7 @@ import {
 } from "../schemas/config.js";
 import { loggingSchema } from "../server/logging.js";
 import { tokenHash } from "../storage/config.js";
-import { createOperations } from "./definition.js";
+import { createOperations } from "../utils/commands/definition.js";
 import {
   configurationChangePolicy,
   exposeConfig,
@@ -18,7 +18,7 @@ import {
   type ManagementInput,
   type ResourceActions,
   type ResourceContext,
-} from "./resources.js";
+} from "../utils/commands/resources.js";
 
 export const operationInputs = {
   "config update": z.strictObject({

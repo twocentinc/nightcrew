@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { NightcrewError, SCHEMA_VERSION } from "../engine/protocol.js";
-import type { Define } from "./registry.js";
-import { exportSchemas } from "./registry.js";
+import type { Define } from "../utils/commands/registry.js";
+import { exportSchemas } from "../utils/commands/registry.js";
 
 export const operationInputs = {};
 

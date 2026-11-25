@@ -19,7 +19,7 @@ import {runEval as rawRunEval} from "../dist/engine/evals/runner.js";
 import { Storage } from "../dist/storage/store.js";
 import { initializeHome } from "../dist/storage/config.js";
 import { Service } from "../dist/engine/service.js";
-import { callOperation as rawcallOperation } from "../dist/commands/operations.js";
+import { callOperation as rawcallOperation } from "../dist/utils/commands/operations.js";
 const callOperation: (
   ...args: Parameters<typeof rawcallOperation>
 ) => Promise<any> = rawcallOperation;

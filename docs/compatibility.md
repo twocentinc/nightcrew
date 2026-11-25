@@ -112,3 +112,20 @@ graders retain their behavior.
 This is an approved additive contract change. Agent-specific fixtures, TypeScript
 graders and checks are colocated under their example directories. See
 [the eval format](eval-format.md) for the canonical executable protocol.
+
+## Owner-approved parser adoption (November 24, 2026)
+
+Version 0.40.0 / schema 41 adopts Commander, cron-parser and eventsource-parser
+with their native behavior, as explicitly requested by the owner. This reopens
+only parser semantics; command paths, JSON envelopes and run/delivery policies
+remain unchanged. Older version archives remain immutable.
+
+Commander accepts grouped short aliases and repeated options (last value wins).
+Cron expressions use the library's syntax and calendar validation, including
+optional seconds, names and macros. Invalid calendar expressions previously
+accepted by the numeric parser must be corrected before loading configuration.
+Review saved schedules: nonexistent DST hours can move to the landing hour, and
+forward iteration suppresses repeated hours. There is no catch-up scheduling.
+SSE responses must use complete event framing; a trailing unterminated data line
+is no longer treated as a complete event. Model completion and output limits
+remain enforced independently of framing.

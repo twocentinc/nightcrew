@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { Command, Option } from "commander";
 import { randomUUID } from "node:crypto";
 import { once } from "node:events";
 import { lstat, readFile, realpath } from "node:fs/promises";
@@ -11,7 +12,7 @@ import {
   getCommand,
   globalOptions,
   type CommandContext,
-} from "./commands/registry.js";
+} from "./utils/commands/registry.js";
 import {
   diagnostic,
   Execution,
@@ -47,40 +48,29 @@ const optionTypes: Record<string, string | false> = {
   wait: false,
   tail: false,
 };
-const aliases: Record<string, string> = {
-  "-h": "--help",
-  "-V": "--version",
-};
 export function parseCLI(argv: string[]) {
-  const values: Record<string, string | boolean> = {};
-  const positional: string[] = [];
-  for (let i = 0; i < argv.length; i++) {
-    const arg = aliases[argv[i]!] ?? argv[i]!;
-    if (arg === "--") {
-      positional.push(...argv.slice(i + 1));
-      break;
-    }
-    if (!arg.startsWith("-") || arg === "-") {
-      positional.push(arg);
-      continue;
-    }
-    if (!arg.startsWith("--")) throw invalidInput("Unknown option " + arg);
-    const [name, ...rest] = arg.slice(2).split("=");
-    const type = optionTypes[name!];
-    if (type === undefined) throw invalidInput("Unknown option --" + name);
-    if (values[name!] !== undefined)
-      throw invalidInput("Repeated option --" + name);
-    if (type === false) {
-      if (rest.length)
-        throw invalidInput("Boolean options do not take a value");
-      values[name!] = true;
-    } else {
-      const value = rest.length ? rest.join("=") : argv[++i];
-      if (!value || value.startsWith("--"))
-        throw invalidInput("Missing value for --" + name);
-      values[name!] = value;
-    }
+  const parser = new Command()
+    .helpOption(false)
+    .addHelpCommand(false)
+    .allowExcessArguments(true)
+    .configureOutput({ writeOut: () => {}, writeErr: () => {} })
+    .exitOverride((error) => {
+      throw invalidInput(error.message.replace(/^error: /, ""));
+    });
+  for (const [name, type] of Object.entries(optionTypes)) {
+    const short = name === "help" ? "-h, " : name === "version" ? "-V, " : "";
+    parser.addOption(
+      new Option(`${short}--${name}${type === false ? "" : " <value>"}`),
+    );
   }
+  parser.parse(argv, { from: "user" });
+  const options = parser.opts<Record<string, string | boolean>>();
+  const values = Object.fromEntries(
+    parser.options
+      .filter((option) => options[option.attributeName()] !== undefined)
+      .map((option) => [option.name(), options[option.attributeName()]!]),
+  );
+  const positional = parser.args;
   let selected: string;
   let remaining: string[];
   let helpScope = "";

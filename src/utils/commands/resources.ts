@@ -5,18 +5,18 @@ import {
   builtinTools,
   toolDefinitionSchema,
   validateRegistry,
-} from "../engine/capabilities/registry.js";
+} from "../../engine/capabilities/registry.js";
 import {
   canonicalSkill,
   writeSkillFolder,
-} from "../engine/capabilities/skills.js";
-import { checkpoint } from "../engine/execution/process.js";
-import { Service, fail } from "../engine/service.js";
-import { skillSchema } from "../schemas/agent.js";
-import { id } from "../schemas/common.js";
-import { validateConfig, type Store } from "../schemas/config.js";
-import { atomicJSON } from "../storage/files.js";
-import { fingerprint } from "../utils/json.js";
+} from "../../engine/capabilities/skills.js";
+import { checkpoint } from "../../engine/execution/process.js";
+import { Service, fail } from "../../engine/service.js";
+import { skillSchema } from "../../schemas/agent.js";
+import { id } from "../../schemas/common.js";
+import { validateConfig, type Store } from "../../schemas/config.js";
+import { atomicJSON } from "../../storage/files.js";
+import { fingerprint } from "../json.js";
 
 export type ManagementInput = {
   command: string;
@@ -100,7 +100,7 @@ export type ResourceContext = {
   input: ManagementInput;
   next: Store;
   registry: {
-    skills: Map<string, import("../schemas/agent.js").Skill>;
+    skills: Map<string, import("../../schemas/agent.js").Skill>;
     tools: Map<string, z.infer<typeof toolDefinitionSchema>>;
   };
   resource: string;
@@ -154,7 +154,7 @@ export async function mutateRegistration({
   )
     item = skillSchema.parse({
       ...item,
-      files: (current as import("../schemas/agent.js").Skill).files,
+      files: (current as import("../../schemas/agent.js").Skill).files,
     });
   if (action === "create" && current) fail("already_exists", 409);
   if (action !== "create" && !current) fail("not_found", 404);

@@ -4,31 +4,31 @@ import {
   checkpoint,
   diagnostic,
   remainingTimeout,
-} from "../engine/execution/process.js";
-import { LlamaRuntime, samplePresence } from "../engine/models/runtime.js";
+} from "../../engine/execution/process.js";
+import { LlamaRuntime, samplePresence } from "../../engine/models/runtime.js";
 import {
   NightcrewError,
   SCHEMA_VERSION,
   errorEnvelopeSchema,
   invalidInput,
   successEnvelopeSchema,
-} from "../engine/protocol.js";
-import { Service } from "../engine/service.js";
-import { storeSchema } from "../schemas/config.js";
-import { control } from "../server/daemon.js";
-import { readJSON } from "../storage/files.js";
-import { Storage } from "../storage/store.js";
-import { registerLocal as registerdaemon } from "./daemon.js";
-import { registerLocal as registerdoctor } from "./doctor.js";
-import { registerLocal as registerevals } from "./evals.js";
-import { registerLocal as registerhelp } from "./help.js";
-import { registerLocal as registerinit } from "./init.js";
+} from "../../engine/protocol.js";
+import { Service } from "../../engine/service.js";
+import { storeSchema } from "../../schemas/config.js";
+import { control } from "../../server/daemon.js";
+import { readJSON } from "../../storage/files.js";
+import { Storage } from "../../storage/store.js";
+import { registerLocal as registerdaemon } from "../../commands/daemon.js";
+import { registerLocal as registerdoctor } from "../../commands/doctor.js";
+import { registerLocal as registerevals } from "../../commands/evals.js";
+import { registerLocal as registerhelp } from "../../commands/help.js";
+import { registerLocal as registerinit } from "../../commands/init.js";
 import { requestSchemas } from "./inputs.js";
 import { type ManagementInput } from "./management.js";
 import { callOperation, operationDefinitions } from "./operations.js";
-import { registerLocal as registerpresence } from "./presence.js";
-import { registerLocal as registerschema } from "./schema.js";
-import { registerLocal as registerversion } from "./version.js";
+import { registerLocal as registerpresence } from "../../commands/presence.js";
+import { registerLocal as registerschema } from "../../commands/schema.js";
+import { registerLocal as registerversion } from "../../commands/version.js";
 
 export type CommandContext = {
   home: string;
