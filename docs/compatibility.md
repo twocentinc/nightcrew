@@ -93,3 +93,22 @@ that explicitly opt in; existing run snapshots are not silently refreshed.
 The owner explicitly approved removing bundled application integrations and their
 executable from the package. Nightcrew commands and schemas are unchanged; external
 integrations consume the public CLI and own their credentials and delivery logic.
+
+## Structured result validation refinement
+
+Owner-approved validation now rejects duplicate object keys in generated structured
+results and finish arguments, with repair guidance. This prevents silent data loss
+from JSON parsing. CLI request schemas and other tool arguments are unchanged.
+
+## Executable eval graders (0.39.0, schema 40)
+
+Optional suite graders execute after each case through the bounded executable
+runner. They receive hidden expectations, the complete trace and execution outcome,
+then return named pass/fail/review checks. Execution errors and deterministic
+failures cannot become passes through grading. Grader failures are recorded as eval
+errors; unaddressed semantic criteria remain unreviewed. Existing suites without
+graders retain their behavior.
+
+This is an approved additive contract change. Agent-specific fixtures, TypeScript
+graders and checks are colocated under their example directories. See
+[the eval format](eval-format.md) for the canonical executable protocol.

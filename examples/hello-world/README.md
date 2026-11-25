@@ -31,3 +31,17 @@ for both comparisons. Substitute `turn-thinking.json` in the command above, then
 send `turn.json` again to exercise fallback. The override does not edit the agent.
 The UUIDs in the sample files are placeholders; submitting them repeatedly tests
 deduplication rather than starting fresh turns.
+
+## Model eval
+
+The colocated eval checks that the installed agent produces exactly `Hello world!`.
+It uses the instant model and does not execute tools or delivery hooks.
+
+```sh
+node --experimental-strip-types examples/hello-world/eval.ts /tmp/hello-world-eval > /tmp/hello-world-request.json
+nightcrew evals run --request /tmp/hello-world-request.json --dry-run
+nightcrew evals run --request /tmp/hello-world-request.json
+```
+
+Use a fresh result directory for each evaluation. `grade.ts` rejects extra text;
+`test.ts` checks the configuration and grader without inference.

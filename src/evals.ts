@@ -1,7 +1,8 @@
 import { withSkillCatalog } from "./skills.js";
 import { z } from "zod";
 import { randomUUID, createHash } from "node:crypto";
-import { mkdir, writeFile, rename } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { mkdir, writeFile, rename, stat, realpath } from "node:fs/promises";
 import path from "node:path";
 import {
   agentSchema,
@@ -13,7 +14,14 @@ import {
   type Message,
 } from "./contracts.js";
 import { canonical } from "./storage.js";
-import { checkpoint, pause, withoutExecution } from "./execution.js";
+import {
+  checkpoint,
+  pause,
+  withoutExecution,
+  runExecutable,
+  remainingTimeout,
+  executionSignal,
+} from "./execution.js";
 
 const jsonObject = z.record(z.string(), z.json());
 const authorMessage = messageSchema.omit({ messageID: true }).extend({
@@ -46,12 +54,88 @@ const assertion = z.discriminatedUnion("type", [
     max: z.number().int().nonnegative(),
   }),
 ]);
+export const evalGraderSchema = z.strictObject({
+  graderID: id,
+  executablePath: z
+    .string()
+    .refine(path.isAbsolute, "Grader executable must be absolute"),
+  argv: z.array(z.string().max(4000)).max(64).default([]),
+  timeoutMs: z.number().int().min(100).max(60000).default(10000),
+  sourceFiles: z
+    .array(
+      z
+        .string()
+        .refine(path.isAbsolute, "Grader source files must be absolute"),
+    )
+    .max(32)
+    .default([]),
+});
+export const evalGradeSchema = z
+  .strictObject({
+    checks: z
+      .array(
+        z.strictObject({
+          checkID: id,
+          status: z.enum(["passed", "failed", "needs_review"]),
+          reason: z.string().min(1).max(4000),
+          criterionID: id.optional(),
+        }),
+      )
+      .min(1)
+      .max(100),
+  })
+  .superRefine((grade, ctx) => {
+    for (const key of ["checkID", "criterionID"] as const) {
+      const values = grade.checks.flatMap((check) =>
+        check[key] ? [check[key]] : [],
+      );
+      if (new Set(values).size !== values.length)
+        ctx.addIssue({ code: "custom", message: "Duplicate " + key });
+    }
+  });
+const graderSnapshotSchema = evalGraderSchema.extend({
+  workingDirectory: z.string(),
+  files: z.array(
+    z.object({
+      path: z.string(),
+      resolvedPath: z.string(),
+      sha256: z.string(),
+    }),
+  ),
+  identityHash: z.string(),
+});
+async function hashGraderFile(file: string) {
+  const resolvedPath = await realpath(file),
+    info = await stat(resolvedPath);
+  if (!info.isFile() || info.size > 256 * 1024 * 1024)
+    throw Error("Invalid or oversized grader file");
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(resolvedPath)) {
+    checkpoint();
+    hash.update(chunk);
+  }
+  return { path: file, resolvedPath, sha256: hash.digest("hex") };
+}
+async function snapshotGrader(grader: z.infer<typeof evalGraderSchema>) {
+  const paths = new Set([grader.executablePath, ...grader.sourceFiles]);
+  // Capture script arguments automatically; declared sourceFiles cover imports/data.
+  for (const arg of grader.argv) {
+    if (arg.startsWith("-")) continue;
+    const file = path.resolve(arg);
+    if ((await stat(file).catch(() => null))?.isFile()) paths.add(file);
+  }
+  const files = await Promise.all([...paths].map(hashGraderFile));
+  const snapshot = { ...grader, workingDirectory: process.cwd(), files };
+  return { ...snapshot, identityHash: digest(snapshot) };
+}
+
 export const evalSuiteSchema = z
   .strictObject({
     format: z.literal("nightcrew.eval"),
     version: z.literal(1),
     suiteID: id,
     description: z.string().max(4000).default(""),
+    graders: z.array(evalGraderSchema).max(8).default([]),
     agent: z.strictObject({
       agentID: id,
       expectedRevision: z.number().int().positive().optional(),
@@ -124,6 +208,10 @@ export const evalSuiteSchema = z
     const unique = (values: string[], label: string) => {
       if (new Set(values).size !== values.length) issue("Duplicate " + label);
     };
+    unique(
+      suite.graders.map((g) => g.graderID),
+      "graderID",
+    );
     unique(
       suite.cases.map((c) => c.caseID),
       "caseID",
@@ -233,11 +321,45 @@ export function checkEvalAnswer(
 }
 
 export const evalRunResultSchema = z.union([
-  z.object({changed:z.literal(false),suiteID:z.string(),cases:z.number().int(),snapshot:z.object({
-    agent:agentSchema, tools:z.array(functionToolSchema), skills:z.array(z.object({skillID:z.string(),name:z.string(),description:z.string()})),
-    model:modelSchema.optional(),systemPrompt:z.string(),limits:z.object({maxToolCalls:z.number().int(),maxOutputTokens:z.number().int(),timeoutMs:z.number().int()}),compaction:z.literal("disabled"),hooks:z.literal("disabled"),
-  })}),
-  z.object({suiteID:z.string(),destination:z.string(),resultFile:z.string(),cases:z.array(z.object({caseID:z.string(),status:z.enum(["passed","failed","needs_review","error"]),error:z.string().nullable()})),status:z.enum(["passed","failed","needs_review"])}),
+  z.object({
+    changed: z.literal(false),
+    suiteID: z.string(),
+    cases: z.number().int(),
+    snapshot: z.object({
+      agent: agentSchema,
+      tools: z.array(functionToolSchema),
+      skills: z.array(
+        z.object({
+          skillID: z.string(),
+          name: z.string(),
+          description: z.string(),
+        }),
+      ),
+      graders: z.array(graderSnapshotSchema).optional(),
+      model: modelSchema.optional(),
+      systemPrompt: z.string(),
+      limits: z.object({
+        maxToolCalls: z.number().int(),
+        maxOutputTokens: z.number().int(),
+        timeoutMs: z.number().int(),
+      }),
+      compaction: z.literal("disabled"),
+      hooks: z.literal("disabled"),
+    }),
+  }),
+  z.object({
+    suiteID: z.string(),
+    destination: z.string(),
+    resultFile: z.string(),
+    cases: z.array(
+      z.object({
+        caseID: z.string(),
+        status: z.enum(["passed", "failed", "needs_review", "error"]),
+        error: z.string().nullable(),
+      }),
+    ),
+    status: z.enum(["passed", "failed", "needs_review"]),
+  }),
 ]);
 
 export async function runEval(
@@ -328,7 +450,9 @@ export async function runEval(
       "Eval v1 requires the configured instant model to match the agent model",
     );
   const model = config.config.models.find((m) => m.modelID === agent.modelID);
+  const graders = await Promise.all(suite.graders.map(snapshotGrader));
   const snapshot = {
+    graders,
     agent: effectiveAgent,
     tools,
     skills,
@@ -558,6 +682,127 @@ export async function runEval(
       ...criterion,
       status: "unreviewed",
     }));
+    // Persist execution evidence before running trusted evaluator code. A crashed
+    // evaluator must not erase the model trace or turn an execution error into a pass.
+    const executionStatus = record.status;
+    if (graders.length) {
+      record.gradingComplete = false;
+      if (executionStatus === "passed") record.status = "needs_review";
+    }
+    await save();
+    const grades: Array<Record<string, unknown>> = [];
+    record.graders = grades;
+    const reviewed = new Map<string, string>();
+    let graderError = false,
+      graderFailed = false,
+      graderNeedsReview = false;
+    for (const grader of graders) {
+      try {
+        checkpoint();
+        for (const original of grader.files) {
+          const current = await hashGraderFile(original.path);
+          if (
+            current.sha256 !== original.sha256 ||
+            current.resolvedPath !== original.resolvedPath
+          )
+            throw Error("Grader changed after snapshot");
+        }
+        const input = JSON.stringify({
+          version: 1,
+          suiteID: suite.suiteID,
+          graderID: grader.graderID,
+          case: c,
+          snapshot,
+          result: { ...record, graders: undefined, status: executionStatus },
+        });
+        if (Buffer.byteLength(input) > 16 * 1024 * 1024)
+          throw Error("Grader input limit");
+        const output = await runExecutable({
+          executable: grader.executablePath,
+          argv: grader.argv,
+          input,
+          env: { PATH: process.env.PATH ?? "" },
+          timeoutMs: remainingTimeout(grader.timeoutMs),
+          signal: executionSignal(),
+          errors: {
+            timeout: "Grader timed out",
+            interrupted: "Grader interrupted",
+            limit: "Grader output limit",
+            failed: (code, signal) =>
+              "Grader process failed (exit " +
+              code +
+              ", signal " +
+              signal +
+              ")",
+          },
+        });
+        const grade = evalGradeSchema.parse(
+          JSON.parse(output.toString("utf8")),
+        );
+        for (const check of grade.checks)
+          if (
+            check.criterionID &&
+            !c.expectations.criteria.some(
+              (x) => x.criterionID === check.criterionID,
+            )
+          )
+            throw Error("Unknown grader criterionID: " + check.criterionID);
+        for (const check of grade.checks) {
+          graderFailed ||= check.status === "failed";
+          graderNeedsReview ||= check.status === "needs_review";
+          if (check.criterionID) {
+            const old = reviewed.get(check.criterionID);
+            reviewed.set(
+              check.criterionID,
+              old === "failed" || check.status === "failed"
+                ? "failed"
+                : old === "needs_review" || check.status === "needs_review"
+                  ? "needs_review"
+                  : "passed",
+            );
+          }
+        }
+        grades.push({
+          graderID: grader.graderID,
+          identityHash: grader.identityHash,
+          status: "completed",
+          ...grade,
+        });
+      } catch (error) {
+        graderError = true;
+        grades.push({
+          graderID: grader.graderID,
+          identityHash: grader.identityHash,
+          status: "error",
+          error:
+            error instanceof Error
+              ? error.message.slice(0, 2000)
+              : "Grader failed",
+        });
+      }
+      await save();
+    }
+    if (graders.length) record.gradingComplete = true;
+    record.criteria = c.expectations.criteria.map((criterion) => ({
+      ...criterion,
+      status: reviewed.get(criterion.criterionID) ?? "unreviewed",
+    }));
+    if (graderError) {
+      record.status = "error";
+      record.error ??= "grader_error";
+    } else if (executionStatus !== "error") {
+      const checks = checkEvalAnswer(c, answer, counts);
+      record.status =
+        checks.some((x) => !x.passed) || graderFailed
+          ? "failed"
+          : graderNeedsReview ||
+              c.expectations.criteria.some(
+                (x) => !reviewed.has(x.criterionID),
+              ) ||
+              (!checks.length && !grades.length)
+            ? "needs_review"
+            : "passed";
+    }
     await save();
   }
   return {

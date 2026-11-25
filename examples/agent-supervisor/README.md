@@ -80,3 +80,31 @@ The inspector reads canonical outcomes through `nightcrew runs list/get` on PATH
 It adds counts and review coverage without reconstructing hook retry status.
 Changed revisions during snapshot collection are reported as unreadable, not
 classified from mismatched evidence.
+
+Configure the agent output-validation hook with your Node path and copied
+`report.mjs --validate` path. The inspector repeats recent priority incidents
+in every response; reports need one `### RUN_ID` section for each with exact
+Execution, Output and Delivery status lines, an Assessment and a Next action.
+The validator checks coverage, not semantic accuracy. Recent unresolved incidents
+remain visible after checkpoints, while capability refresh alone is not a new
+incident. The exporter rejects incomplete coverage before saving/checkpointing.
+
+## Colocated evals
+
+`eval.json` supplies synthetic scenarios. `grade.ts` checks the resulting answer
+and trace; semantic criteria remain marked for review. `test.ts` tests the grader
+without loading a model.
+
+```sh
+node --experimental-strip-types --test examples/agent-supervisor/test.ts
+nightcrew evals validate --request examples/agent-supervisor/eval.json
+node --experimental-strip-types examples/agent-supervisor/eval.ts /tmp/agent-supervisor-eval > /tmp/agent-supervisor-request.json
+nightcrew evals run --request /tmp/agent-supervisor-request.json --dry-run
+# Explicit real-model evaluation:
+nightcrew evals run --request /tmp/agent-supervisor-request.json
+```
+
+The agent must be installed and its model must match Nightcrew's instant model.
+Use a fresh destination for each evaluation. The builder only creates a request;
+it does not install agents or run inference. See [the eval contract](../../docs/eval-format.md)
+for grading, snapshots, and the controlled loop's differences from production.

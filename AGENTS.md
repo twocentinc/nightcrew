@@ -31,7 +31,12 @@ occurrence snapshots.
 and derived run outcomes, review fingerprints and effective hook retry chains. Keep validation evidence durable and never equate schema
 validation or hook execution with factual correctness or confirmed external delivery.
 `src/evals.ts` owns versioned eval suites, exact argument mock dispatch and
-create-only result bundles. Eval sampling in `src/service.ts` uses the instant
+create-only result bundles and optional executable end-of-case graders. Graders
+are trusted local programs, separate from intercepted model tools. Snapshot their
+identity, bound execution, and preserve failures and unreviewed criteria. Keep
+agent-specific fixtures, tests, and TypeScript graders beside the example agent.
+Keep tests of Nightcrew runtime, CLI contracts, and reusable infrastructure under
+`test/`, even when their fixtures use named mock agents. Eval sampling in `src/service.ts` uses the instant
 scheduler but never executes tools, skills, hooks or compaction. Keep evaluation
 expectations out of model inputs and unreviewed criteria distinct from passes.
 `src/diagnostics.ts` owns capability and readiness reporting.
@@ -56,7 +61,7 @@ Nightcrew does not provide an OS sandbox or enforce read-only behavior.
 `src/skills.ts` owns skill folder resources, canonical encoding, bounded on-demand
 reads and skill catalog projection. Run resources must remain snapshotted; inject
 only names/descriptions until requested. Auto-inject load_skills for agent loops
-and instant chat; single-turn agents stay executable-tool-free. Opt-in `finishSchema` supplies a runtime-owned `finish` signal, never an executable registry entry. Validate its exclusive call before atomically committing completion; invalid results must not complete or dispatch sibling tools. Instant execution owns only
+and instant chat; single-turn agents stay executable-tool-free. Opt-in `finishSchema` supplies a runtime-owned `finish` signal, never an executable registry entry. Validate its exclusive call before atomically committing completion; invalid results must not complete or dispatch sibling tools. Reject duplicate object keys before accepting structured results; repair feedback must explain the lost-item risk. Instant execution owns only
 load_skills, never client-defined tools. Keep model arguments as typed
 JSON on stdin. `argv` templates substitute validated parameters into individual
 arguments without shell evaluation or recursive expansion; keep missing-value

@@ -130,45 +130,6 @@ test("diagnostics report missing configuration without creating a runtime home",
   }
 });
 
-test("bundled examples use ordinary validated commands and remain opt-in", async () => {
-  const { requestSchemas } = await import("../dist/operationInputs.js");
-  const { readFile } = await import("node:fs/promises");
-  const agent = requestSchemas["agents create"].parse(
-    JSON.parse(
-      await readFile(
-        new URL("../examples/hello-world/agent.json", import.meta.url),
-        "utf8",
-      ),
-    ),
-  ).agent;
-  assert.equal(agent.enabled, false);
-  assert.equal(agent.thinking, false);
-  assert.deepEqual(agent.toolIDs, []);
-  for (const name of ["turn.json", "turn-thinking.json"])
-    requestSchemas["agents run"].parse(
-      JSON.parse(
-        await readFile(
-          new URL("../examples/hello-world/" + name, import.meta.url),
-          "utf8",
-        ),
-      ),
-    );
-});
-
-test("Granite example uses a disabled single-turn audio agent", async () => {
-  const { requestSchemas } = await import("../dist/operationInputs.js");
-  const request = JSON.parse(
-    await readFile(
-      new URL("../examples/granite-transcription/agent.json", import.meta.url),
-      "utf8",
-    ),
-  );
-  const { agent } = requestSchemas["agents create"].parse(request);
-  assert.equal(agent.mode, "single-turn");
-  assert.equal(agent.enabled, false);
-  assert.equal(agent.modelID, "granite");
-});
-
 test("eval CLI deadline accommodates suites while ordinary command limits remain bounded", async () => {
   const { parseCLI } = await import('../dist/cli.js');
   assert.equal(parseCLI(['evals','run']).timeoutMs, 7200000);

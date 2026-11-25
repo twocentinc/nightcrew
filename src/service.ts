@@ -1,4 +1,6 @@
 import {
+  parseOutputJSON,
+  DuplicateJSONKeyError,
   loopProblem,
   validateOutput,
   reviewFingerprint,
@@ -2978,7 +2980,7 @@ export class Service {
               let value: unknown;
               if (!error) {
                 try {
-                  value = JSON.parse(call.arguments);
+                  value = parseOutputJSON(call.arguments);
                   const parsed = z
                     .fromJSONSchema(r.agent.finishSchema)
                     .safeParse(value);
@@ -2987,8 +2989,8 @@ export class Service {
                       .map((i) => `${i.path.join(".")}: ${i.message}`)
                       .join("; ")
                       .slice(0, 2000);
-                } catch {
-                  error =
+                } catch (cause) {
+                  error = cause instanceof DuplicateJSONKeyError ? cause.message.slice(0, 2000) :
                     "finish arguments must be valid JSON matching the configured schema";
                 }
               }

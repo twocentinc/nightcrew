@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
-import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, cp, realpath } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,7 +18,7 @@ try {
   for (const file of pack.files)
     assert.match(
       file.path,
-      /^(package\.json|README\.md|docs\/(?:model-switch-verification|eval-format|acceptance|compatibility)\.md|examples\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(?:md|json|mjs)|dist\/[a-zA-Z0-9_-]+\.(js|d\.ts))$/,
+      /^(package\.json|README\.md|docs\/(?:model-switch-verification|eval-format|acceptance|compatibility)\.md|examples\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_-]+\.(?:md|json|mjs|ts)|dist\/[a-zA-Z0-9_-]+\.(js|d\.ts))$/,
       "Unexpected packed file: " + file.path,
     );
   assert.ok(pack.files.some((f) => f.path === "dist/cli.js"));
@@ -26,8 +26,20 @@ try {
     pack.files.some((f) => f.path === "examples/hello-world/agent.json"),
   );
   for (const name of ["inspect.mjs", "report.mjs", "agent.json", "skill.json"])
-    assert.ok(pack.files.some((f) => f.path === "examples/agent-supervisor/" + name));
-  assert.deepEqual(Object.keys(JSON.parse(await readFile(path.join(root, "package.json"), "utf8")).bin), ["nightcrew"]);
+    assert.ok(
+      pack.files.some((f) => f.path === "examples/agent-supervisor/" + name),
+    );
+  assert.deepEqual(
+    Object.keys(
+      JSON.parse(await readFile(path.join(root, "package.json"), "utf8")).bin,
+    ),
+    ["nightcrew"],
+  );
+  for (const folder of ["agent-supervisor", "summarizer"])
+    for (const name of ["eval.json", "eval.ts", "grade.ts", "test.ts"])
+      assert.ok(
+        pack.files.some((f) => f.path === `examples/${folder}/${name}`),
+      );
   const install = path.join(temp, "install");
   await mkdir(install);
   await exec(
@@ -43,6 +55,57 @@ try {
     ],
     { cwd: install, timeout: 120000, maxBuffer: 4 * 1024 * 1024 },
   );
+  // Examples are copied out before editing/running: Node does not strip
+  // TypeScript directly under node_modules.
+  for (const folder of ["agent-supervisor", "summarizer"]) {
+    const example = path.join(temp, folder);
+    await cp(
+      path.join(install, "node_modules", "nightcrew", "examples", folder),
+      example,
+      { recursive: true },
+    );
+    const request = JSON.parse(
+      (
+        await exec(process.execPath, [
+          "--experimental-strip-types",
+          path.join(example, "eval.ts"),
+          path.join(temp, folder + "-result"),
+        ])
+      ).stdout,
+    );
+    assert.equal(request.suite.graders[0].executablePath, process.execPath);
+    assert.equal(
+      request.suite.graders[0].argv[1],
+      await realpath(path.join(example, "grade.ts")),
+    );
+    const grade = JSON.parse(
+      execFileSync(
+        process.execPath,
+        ["--experimental-strip-types", path.join(example, "grade.ts")],
+        {
+          input: JSON.stringify({
+            version: 1,
+            case: { caseID: "smoke", expectations: { criteria: [] } },
+            result: {
+              answer: '{"summary":"Ready."}',
+              status: "passed",
+              messages: [],
+            },
+          }),
+          encoding: "utf8",
+          stdio: ["pipe", "pipe", "pipe"],
+          timeout: 10000,
+        },
+      ),
+    );
+    assert.ok(grade.checks.every((check) => check.status === "passed"));
+    await exec(process.execPath, [
+      "--experimental-strip-types",
+      "--test",
+      "--test-name-pattern=grader",
+      path.join(example, "test.ts"),
+    ]);
+  }
   const home = path.join(temp, "home");
   await mkdir(home, { mode: 0o700 });
   const runtime = path.join(temp, "r");
@@ -57,9 +120,7 @@ try {
   );
   assert.equal((await call(["version"])).result.version, pkg.version);
   assert.ok(
-    (await call(["help", "tools"])).result.tree.tools.includes(
-      "create",
-    ),
+    (await call(["help", "tools"])).result.tree.tools.includes("create"),
   );
   assert.ok(
     (await call(["schema", "get", "tools.create"])).result.schema.properties

@@ -102,3 +102,23 @@ Sources reviewed November 9, 2026:
 
 The strict JSON envelope, repeated-summary merge instructions, evidence labels,
 and trust-boundary handling are Nightcrew-specific design choices.
+
+## Colocated evals
+
+`eval.json` supplies synthetic scenarios. `grade.ts` checks the resulting answer
+and trace; semantic criteria remain marked for review. `test.ts` tests the grader
+without loading a model.
+
+```sh
+node --experimental-strip-types --test examples/summarizer/test.ts
+nightcrew evals validate --request examples/summarizer/eval.json
+node --experimental-strip-types examples/summarizer/eval.ts /tmp/summarizer-eval > /tmp/summarizer-request.json
+nightcrew evals run --request /tmp/summarizer-request.json --dry-run
+# Explicit real-model evaluation:
+nightcrew evals run --request /tmp/summarizer-request.json
+```
+
+The agent must be installed and its model must match Nightcrew's instant model.
+Use a fresh destination for each evaluation. The builder only creates a request;
+it does not install agents or run inference. See [the eval contract](../../docs/eval-format.md)
+for grading, snapshots, and the controlled loop's differences from production.

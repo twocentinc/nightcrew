@@ -11,6 +11,81 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
+export async function validateReport(
+  input,
+  home = process.env.NIGHTCREW_HOME ?? path.join(homedir(), ".nightcrew"),
+) {
+  if (
+    !/^[a-zA-Z0-9_-]{1,128}$/.test(input?.runID ?? "") ||
+    typeof input.text !== "string"
+  )
+    return { valid: false, reason: "Invalid validation request" };
+  let snapshot;
+  try {
+    snapshot = JSON.parse(
+      await readFile(
+        path.join(
+          home,
+          "integrations",
+          "agent-supervisor",
+          "snapshots",
+          input.runID + ".json",
+        ),
+        "utf8",
+      ),
+    );
+  } catch {
+    return {
+      valid: false,
+      reason: "Read the supervisor overview before completing the report.",
+    };
+  }
+  if (!Array.isArray(snapshot.priorityIssues))
+    return {
+      valid: false,
+      reason: "Review snapshot lacks priority coverage; start a fresh review.",
+    };
+  // Headings inside code fences are not report sections.
+  const text = input.text.replace(/```[\s\S]*?```/g, "");
+  const missing = [];
+  for (const issue of snapshot.priorityIssues) {
+    const parts = text.split(/^###\s+(.+?)\s*$/m);
+    let body;
+    for (let i = 1; i < parts.length; i += 2)
+      if (parts[i].trim() === issue.runID)
+        body = parts[i + 1].split(/^#{1,3}\s/m)[0];
+    const fields = {
+      Execution: issue.execution,
+      Output: issue.output,
+      Delivery: issue.delivery,
+    };
+    if (
+      !body ||
+      Object.entries(fields).some(
+        ([key, value]) =>
+          !body
+            .split(/\r?\n/)
+            .some((line) => line.trim() === `${key}: ${value}`),
+      ) ||
+      !/^Assessment: .{20,}$/m.test(body) ||
+      !/^Next action: .{10,}$/m.test(body)
+    )
+      missing.push(issue);
+  }
+  return missing.length
+    ? {
+        valid: false,
+        reason:
+          "Address each priority incident in its own Markdown section: ### RUN_ID, then exact lines Execution: VALUE, Output: VALUE, Delivery: VALUE, Assessment: explanation, Next action: recommendation. Missing/incomplete: " +
+          JSON.stringify(missing).slice(0, 1500),
+      }
+    : {
+        valid: true,
+        reason:
+          "All required priority sections are present; factual quality is not established by this check.",
+      };
+}
+
 export async function report(
   event,
   home = process.env.NIGHTCREW_HOME ?? path.join(homedir(), ".nightcrew"),
@@ -30,6 +105,13 @@ export async function report(
     event.result.length > 1048576
   )
     throw Error("Invalid report event");
+  if (event.agentID === "agent-supervisor") {
+    const verdict = await validateReport(
+      { runID: event.runID, text: event.result },
+      home,
+    );
+    if (!verdict.valid) throw Error(verdict.reason);
+  }
   const dir = path.join(home, "integrations", event.agentID);
   await mkdir(path.join(dir, "reports"), { recursive: true, mode: 0o700 });
   const file = path.join(
@@ -100,7 +182,9 @@ if (
       s += c;
       if (s.length > 2 * 1024 * 1024) throw Error("Input too large");
     }
-    await report(JSON.parse(s));
+    if (process.argv[2] === "--validate")
+      console.log(JSON.stringify(await validateReport(JSON.parse(s))));
+    else await report(JSON.parse(s));
   } catch {
     process.exitCode = 1;
   }

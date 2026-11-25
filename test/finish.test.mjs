@@ -277,3 +277,48 @@ test("opt-in finish retains existing output validation", async (t) => {
     ),
   );
 });
+
+test("duplicate finish fields are rejected with specific repair feedback before completion", async (t) => {
+  const f = await fixture(t, async (req, n) => {
+    if (n === 1) return finish('{"answer":1,"answer":42}');
+    assert.ok(
+      req.messages.some(
+        (m) => m.role === "tool" && m.content.includes("separate objects"),
+      ),
+    );
+    return finish({ answer: 42 });
+  });
+  const r = await f.submit();
+  assert.equal(r.state, "completed");
+  assert.equal(f.calls.length, 2);
+  assert.deepEqual(JSON.parse(r.result), { answer: 42 });
+  assert.equal(r.events.filter((e) => e.type === "completed").length, 1);
+});
+test("structured JSON detects escaped duplicate keys without rejecting siblings or string contents", async () => {
+  const { parseOutputJSON, DuplicateJSONKeyError } =
+    await import("../dist/supervision.js");
+  for (const text of [
+    '{"items":[{"title":"a","title":"b"}]}',
+    '{"a":1,"\\u0061":2}',
+    '{"nested":{"x":1,"x":2}}',
+  ])
+    assert.throws(() => parseOutputJSON(text), DuplicateJSONKeyError);
+  assert.deepEqual(
+    parseOutputJSON(
+      '{"items":[{"title":"a"},{"title":"b"}],"text":"commas, braces {} and \\"quotes\\""}',
+    ),
+    {
+      items: [{ title: "a" }, { title: "b" }],
+      text: 'commas, braces {} and "quotes"',
+    },
+  );
+  assert.throws(() => parseOutputJSON('{"a":'), SyntaxError);
+});
+
+test('ordinary JSON output validation rejects duplicate keys even when last value matches schema', async () => {
+  const {validateOutput} = await import('../dist/supervision.js');
+  const verdict = await validateOutput({agent:{outputValidation:validation},segment:0}, {messageID:randomUUID(),content:'{"answer":0,"answer":42}'}, '/unused', new AbortController().signal);
+  assert.equal(verdict.status,'failed');
+  assert.match(verdict.reason,/Duplicate JSON key/);
+  assert.match(verdict.reason,/separate objects/);
+});

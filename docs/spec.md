@@ -655,3 +655,30 @@ Schema validity and resolvable references do not prove factual accuracy or that
 a particular source supports a claim. The compactor prompt preserves goals,
 explicit decisions, observed findings and committed unfinished work, and forbids
 inventing recommendations or promoting hypotheses into facts.
+
+### Duplicate keys and supervisor coverage
+
+Structured finish arguments and JSON-schema-validated output reject duplicate
+object keys, including escaped spellings of the same key. They return repair
+guidance instead of silently accepting the last value. Separate objects may
+reuse field names. The original model response stays in the transcript.
+
+The portable supervisor repeats a frozen priority-incident list in each tool
+response. Its validator and exporter require explicit sections for each recent
+failed, held or undelivered run before publishing or advancing its checkpoint.
+Historical capability refreshes alone do not create incidents. Coverage checks
+do not establish factual accuracy, and recovered child failures must be described
+using their parent relationship evidence.
+
+## Executable eval graders (0.39.0, schema 40)
+
+Optional suite graders execute after each case through the bounded executable
+runner. They receive hidden expectations, the complete trace and execution outcome,
+then return named pass/fail/review checks. Execution errors and deterministic
+failures cannot become passes through grading. Grader failures are recorded as eval
+errors; unaddressed semantic criteria remain unreviewed. Existing suites without
+graders retain their behavior.
+
+This is an approved additive contract change. Agent-specific fixtures, TypeScript
+graders and checks are colocated under their example directories. See
+[the eval format](eval-format.md) for the canonical executable protocol.

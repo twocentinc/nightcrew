@@ -1,6 +1,6 @@
 # Eval format v1
 
-Implemented in Nightcrew 0.25.0. `src/evals.ts` owns validation and execution.
+Executable graders added in Nightcrew 0.39.0 (schema 40). `src/evals.ts` owns validation and execution.
 
 An eval suite supplies an agent with initial context, substitutes deterministic
 responses for every tool, and records expectations separately from model-visible
@@ -85,8 +85,9 @@ the expected error in `responses` rather than relying on fixture mismatch.
 ## Skills and other runtime inputs
 
 Snapshot the effective tool names, descriptions, and parameter schemas using
-the existing model-visible function-tool contract. Do not copy executable paths
-or argv into an eval fixture, and do not execute configured tools or hooks.
+the existing model-visible function-tool contract. Mock rules do not carry tool
+executable paths or argv. Configured model tools and lifecycle hooks never execute;
+only explicitly configured evaluator graders may execute after a case.
 This interception includes built-ins such as `load_skills`, `runs_list`, and
 `runs_transcript`. A case for an agent that loads skills needs matching
 `load_skills` responses containing the intended skill text and reference content.
@@ -115,7 +116,7 @@ they check text occurrence, not meaning. In particular, do not use absence of
 the word "completed" to infer absence of a false completion claim.
 
 Semantic criteria have `criterionID`, `description`, and `severity` (`critical`
-or `normal`). The runner records criteria as `unreviewed`; it has no review-writing command.
+or `normal`). Criteria remain `unreviewed` unless an executable grader returns an explicit criterion verdict; there is no manual review-writing command.
 Manual review should identify the reviewer and cite evidence alongside the bundle. A future
 judge model must be an explicit, snapshotted reviewer and its findings must stay
 distinguishable from deterministic checks. Unreviewed criteria never become an
@@ -215,15 +216,16 @@ individual repetitions rather than only an average score.
 Validate without a daemon or model:
 
 ```sh
-nightcrew evals validate --request examples/evals/compaction-regressions.json
+nightcrew evals validate --request examples/summarizer/eval.json
 ```
 
 `evals run` takes a request object with `suite` (the complete document) and
 `destination` (a new absolute directory whose parent already exists). For example,
-prepare `/tmp/eval-request.json` with Node:
+prepare a request with the adjacent TypeScript builder, which resolves the grader
+and Node executable to absolute paths:
 
 ```sh
-node --input-type=module -e 'import fs from "node:fs"; const suite = JSON.parse(fs.readFileSync("examples/evals/compaction-regressions.json", "utf8")); fs.writeFileSync("/tmp/eval-request.json", JSON.stringify({suite, destination: "/tmp/nightcrew-compaction-eval"}));'
+node --experimental-strip-types examples/summarizer/eval.ts /tmp/nightcrew-compaction-eval > /tmp/eval-request.json
 nightcrew evals run --request /tmp/eval-request.json --dry-run
 nightcrew evals run --request /tmp/eval-request.json --timeout 5m
 ```
@@ -244,8 +246,9 @@ the model's responses under a controlled loop, not all production orchestration.
 `ok: true` means the command ran; inspect `result.status` for `passed`, `failed`,
 or `needs_review`. Unreviewed semantic criteria prevent a pass even when all
 literal checks pass. A failed assertion is distinct from a fixture mismatch or
-inference error. Automatic fixture generation and automatic semantic grading are
-not implemented.
+inference error. Automatic fixture generation and a built-in model judge are not implemented.
+Configured graders can evaluate specific criteria; bundled graders leave semantic
+interpretation for review.
 
 The converted examples are documented in [examples/evals](../examples/evals/README.md).
 
@@ -253,3 +256,88 @@ The CLI suite deadline defaults to 120 minutes and accepts `--timeout` up to
 `120m`; individual cases retain their own limits. Ordinary management commands
 keep their 90-second default and five-minute maximum. Result schemas cover both
 dry-run snapshots and completed suite summaries.
+
+## Executable graders
+
+A suite may configure up to eight `graders`, executed serially after **each case**.
+These are trusted local programs on the CLI host, not model tools or daemon hooks.
+They run even after a recorded case failure when the CLI deadline permits.
+Dry-run hashes their files but never executes them.
+
+Each definition has:
+
+- `graderID`: unique identifier.
+- `executablePath`: absolute executable path.
+- `argv`: literal argument array; no shell expansion.
+- `timeoutMs`: 100–60,000 milliseconds, default 10,000.
+- `sourceFiles`: optional absolute paths for imported modules or data to hash.
+
+The runner snapshots the working directory, executable, existing file arguments,
+and declared source files, including resolved paths and SHA-256 hashes. It checks
+these files again before execution and records an identity hash with each grade.
+Declare imported dependencies explicitly: Nightcrew does not discover transitive
+imports or provide an immutable execution sandbox. Graders inherit only PATH,
+run with the user's permissions, and should avoid external side effects.
+
+The bundled graders are standalone TypeScript, run with the existing Node 22.12+
+runtime using `--experimental-strip-types`. No TypeScript runtime dependency is
+needed. Copy installed examples out of `node_modules` before running or editing
+them; Node does not strip TypeScript within dependency directories. Other executables use the same protocol.
+
+Stdin is one JSON document (maximum 16 MB):
+
+```json
+{
+  "version": 1,
+  "suiteID": "example",
+  "graderID": "checks",
+  "case": {},
+  "snapshot": {},
+  "result": {}
+}
+```
+
+`case` contains the full normalized case, including hidden expectations.
+`snapshot` contains resolved agent/model configuration and grader identities.
+`result` contains the execution status, error, messages, samples, final answer,
+mock counts, assertions, criteria, and execution timing. Expectations and grader
+configuration never enter model input.
+
+Stdout must be a single JSON document (maximum 1 MB):
+
+```json
+{
+  "checks": [
+    {
+      "checkID": "preserved-budget",
+      "status": "passed",
+      "reason": "The final summary preserves the fixture budget.",
+      "criterionID": "budget"
+    }
+  ]
+}
+```
+
+Return 1–100 checks. Check IDs must be unique, statuses are `passed`, `failed`,
+or `needs_review`, and reasons are required. Optional `criterionID` must name a
+case criterion and occur at most once per grader. Without it, the check supplements
+the deterministic assertions but does not resolve semantic review.
+
+Any failed check fails the case; a review-needed check prevents a pass. Conflicting
+criterion verdicts combine conservatively: failed, then needs_review, then passed.
+Unaddressed criteria remain unreviewed. Passing grades never override execution
+errors or failed deterministic assertions.
+
+Timeouts, nonzero exits, invalid JSON/schema, unknown criterion IDs, changed files,
+and output limits become grader errors, distinct from failed quality checks.
+The model trace is saved before grading and every completed grade is saved.
+While grading, the bundle records `gradingComplete: false` and cannot show a
+passing case; completion sets it to true. A killed CLI therefore leaves visible
+incomplete grading evidence.
+The grader timeout is separate from the model's case timeout and is also bounded
+by the remaining CLI suite deadline. `elapsedMs` measures model execution before
+grading. A grader error makes the case `error` and the suite `failed`.
+
+Keep fixtures (`eval.json`), request builder (`eval.ts`), grader (`grade.ts`), and
+grader tests (`test.ts`) beside their example agent. Deterministic inspector and
+exporter tests stay there too; core runner tests remain under `test/`.

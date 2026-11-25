@@ -54,8 +54,34 @@ async function outcomes(home) {
   } while (cursor);
   return runs;
 }
+function recentProblem(r, outcome, since) {
+  if (!outcome) return false;
+  const bad =
+    ["failed", "timedOut"].includes(outcome.execution) ||
+    ["failed", "error"].includes(outcome.output) ||
+    ["failed", "unknown"].includes(outcome.delivery) ||
+    (terminal(r.state) && outcome.delivery === "pending") ||
+    (r.held && !terminal(r.state));
+  if (!bad) return false;
+  // Capability refreshes and old reviewer notes do not create new incidents.
+  const relevant = (r.events ?? []).filter((e) =>
+    ["failed", "timedOut", "outputValidation", "hookResult", "held"].includes(
+      e.type,
+    ),
+  );
+  return (
+    Math.max(
+      Date.parse(r.createdAt),
+      ...relevant.map((e) => Date.parse(e.at)).filter(Number.isFinite),
+    ) >= since
+  );
+}
+function priorityIssues(snapshot) {
+  return snapshot.priorityIssues ?? [];
+}
 function coverage(snapshot) {
   return {
+    priorityIssues: priorityIssues(snapshot),
     summaryRunsRead: Object.keys(snapshot.examined).length,
     totalRuns: snapshot.items.length,
     pagesRead: Object.keys(snapshot.pagesRead ?? {})
@@ -277,6 +303,13 @@ export async function inspect(
     const baselineAt =
       previous.baselineAt ?? new Date(now - 86400000).toISOString();
     const summaries = await readOutcomes(home);
+    const prioritySince = Math.min(
+      now - 86400000,
+      Date.parse(
+        previous.completedAt ?? new Date(now - 86400000).toISOString(),
+      ),
+    );
+    const priorities = [];
     const items = [];
     let unreadableRuns = 0;
     for (const entry of await readdir(path.join(home, "runs"), {
@@ -287,14 +320,33 @@ export async function inspect(
       try {
         const r = await json(path.join(home, "runs", entry.name, "state.json"));
         if (r.agent.agentID === "agent-supervisor") continue;
-        if (previous.revisions?.[r.runID] === r.revision) continue;
+        const priority = recentProblem(
+          r,
+          summaries.get(r.runID)?.outcome,
+          prioritySince,
+        );
+        if (!priority && previous.revisions?.[r.runID] === r.revision) continue;
         if (
+          !priority &&
           Date.parse(r.updatedAt) < Date.parse(baselineAt) &&
           !r.held &&
           !["failed", "timedOut"].includes(r.state)
         )
           continue;
-        items.push(await project(r, home, summaries.get(r.runID)));
+        const item = await project(r, home, summaries.get(r.runID));
+        if (priority)
+          priorities.push({
+            runID: r.runID,
+            agentID: r.agent.agentID,
+            execution: item.outcome.execution,
+            output: item.outcome.output,
+            delivery: item.outcome.delivery,
+            reasons: item.outcome.reasons
+              .slice(0, 3)
+              .map((x) => x.slice(0, 300)),
+            parent: item.current.parent,
+          });
+        items.push(item);
       } catch {
         unreadableRuns++;
       }
@@ -316,6 +368,8 @@ export async function inspect(
     );
     snapshot = {
       baselineAt,
+      prioritySince: new Date(prioritySince).toISOString(),
+      priorityIssues: priorities,
       capturedAt: new Date(now).toISOString(),
       previousReport: previous.report ?? null,
       firstReview: !previous.completedAt,

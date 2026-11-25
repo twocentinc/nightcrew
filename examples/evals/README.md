@@ -1,21 +1,15 @@
-# Converted regression evals
+# Agent evals
 
-These preserve scenarios from existing unit tests, while asking the model to
-produce an answer. They complement the original tests; they do not replace them.
+Eval fixtures and TypeScript graders live alongside their agents:
 
-| Suite                         | Source                           | Model behavior evaluated                                                                                                      |
-| ----------------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `compaction-regressions.json` | `test/compaction.test.mjs`       | Preserve a confirmed budget and pending work; do not reinterpret timestamp digits as counts. Two independent tool-free cases. |
-| `supervisor-regressions.json` | `test/agent-supervisor.test.mjs` | Read mocked inspector results and distinguish tool errors, repeated arguments and compaction retries. One agent-loop case.    |
+- [Summarizer](../summarizer/README.md): preserve confirmed facts and timestamps.
+- [Agent supervisor](../agent-supervisor/README.md): distinguish historical failures
+  from current problems and cover priority incidents.
 
-The installed agents must be named `summarizer` and `agent-supervisor`, respectively.
-The supervisor fixture includes synthetic skill, overview, page and run detail
-responses. No real inspector tools run. Its metrics were constructed using the
-same metrics function exercised by the unit tests.
+Each directory contains `eval.json`, `eval.ts`, `grade.ts`, and `test.ts`.
+The supervisor also keeps deterministic inspector/exporter tests in `test.mjs`.
+Core eval runner tests stay in `test/evals.test.mjs`.
 
-Literal and JSON assertions provide mechanical checks. Semantic criteria require
-review of the saved context, trace and answer; passing mechanical checks alone is
-not proof of a correct summary or diagnosis.
-
-See [the eval format](../../docs/eval-format.md#running-a-suite) for validation,
-dry-run, execution and result interpretation. Use a new destination per run.
+The model sees synthetic fixtures; executable tools are intercepted. Graders run
+after each case and leave semantic judgments marked for review. See the
+[eval format](../../docs/eval-format.md) for the protocol and runtime limitations.

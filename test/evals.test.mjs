@@ -410,17 +410,146 @@ test("mock exhaustion is explicit and cannot fall through to an executable", asy
   assert.match(out.cases[0].error, /exhausted read/);
   assert.equal(f.inputs.length, 2);
 });
-test("bundled evals derived from unit tests validate through the CLI", async (t) => {
-  const home = await mkdtemp(path.join(tmpdir(), "nc-eval-examples-"));
-  t.after(() => rm(home, { recursive: true, force: true }));
-  for (const name of ["compaction-regressions", "supervisor-regressions"]) {
-    const source = JSON.parse(
-      await readFile(
-        new URL("../examples/evals/" + name + ".json", import.meta.url),
-        "utf8",
-      ),
-    );
-    const result = await call(home, ["evals", "validate"], source);
-    assert.equal(result.ok, true, JSON.stringify(result));
+
+async function graded(t, source, options = {}) {
+  const f = await fixture(t, options.generate);
+  const script = path.join(f.home, "grade.ts");
+  await writeFile(script, source);
+  const s = suite();
+  s.graders = [
+    {
+      graderID: "check",
+      executablePath: process.execPath,
+      argv: ["--experimental-strip-types", script],
+      timeoutMs: options.timeoutMs ?? 2000,
+    },
+  ];
+  return { ...f, script, suite: s };
+}
+const passingGrade =
+  'console.log(JSON.stringify({checks:[{checkID:"semantic",criterionID:"honest",status:"passed",reason:"Checked against the fixture."}]}));';
+async function evaluate(f, name = "graded") {
+  const out = await runEval(
+    { suite: f.suite, destination: path.join(f.home, name) },
+    f.transport,
+  );
+  return { out, saved: JSON.parse(await readFile(out.resultFile, "utf8")) };
+}
+test("TypeScript graders receive hidden expectations and complete trace without exposing them to the model", async (t) => {
+  const f = await graded(
+    t,
+    `
+    import process from "node:process";
+    let data:string="";for await(const chunk of process.stdin)data+=chunk;
+    const input=JSON.parse(data);
+    if(input.version!==1 || input.result.counts.read!==2 ||
+       !JSON.stringify(input.case).includes("JUDGE_ONLY_SENTINEL") ||
+       input.result.answer!=="AZ-41")throw Error("Missing evidence");
+    ${passingGrade}
+  `,
+  );
+  const dry = await runEval(
+    { suite: f.suite, destination: path.join(f.home, "dry") },
+    f.transport,
+    true,
+  );
+  assert.equal(f.inputs.length, 0);
+  const { out, saved } = await evaluate(f);
+  assert.equal(out.status, "passed", JSON.stringify(saved.cases));
+  assert.equal(saved.cases[0].criteria[0].status, "passed");
+  assert.equal(saved.cases[0].graders[0].status, "completed");
+  assert.equal(saved.cases[0].gradingComplete, true);
+  assert.equal(saved.snapshot.graders[0].files.length, 2);
+  assert.match(saved.snapshot.graders[0].identityHash, /^[a-f0-9]{64}$/);
+  assert.ok(!JSON.stringify(f.inputs).includes("JUDGE_ONLY_SENTINEL"));
+});
+test("dry run never executes graders", async (t) => {
+  const f = await graded(t, 'throw Error("MUST_NOT_RUN");');
+  const result = await runEval(
+    { suite: f.suite, destination: path.join(f.home, "dry") },
+    f.transport,
+    true,
+  );
+  assert.equal(f.inputs.length, 0);
+  await assert.rejects(access(path.join(f.home, "dry")));
+  assert.ok(result.snapshot.graders.length);
+});
+test("grader verdicts preserve deterministic failure and execution errors", async (t) => {
+  for (const error of [false, true]) {
+    const f = await graded(t, passingGrade, {
+      generate: async () =>
+        error
+          ? {
+              text: "",
+              toolCalls: [
+                { callID: "bad", name: "inspect", arguments: '{"page":9}' },
+              ],
+              usage: { inputTokens: 1, outputTokens: 1 },
+            }
+          : {
+              text: "WRONG",
+              toolCalls: [],
+              usage: { inputTokens: 1, outputTokens: 1 },
+            },
+    });
+    const { saved } = await evaluate(f);
+    assert.equal(saved.cases[0].status, error ? "error" : "failed");
+    assert.equal(saved.cases[0].graders[0].status, "completed");
+    assert.ok(saved.cases[0].messages.length);
   }
+});
+test("grader failures, malformed output, duplicate checks, unknown criteria and timeouts are eval errors", async (t) => {
+  const scripts = [
+    'throw Error("crash");',
+    'console.log("not json");',
+    "console.log(JSON.stringify({checks:[]}));",
+    'console.log(JSON.stringify({checks:[{checkID:"x",status:"passed",reason:"ok"},{checkID:"x",status:"passed",reason:"ok"}]}));',
+    'console.log(JSON.stringify({checks:[{checkID:"x",criterionID:"missing",status:"passed",reason:"ok"}]}));',
+    "setInterval(()=>{},1000);",
+  ];
+  for (const source of scripts) {
+    const f = await graded(t, source, { timeoutMs: 200 });
+    const { out, saved } = await evaluate(f);
+    assert.equal(out.status, "failed");
+    assert.equal(saved.cases[0].status, "error");
+    assert.equal(saved.cases[0].error, "grader_error");
+    assert.equal(saved.cases[0].answer, "AZ-41");
+    assert.equal(saved.cases[0].graders[0].status, "error");
+  }
+});
+test("a changed grader is rejected before execution", async (t) => {
+  let script;
+  const f = await graded(t, passingGrade, {
+    generate: async () => {
+      await writeFile(script, 'throw Error("changed executable ran");');
+      return {
+        text: "AZ-41",
+        toolCalls: [],
+        usage: { inputTokens: 1, outputTokens: 1 },
+      };
+    },
+  });
+  script = f.script;
+  const { saved } = await evaluate(f);
+  assert.match(saved.cases[0].graders[0].error, /changed after snapshot/);
+});
+test("grading conflicts are conservative and unreviewed semantics never pass", async (t) => {
+  for (const status of ["failed", "needs_review"]) {
+    const f = await graded(t, passingGrade);
+    const other = path.join(f.home, "other.ts");
+    await writeFile(
+      other,
+      passingGrade.replace('status:"passed"', 'status:"' + status + '"'),
+    );
+    f.suite.graders.push({
+      ...f.suite.graders[0],
+      graderID: "second",
+      argv: ["--experimental-strip-types", other],
+    });
+    const { out, saved } = await evaluate(f);
+    assert.equal(out.status, status);
+    assert.equal(saved.cases[0].criteria[0].status, status);
+  }
+  const f = await graded(t, passingGrade.replace('criterionID:"honest",', ""));
+  assert.equal((await evaluate(f)).out.status, "needs_review");
 });

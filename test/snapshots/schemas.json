@@ -8718,6 +8718,51 @@
             "const": "nightcrew.eval",
             "type": "string"
           },
+          "graders": {
+            "default": [],
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "argv": {
+                  "default": [],
+                  "items": {
+                    "maxLength": 4000,
+                    "type": "string"
+                  },
+                  "maxItems": 64,
+                  "type": "array"
+                },
+                "executablePath": {
+                  "type": "string"
+                },
+                "graderID": {
+                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+                  "type": "string"
+                },
+                "sourceFiles": {
+                  "default": [],
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 32,
+                  "type": "array"
+                },
+                "timeoutMs": {
+                  "default": 10000,
+                  "maximum": 60000,
+                  "minimum": 100,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "graderID",
+                "executablePath"
+              ],
+              "type": "object"
+            },
+            "maxItems": 8,
+            "type": "array"
+          },
           "limits": {
             "additionalProperties": false,
             "default": {
@@ -9291,6 +9336,84 @@
               "compaction": {
                 "const": "disabled",
                 "type": "string"
+              },
+              "graders": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "argv": {
+                      "default": [],
+                      "items": {
+                        "maxLength": 4000,
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "type": "array"
+                    },
+                    "executablePath": {
+                      "type": "string"
+                    },
+                    "files": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "path": {
+                            "type": "string"
+                          },
+                          "resolvedPath": {
+                            "type": "string"
+                          },
+                          "sha256": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "path",
+                          "resolvedPath",
+                          "sha256"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "graderID": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+                      "type": "string"
+                    },
+                    "identityHash": {
+                      "type": "string"
+                    },
+                    "sourceFiles": {
+                      "default": [],
+                      "items": {
+                        "type": "string"
+                      },
+                      "maxItems": 32,
+                      "type": "array"
+                    },
+                    "timeoutMs": {
+                      "default": 10000,
+                      "maximum": 60000,
+                      "minimum": 100,
+                      "type": "integer"
+                    },
+                    "workingDirectory": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "graderID",
+                    "executablePath",
+                    "argv",
+                    "timeoutMs",
+                    "sourceFiles",
+                    "workingDirectory",
+                    "files",
+                    "identityHash"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
               },
               "hooks": {
                 "const": "disabled",
@@ -10013,6 +10136,51 @@
       "format": {
         "const": "nightcrew.eval",
         "type": "string"
+      },
+      "graders": {
+        "default": [],
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "argv": {
+              "default": [],
+              "items": {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              "maxItems": 64,
+              "type": "array"
+            },
+            "executablePath": {
+              "type": "string"
+            },
+            "graderID": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+              "type": "string"
+            },
+            "sourceFiles": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 32,
+              "type": "array"
+            },
+            "timeoutMs": {
+              "default": 10000,
+              "maximum": 60000,
+              "minimum": 100,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "graderID",
+            "executablePath"
+          ],
+          "type": "object"
+        },
+        "maxItems": 8,
+        "type": "array"
       },
       "limits": {
         "additionalProperties": false,

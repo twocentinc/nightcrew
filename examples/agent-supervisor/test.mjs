@@ -13,9 +13,9 @@ import path from "node:path";
 import {
   inspect,
   metrics as projectMetrics,
-} from "../examples/agent-supervisor/inspect.mjs";
-import { report } from "../examples/agent-supervisor/report.mjs";
-import { runOutcome, reviewFingerprint } from "../dist/supervision.js";
+} from "./inspect.mjs";
+import { report } from "./report.mjs";
+import { runOutcome, reviewFingerprint } from "../../dist/supervision.js";
 const canonical = (r) =>
   runOutcome({
     segment: 0,
@@ -80,6 +80,7 @@ test("supervisor freezes metrics, excludes itself and old healthy work, checkpoi
   await put(
     run("old-failed", {
       state: "failed",
+      createdAt: "2025-01-01T00:00:00Z",
       error: { code: "failure" },
       updatedAt: "2025-01-01T00:00:00Z",
     }),
@@ -313,11 +314,114 @@ test("coverage counts distinct pages and detailed runs, and detail refreshes sna
   assert.equal(detail.current.execution, "completed");
   assert.equal(detail.snapshotRevision, 1);
   assert.equal(detail.revision, 2);
-  assert.deepEqual(detail.coverage, {
+  assert.equal(detail.coverage.priorityIssues[0].runID, "one");
+  const { priorityIssues, ...counts } = detail.coverage;
+  assert.deepEqual(counts, {
     summaryRunsRead: 2,
     totalRuns: 2,
     pagesRead: [0],
     detailedRunIDs: ["one"],
     detailedRunsRead: 1,
   });
+});
+
+test("priority failures survive checkpoints and every page, and reports must address them", async (t) => {
+  const { validateReport } =
+    await import("./report.mjs");
+  const { home, put } = await fixture(t);
+  const failed = run("new-failure", {
+    state: "completed",
+    deliveryExpected: true,
+    events: [
+      {
+        sequence: 1,
+        segment: 0,
+        type: "hookResult",
+        at: new Date(now - 5000).toISOString(),
+      },
+    ],
+    hookReceipts: [
+      {
+        eventSequence: 1,
+        executablePath: "/send",
+        retryOf: null,
+        purpose: "delivery",
+        status: "failed",
+      },
+    ],
+  });
+  await put(failed);
+  await put(run("old-healthy"));
+  const opts = {
+    home,
+    runID: "priority-review",
+    now,
+    readOutcome,
+    readOutcomes,
+  };
+  const overview = await inspect({ action: "overview" }, opts);
+  assert.equal(overview.coverage.priorityIssues[0].runID, "new-failure");
+  const page = await inspect({ action: "page", page: 0 }, opts);
+  assert.deepEqual(
+    page.coverage.priorityIssues,
+    overview.coverage.priorityIssues,
+  );
+  assert.equal(
+    (
+      await validateReport(
+        { runID: opts.runID, text: "# Review\nAll good." },
+        home,
+      )
+    ).valid,
+    false,
+  );
+  assert.equal(
+    (
+      await validateReport(
+        {
+          runID: opts.runID,
+          text: "### new-failure\nExecution: completed\nOutput: notConfigured\nDelivery: succeeded\nAssessment: Everything is good now.\nNext action: No action required.",
+        },
+        home,
+      )
+    ).valid,
+    false,
+  );
+  const text =
+    "### new-failure\nExecution: completed\nOutput: notConfigured\nDelivery: failed\nAssessment: Generation finished but its delivery hook failed.\nNext action: Inspect the destination before deciding whether to retry.";
+  assert.equal(
+    (await validateReport({ runID: opts.runID, text }, home)).valid,
+    true,
+  );
+  await report(
+    {
+      version: 1,
+      event: "run.completed",
+      state: "completed",
+      agentID: "agent-supervisor",
+      runID: opts.runID,
+      segment: 0,
+      result: text,
+    },
+    home,
+  );
+  const again = await inspect(
+    { action: "overview" },
+    { ...opts, runID: "review-again" },
+  );
+  assert.equal(again.coverage.priorityIssues[0].runID, "new-failure");
+  const historical = run("old-failure", {
+    state: "failed",
+    createdAt: "2025-01-01T00:00:00Z",
+    updatedAt: new Date(now).toISOString(),
+    events: [{ type: "capabilityRefresh", at: new Date(now).toISOString() }],
+  });
+  await put(historical);
+  const third = await inspect(
+    { action: "overview" },
+    { ...opts, runID: "third-review" },
+  );
+  assert.ok(
+    !third.coverage.priorityIssues.some((x) => x.runID === "old-failure"),
+  );
 });

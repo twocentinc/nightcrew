@@ -1,0 +1,37 @@
+{
+  "format": "nightcrew.eval",
+  "version": 1,
+  "suiteID": "hello-world",
+  "agent": {
+    "agentID": "hello-world"
+  },
+  "limits": {
+    "maxToolCalls": 1,
+    "maxOutputTokens": 32,
+    "timeoutMs": 180000
+  },
+  "cases": [
+    {
+      "caseID": "greeting",
+      "context": {
+        "messages": [
+          {
+            "role": "user",
+            "content": "Hello world"
+          }
+        ]
+      },
+      "mocks": [],
+      "expectations": {
+        "assertions": [
+          {
+            "assertionID": "greeting",
+            "type": "finalContains",
+            "text": "Hello world!"
+          }
+        ],
+        "criteria": []
+      }
+    }
+  ]
+}

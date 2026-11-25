@@ -271,6 +271,53 @@ export function loopProblem(
   }
   return null;
 }
+export class DuplicateJSONKeyError extends Error {}
+// JSON.parse accepts duplicate keys by silently overwriting them. Check each
+// object's decoded keys before exposing the parsed value to completion/validation.
+export function parseOutputJSON(text: string): unknown {
+  const result: unknown = JSON.parse(text);
+  const stack: Array<{
+    object: boolean;
+    keys: Set<string>;
+    key: string;
+    expectKey: boolean;
+    index: number;
+    path: string;
+  }> = [];
+  for (const match of text.matchAll(/"(?:\\[\s\S]|[^"\\])*"|[{}\[\],:]/g)) {
+    const token = match[0];
+    const parent = stack.at(-1);
+    if (token === "{" || token === "[") {
+      const path = parent
+        ? parent.path +
+          (parent.object ? "." + parent.key : "[" + parent.index + "]")
+        : "$";
+      stack.push({
+        object: token === "{",
+        keys: new Set(),
+        key: "",
+        expectKey: token === "{",
+        index: 0,
+        path,
+      });
+    } else if (token === "}" || token === "]") stack.pop();
+    else if (token === "," && parent) {
+      parent.expectKey = parent.object;
+      if (!parent.object) parent.index++;
+    } else if (token === ":" && parent) parent.expectKey = false;
+    else if (token.startsWith('"') && parent?.object && parent.expectKey) {
+      const key: string = JSON.parse(token);
+      if (parent.keys.has(key))
+        throw new DuplicateJSONKeyError(
+          `Duplicate JSON key ${JSON.stringify(key)} at ${parent.path}. You repeated fields inside one object. If these represent multiple array items, submit separate objects separated by commas; each object must contain each field only once. Preserve all intended items.`,
+        );
+      parent.keys.add(key);
+      parent.key = key;
+    }
+  }
+  return result;
+}
+
 export async function validateOutput(
   run: Run,
   message: Message,
@@ -285,8 +332,9 @@ export async function validateOutput(
     if (config.validator.type === "json-schema") {
       let value: unknown;
       try {
-        value = JSON.parse(message.content);
-      } catch {
+        value = parseOutputJSON(message.content);
+      } catch (error) {
+        if (error instanceof DuplicateJSONKeyError) throw error;
         throw Error("Output is not valid JSON");
       }
       const result = z.fromJSONSchema(config.validator.schema).safeParse(value);
