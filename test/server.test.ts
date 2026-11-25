@@ -1052,6 +1052,26 @@ test("management HTTP and CLI share every oRPC operation contract", async (t) =>
     const route = "/v1/operations/" + op.name.replaceAll(" ", "/");
     assert.equal(Boolean(f.app.document.paths[route]), !op.localOnly, route);
   }
+  assert.deepEqual(
+    Object.keys(f.app.document.paths)
+      .filter((p) => p.startsWith("/v1/operations/"))
+      .sort(),
+    operationDefinitions
+      .filter(
+        (op) =>
+          !op.localOnly && !["evals sample", "evals release"].includes(op.name),
+      )
+      .map((op) => "/v1/operations/" + op.name.replaceAll(" ", "/"))
+      .sort(),
+    "OpenAPI must expose exactly the public shared operations",
+  );
+  const diagnostics = await f.request("POST", "/v1/operations/status", {
+    request: { doctor: true },
+  });
+  assert.equal(diagnostics.status, 200);
+  assert.ok(Array.isArray(diagnostics.body.checks));
+  assert.equal(diagnostics.body.live, true);
+  assert.equal(diagnostics.body.runtime, undefined);
   const route = "/v1/operations/agents/get";
   assert.equal(
     (
@@ -2031,7 +2051,9 @@ test("SSE library handles comments, multiline data, CR framing and ignores post-
 
 test("instant HTTP delete discards a result and removed operations stay absent", async (t) => {
   const f = await fixture(t);
-  const created = await f.request("POST", "/v1/operations/instant/create", {request: chat()});
+  const created = await f.request("POST", "/v1/operations/instant/create", {
+    request: chat(),
+  });
   assert.equal(created.status, 200);
   const id = created.body.requestID;
   const deleted = await f.request("DELETE", `/v1/chat/requests/${id}`);
@@ -2039,6 +2061,12 @@ test("instant HTTP delete discards a result and removed operations stay absent",
   assert.equal(deleted.body.status, "deleted");
   assert.equal((await f.request("GET", `/v1/chat/requests/${id}`)).status, 404);
   const schema = (await f.request("GET", "/openapi.json")).body;
-  for (const route of ["/v1/operations/runs/review", "/v1/operations/runs/annotate", "/v1/operations/runs/hooks/retry", "/v1/operations/instant/submit", "/v1/chat/requests/{requestID}/cancel"])
+  for (const route of [
+    "/v1/operations/runs/review",
+    "/v1/operations/runs/annotate",
+    "/v1/operations/runs/hooks/retry",
+    "/v1/operations/instant/submit",
+    "/v1/chat/requests/{requestID}/cancel",
+  ])
     assert.equal(schema.paths[route], undefined);
 });

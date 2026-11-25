@@ -279,3 +279,21 @@ test("transcript tail waits for its consumer before reading another batch", asyn
   release();
   await rejected;
 });
+
+test("online doctor uses the shared status operation", async (t) => {
+  const result = {
+    healthy: true,
+    live: true,
+    serviceReady: true,
+    checks: [],
+    capabilities: { models: [], tools: [], limitations: [] },
+    agents: [],
+  };
+  const f = await fake(t, () => result);
+  const response = await launch(f.home, ["status", "--doctor"]).done;
+  assert.equal(response.code, 0, response.stderr);
+  assert.deepEqual(response.events[0].result, result);
+  assert.equal(f.commands.length, 1);
+  assert.equal(f.commands[0].command, "status");
+  assert.deepEqual(f.commands[0].request, { details: false, doctor: true });
+});

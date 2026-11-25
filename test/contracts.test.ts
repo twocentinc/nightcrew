@@ -57,3 +57,19 @@ test("commands directory contains exactly the top-level CLI families", async () 
     .sort();
   assert.deepEqual(files, families);
 });
+
+test("README release identity agrees with the package and public contract", async () => {
+  const pkg = JSON.parse(
+    await readFile(new URL("../package.json", import.meta.url), "utf8"),
+  );
+  const readme = await readFile(
+    new URL("../README.md", import.meta.url),
+    "utf8",
+  );
+  const current = contract();
+  assert.ok(
+    readme.includes(
+      `**${pkg.version}**, protocol **${current.protocolVersion}**, schema **${current.schemaVersion}**`,
+    ),
+  );
+});

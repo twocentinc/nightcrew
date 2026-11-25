@@ -1,9 +1,9 @@
 # Public contract and compatibility
 
-The public contract is frozen as of 0.31.4, protocol 1, schema 34 (November 22,
-2026). This is the compatibility baseline for the upcoming 1.0 release, not a
-claim that 1.0 acceptance work is complete. It supersedes the earlier policy
-allowing arbitrary breaking changes before v1.
+The current frozen public contract is protocol 1, schema 42, introduced in
+0.41.0. Version 0.41.1 preserves that contract. The freeze began at schema 34;
+owner-approved changes since then are recorded below. This is the baseline for
+the upcoming 1.0 release, not a claim that acceptance work is complete.
 
 ## Stable surfaces
 
@@ -115,7 +115,7 @@ graders and checks are colocated under their example directories. See
 
 ## Owner-approved parser adoption (November 24, 2026)
 
-Version 0.40.0 / schema 42 adopts Commander, cron-parser and eventsource-parser
+Version 0.40.0 / schema 41 adopts Commander, cron-parser and eventsource-parser
 with their native behavior, as explicitly requested by the owner. This reopens
 only parser semantics; command paths, JSON envelopes and run/delivery policies
 remain unchanged. Older version archives remain immutable.
@@ -142,3 +142,9 @@ The owner explicitly reopened the contract for these changes. There are no alias
 - Outcome attention is derived from execution, validation, recovery and delivery evidence (`needsAttention`); status exposes `issues` and `issuesTruncated`. No manual resolution can hide failures.
 - Stored review records and annotation/review events are removed in the installation migration. Renumber retained events and remap hook receipt eventSequence references together; never change message or attempt evidence. Stop the daemon during migration and validate all runs before restarting.
 - Previous contract archives remain immutable historical release evidence.
+
+## Consistency audit (0.41.1, schema 42)
+
+Online `status --doctor` invokes the same authenticated status operation as HTTP and TypeScript. When the control socket is unavailable, the CLI runs read-only local diagnostics, reports the daemon as unavailable, and does not create a runtime home. Other daemon errors are preserved rather than replaced with local results.
+
+Generated `/v1/operations/...` routes are the complete remote management surface, except local filesystem operations and internal eval procedures. Older resource routes are explicitly shaped adapters (for example, `/v1/status` returns runtime status only); they are not a second management inventory. Clients needing the CLI-shaped result use the operation routes.

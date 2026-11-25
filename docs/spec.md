@@ -1,6 +1,6 @@
 # Nightcrew specification
 
-Status: protocol 1, schema 42; parser behavior revision approved for 0.40.0.
+Status: release 0.41.1, protocol 1, schema 42.
 See [compatibility.md](compatibility.md) for stable surfaces and change policy.
 Runtime schemas and registered procedures are authoritative; this document
 explains behavior rather than maintaining another endpoint inventory.
@@ -724,7 +724,7 @@ graders and checks are colocated under their example directories. See
 
 ## CLI simplification (schema 42)
 
-Use `status --doctor` for configuration, executable, presence and live daemon checks, including when the daemon is unavailable. Plain `status` stays a fast runtime overview. Both expose the shared status request/result contract.
+Use `status --doctor` for configuration, executable, presence and live daemon checks. Online CLI calls the shared daemon operation; unavailable control sockets fall back to read-only local diagnostics. Plain `status` stays a fast runtime overview. Both expose the shared status request/result contract.
 
 Instant inference uses `instant create`, `instant get`, and `instant delete`. Delete first settles cancellation, then forgets the request and result. `models unload` retains the guarded instant-model unload behavior and takes no operand. `agents cache delete` removes saved KV only; `runs refresh` adopts current capabilities in a terminal run.
 

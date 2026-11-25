@@ -102,17 +102,6 @@ async function management(
   name: string,
   scope: Definition["scope"],
 ) {
-  if (name === "status" && (context.request as { doctor?: boolean }).doctor) {
-    const { doctor } = await import("../../server/diagnostics.js");
-    return doctor(context.home, true, async (timeout) => {
-      const r = (await control(
-        context.home,
-        { command: "status" },
-        timeout,
-      )) as { pid: number; runtime: object };
-      return { pid: r.pid, ...r.runtime };
-    });
-  }
   const input: ManagementInput = {
     command: name,
     ...(context.resourceID ? { resourceID: context.resourceID } : {}),
@@ -123,6 +112,16 @@ async function management(
   try {
     return await control(context.home, input, remainingTimeout(90000));
   } catch (e) {
+    if (
+      (e as { code?: string }).code === "OFFLINE" &&
+      name === "status" &&
+      (context.request as { doctor?: boolean }).doctor
+    ) {
+      const { doctor } = await import("../../server/diagnostics.js");
+      return doctor(context.home, true, async () => {
+        throw e;
+      });
+    }
     if ((e as { code?: string }).code !== "OFFLINE" || scope === "daemon")
       throw e;
     diagnostic("verbose", "command.offline", { command: name });

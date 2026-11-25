@@ -5,7 +5,7 @@
 - Prioritize interactive requests; pause background work until the interaction cooldown expires.
 - Manage everything through a JSON-first CLI or the optional HTTP API.
 - Keep transcripts, configuration and caches in your runtime home, separate from this repository.
-- Current release: **0.40.0**, protocol **1**, schema **41**. See the [compatibility policy](docs/compatibility.md) before upgrading or changing public contracts.
+- Current release: **0.41.1**, protocol **1**, schema **42**. See the [compatibility policy](docs/compatibility.md) before upgrading or changing public contracts.
 
 ## Get started
 
@@ -37,7 +37,7 @@
 - `nightcrew schema get agents.create.result` — its result schema.
 - `nightcrew version` — package, protocol and schema versions.
 - Pass structured input with `--request request.json` or `--request -` for stdin.
-- Use `--dry-run` to preview supported mutations; deletes and explicit retries also require `--yes`.
+- Use `--dry-run` to preview supported mutations; commands marked as requiring confirmation in help also require `--yes`.
 - Commands never prompt. `--no-input` makes that intention explicit.
 - Commander owns option parsing: unknown flags are rejected, grouped short aliases work, and repeated options use the last value.
 
@@ -94,7 +94,7 @@
   }
   ```
 
-- `nightcrew status` — fleet outcomes, work needing review, presence, cooldown and model state.
+- `nightcrew status` — fleet outcomes, work needing attention, presence, cooldown and model state.
 - `nightcrew status --details` — include scheduler allocations and its last decision.
 - `nightcrew runs list --agent AGENT_ID --state completed --limit 20` — filter runs.
 - `nightcrew runs get RUN_ID` — inspect state, outcome and recovery evidence.
@@ -125,7 +125,7 @@
 - `nightcrew presence sample` reads the local desktop without requiring a daemon; `status` shows the daemon's latest sample.
 - Unhealthy presence blocks background work. Other platforms do not have equivalent validated unattended support.
 - `nightcrew instant create --request chat.json --wait` requests an interactive response.
-- `nightcrew instant get REQUEST_ID` and `instant delete REQUEST_ID` inspect or cancel it.
+- `nightcrew instant get REQUEST_ID` and `instant delete REQUEST_ID` inspect it or cancel and discard its transient result.
 - Instant work pauses background generation and waits for compute to release before starting.
 - Completion refreshes the interaction cooldown; its default is five minutes and is configurable.
 - Only one model is resident at a time. Compatible background agents can run concurrently on separate slots when `maxConcurrent` permits it.
