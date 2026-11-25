@@ -92,7 +92,7 @@ async function main() {
             (r: any) =>
               r.runID !== runID &&
               ["completed", "failed", "timedOut", "cancelled"].includes(
-                r.state,
+                r.execution.state,
               ),
           ),
         );
@@ -115,7 +115,9 @@ async function main() {
         throw Error("History belongs to another agent");
       if (
         request.runID === runID &&
-        !["completed", "failed", "timedOut", "cancelled"].includes(run.state)
+        !["completed", "failed", "timedOut", "cancelled"].includes(
+          run.execution.state,
+        )
       )
         return {
           ok: false,

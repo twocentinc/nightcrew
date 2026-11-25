@@ -1,3 +1,4 @@
+import { executionRecord, workingExecution } from "../schemas/execution.js";
 import { randomUUID } from "node:crypto";
 import { lstat, mkdir, open, rename } from "node:fs/promises";
 import path from "node:path";
@@ -5,7 +6,7 @@ import type { z } from "zod";
 import { validateCompactionState } from "../engine/compaction/format.js";
 import { NightcrewError } from "../engine/protocol.js";
 import { runOutcome, type outcomeSchema } from "../engine/supervision.js";
-import { runSchema, type Run } from "../schemas/run.js";
+import { runSchema, encodeRun, decodeRun, type Run } from "../schemas/run.js";
 import type { OperationalLog } from "../server/logging.js";
 import { fingerprint } from "../utils/json.js";
 import { atomicJSON, boundedRead, readJSON } from "./files.js";
@@ -26,9 +27,11 @@ export type Summary = Pick<
   agentID: string;
   remainingMs: number;
   outcome: z.infer<typeof outcomeSchema>;
+  execution: import("../schemas/execution.js").ExecutionState;
 };
 export const summarize = (r: Run): Summary => ({
-  outcome: runOutcome(r),
+  outcome: { ...runOutcome(r), execution: executionRecord(r).state },
+  execution: executionRecord(r),
   runID: r.runID,
   agentID: r.agent.agentID,
   revision: r.revision,
@@ -71,10 +74,8 @@ export class TranscriptStore {
       (stat.mode & 0o077) !== 0
     )
       throw new Error("Invalid run directory");
-    const r = await readJSON(
-      path.join(dir, "state.json"),
-      runSchema,
-      64 * 1024 * 1024,
+    const r = decodeRun(
+      await readJSON(path.join(dir, "state.json"), runSchema, 64 * 1024 * 1024),
     );
     if (r.runID !== runID) throw new Error("Run identity mismatch");
     if (
@@ -141,14 +142,18 @@ export class TranscriptStore {
     return r;
   }
   async write(r: Run, initial = false) {
-    r.version = 2;
-    runSchema.parse(r);
+    r.version = 3;
+    const record = encodeRun(r);
     this.runIndex.checkedMessageIDs(r);
     const root = path.join(this.home, "runs");
     if (initial) {
       const staging = path.join(root, "." + randomUUID());
       await mkdir(staging, { mode: 0o700 });
-      await atomicJSON(path.join(staging, "state.json"), r, 56 * 1024 * 1024);
+      await atomicJSON(
+        path.join(staging, "state.json"),
+        record,
+        56 * 1024 * 1024,
+      );
       // The daemon lock serializes allocation; no externally supplied directory names.
       await rename(staging, path.join(root, r.runID));
       const h = await open(root, "r");
@@ -160,9 +165,14 @@ export class TranscriptStore {
     } else
       await atomicJSON(
         path.join(root, r.runID, "state.json"),
-        r,
+        record,
         64 * 1024 * 1024,
       );
-    this.runIndex.index(r);
+    this.runIndex.index({ ...r, ...workingExecution(record.execution) });
   }
+}
+
+export function publicSummary(summary: Summary) {
+  const { state, held, pauseReason, ...rest } = summary;
+  return rest;
 }

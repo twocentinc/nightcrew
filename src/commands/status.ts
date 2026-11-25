@@ -1,3 +1,4 @@
+import { publicSummary } from "../storage/transcript.js";
 import { doctor, doctorSchema } from "../server/diagnostics.js";
 import { z } from "zod";
 import { schedulerStatusSchema } from "../engine/scheduling/policy.js";
@@ -68,7 +69,7 @@ export async function handle(
           name: agent.name,
           enabled: agent.enabled,
           modelID: agent.modelID,
-          latestRun: own[0] ?? null,
+          latestRun: own[0] ? publicSummary(own[0]) : null,
           activeRuns: own.filter((r) => !terminal(r.state)).length,
           needsAttention: own.filter((r) => r.outcome.needsAttention).length,
           activeMs: own.reduce((n, r) => n + r.activeMs, 0),
@@ -77,7 +78,7 @@ export async function handle(
           ),
         };
       }),
-      issues: issues.slice(0, 100),
+      issues: issues.slice(0, 100).map(publicSummary),
       issuesTruncated: issues.length > 100,
     };
   }

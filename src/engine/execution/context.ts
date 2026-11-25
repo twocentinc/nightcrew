@@ -1,5 +1,5 @@
 import type { Message } from "../../schemas/common.js";
-import { type Run } from "../../schemas/run.js";
+import { encodeRun, type Run } from "../../schemas/run.js";
 import type { RunRecords } from "../../storage/records.js";
 import { withSkillCatalog } from "../capabilities/skills.js";
 import { evidenceContext } from "../compaction/evidence.js";
@@ -68,33 +68,50 @@ export class Context {
       ? withSkillCatalog(messages, run.skills)
       : messages;
   }
+  storageLimit(run: Run): Run["storageLimit"] | null {
+    const limits = {
+      messages: 9000,
+      events: 18000,
+      attempts: 9000,
+      hookReceipts: 980,
+      compactions: 980,
+      pendingInputs: 980,
+      triggerHistory: 980,
+      validations: 9000,
+      capabilityRefreshes: 90,
+    } as const;
+    for (const [resource, maximum] of Object.entries(limits)) {
+      const key = resource as keyof typeof limits;
+      if (run[key].length >= maximum)
+        return { resource: key, used: run[key].length, maximum };
+    }
+    const used = Buffer.byteLength(JSON.stringify(encodeRun(run)));
+    const maximum = run.agent.storageLimitMB * 1024 * 1024;
+    return used >= maximum ? { resource: "bytes", used, maximum } : null;
+  }
   atStorageLimit(run: Run) {
-    return (
-      Buffer.byteLength(JSON.stringify(run)) >=
-        run.agent.storageLimitMB * 1024 * 1024 ||
-      run.messages.length >= 9000 ||
-      run.events.length >= 18000 ||
-      run.attempts.length >= 9000 ||
-      run.hookReceipts.length >= 980
-    );
+    return this.storageLimit(run) !== null;
   }
   pauseForStorage(run: Run) {
+    const limit = this.storageLimit(run);
+    if (!limit) return;
     if (run.pauseReason !== "storage_limit")
       this.ports.records.event(run, "storageLimit", {
         previousState: run.state,
-        limitMB: run.agent.storageLimitMB,
-        bytes: Buffer.byteLength(JSON.stringify(run)),
-        messages: run.messages.length,
-        events: run.events.length,
-        attempts: run.attempts.length,
+        limit,
       });
     run.state = "paused";
     run.pauseReason = "storage_limit";
     run.held = true;
+    run.storageLimit = limit;
     run.error = {
       code: "run_storage_limit",
       message:
-        "Run storage limit reached; raise the agent limit before releasing. Exporting does not remove history.",
+        `Run ${limit.resource} limit reached (${limit.used}/${limit.maximum}); ` +
+        (limit.resource === "bytes"
+          ? "raise the agent storageLimitMB before releasing."
+          : "start a new run; raising storageLimitMB cannot increase record-count limits.") +
+        " Exporting does not remove history.",
     };
   }
 }

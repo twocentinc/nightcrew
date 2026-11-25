@@ -1,3 +1,4 @@
+import { publicSummary } from "../storage/transcript.js";
 import { z } from "zod";
 import type { Service } from "../engine/service.js";
 import { fail } from "../engine/service.js";
@@ -141,11 +142,11 @@ export async function handle(
           input.agentID ?? null,
           input.state ?? null,
         ]);
-      return service.page(key, input, async () => {
+      return service.page<unknown>(key, input, async () => {
         if (action === "list")
-          return service.listRuns(input.agentID, input.state) as Promise<
-            unknown[]
-          >;
+          return (await service.listRuns(input.agentID, input.state)).map(
+            publicSummary,
+          );
         if (action === "search")
           return service.search(query!, input.agentID, input.state);
         return service.transcript(

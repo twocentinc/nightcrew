@@ -8,18 +8,7 @@ import { agentSchema, triggerSchema } from "./agent.js";
 import { timestamp } from "./common.js";
 import { modelSchema, slotSchema } from "./model.js";
 
-export const hookSchema = z.strictObject({
-  purpose: z.enum(["notification", "delivery"]).default("notification"),
-  event: z.enum([
-    "run.completed",
-    "run.failed",
-    "run.timedOut",
-    "run.cancelled",
-    "run.storageLimit",
-  ]),
-  executablePath: z.string().max(4096),
-  timeoutMs: z.number().int().min(100).max(60000),
-});
+import { hookSchema } from "./hook.js";
 export const configSchema = z.strictObject({
   scheduler: schedulerSchema.default(() => schedulerSchema.parse({})),
   revision: z.number().int().positive().max(2147483647),
@@ -62,6 +51,7 @@ export function validateConfig(store: Store) {
   )
     throw new Error("Invalid trigger agent reference or duplicate identity");
   for (const xs of [
+    config.hooks.map((h) => h.hookID),
     config.models.map((x) => x.modelID),
     config.slots.map((x) => x.slotID),
     agents.map((x) => x.agentID),

@@ -66,8 +66,7 @@ legacy resumed context; structured summaries retain source references only as ch
 runs; the runtime counts templated tokens and validates KV checkpoint generations.
 Managed output-limit continuation is reconstructed from durable attempt records;
 never validate/deliver partial answers or execute truncated tool calls.
-Runs carry holds, pending inputs, compaction checkpoints, configuration and trigger
-occurrence snapshots.
+Persisted runs use one discriminated `execution` record; mutable engine working state is encoded and validated at storage boundaries. `src/schemas/execution.ts`, `event.ts`, `hook.ts`, and `tool.ts` own the shared typed contracts. Hook identity never depends on executable paths or array positions. Runs carry pending inputs, compaction checkpoints, configuration and trigger occurrence snapshots.
 `src/engine/supervision.ts` owns output-validation configuration/execution, loop detection
 and derived run outcomes, effective hook receipt chains. Keep validation evidence durable and never equate schema
 validation or hook execution with factual correctness or confirmed external delivery.
@@ -138,7 +137,7 @@ behavior without an actual model-specific check.
 Real-model tests live under `test/live/`, outside the default suite. Do not run
 them without explicit authorization for inference.
 
-The public contract is frozen at schema 42; follow `docs/compatibility.md`.
+The public contract is frozen at schema 43; follow `docs/compatibility.md`.
 Do not remove or rename public commands, tighten accepted inputs, or change
 execution semantics without explicitly reopening the freeze. Schema increments
 alone do not authorize breaking changes. Keep

@@ -199,6 +199,7 @@ test("bounded failed repairs complete execution but mark output for review and s
     { outputValidation: validation },
     [
       {
+        hookID: "test-hook",
         event: "run.completed",
         purpose: "delivery",
         executablePath: "/does-not-exist",
@@ -228,6 +229,7 @@ test("bounded failed repairs complete execution but mark output for review and s
 test("unconfigured output is unverified and ordinary hooks are not deliveries", async (t) => {
   const f = await fixture(t, async () => ({ text: "done" }), {}, [
     {
+      hookID: "test-hook",
       event: "run.completed",
       executablePath: "/does-not-exist",
       timeoutMs: 100,
@@ -578,4 +580,50 @@ test("empty length responses cannot spin through continuation forever", async (t
   assert.equal(r.state, "failed");
   assert.match(r.error.message, /no progress/);
   assert.equal(f.calls.length, 1);
+});
+
+test("hook identity survives path changes and retry uses receipt UUID", async (t) => {
+  const f = await fixture(t, async () => ({}), {}, [
+    {
+      hookID: "deliver",
+      purpose: "delivery",
+      event: "run.completed",
+      executablePath: "/usr/bin/false",
+      timeoutMs: 1000,
+    },
+  ]);
+  const submitted = await f.submit();
+  let run = await until(async () => {
+    const r = await f.service.run(submitted.runID);
+    return r.hookReceipts[0]?.status === "failed" && r;
+  });
+  const original = run.hookReceipts[0];
+  assert.ok(original.startedAt && original.finishedAt);
+  const config = structuredClone(f.service.storage.store);
+  config.config.hooks[0]!.executablePath = "/usr/bin/true";
+  await f.service.storage.exclusive(() => f.service.storage.saveConfig(config));
+  f.service["hooks"].scheduleHooks(run);
+  await f.service["hooks"].drain();
+  run = await f.service.run(run.runID);
+  assert.equal(
+    run.hookReceipts.length,
+    1,
+    "moving the executable must not replay a dispatched event",
+  );
+  const input = {
+    expectedRevision: run.revision,
+    receiptID: original.receiptID,
+    requestID: randomUUID(),
+    note: "verified safe to retry",
+    acceptUnknown: false,
+  };
+  await f.service.retryHook(run.runID, input, false);
+  run = await f.service.run(run.runID);
+  assert.equal(run.hookReceipts[1].status, "succeeded");
+  assert.equal(run.hookReceipts[1].retryOfReceiptID, original.receiptID);
+  assert.equal(run.hookReceipts[1].hookID, "deliver");
+  assert.equal(run.events.at(-1).data.receiptID, run.hookReceipts[1].receiptID);
+  await f.service.retryHook(run.runID, input, false);
+  await f.restart();
+  assert.equal((await f.service.run(run.runID)).hookReceipts.length, 2);
 });

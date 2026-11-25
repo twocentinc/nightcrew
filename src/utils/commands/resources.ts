@@ -1,9 +1,9 @@
+import { toolDefinitionSchema } from "../../schemas/tool.js";
 import { lstat, mkdir, unlink } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import {
   builtinTools,
-  toolDefinitionSchema,
   validateRegistry,
 } from "../../engine/capabilities/registry.js";
 import {

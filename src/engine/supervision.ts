@@ -47,22 +47,12 @@ export const recoverySchema = z.strictObject({
   finalizing: z.boolean().default(false),
 });
 export function effectiveReceipts(run: Run) {
-  const latest = new Map<string, Run["hookReceipts"][number]>();
-  for (const receipt of run.hookReceipts) {
-    let original = receipt;
-    const seen = new Set<number>();
-    while (
-      original.retryOf !== null &&
-      run.hookReceipts[original.retryOf] &&
-      !seen.has(original.retryOf)
-    ) {
-      seen.add(original.retryOf);
-      original = run.hookReceipts[original.retryOf]!;
-    }
-    latest.set(`${original.eventSequence}:${original.executablePath}`, receipt);
-  }
-  return [...latest.values()];
+  const superseded = new Set(
+    run.hookReceipts.map((r) => r.retryOfReceiptID).filter(Boolean),
+  );
+  return run.hookReceipts.filter((r) => !superseded.has(r.receiptID));
 }
+
 export const outcomeSchema = z.strictObject({
   execution: z.enum([
     "queued",
@@ -98,8 +88,7 @@ export function runOutcome(run: Run): z.infer<typeof outcomeSchema> {
     (run.agent.outputValidation ? "pending" : "notConfigured");
   const receipts = effectiveReceipts(run).filter(
     (h) =>
-      run.events.find((e) => e.sequence === h.eventSequence)?.segment ===
-      run.segment,
+      run.events.find((e) => e.eventID === h.eventID)?.segment === run.segment,
   );
   const aggregate = (list: typeof receipts) =>
     list.some((h) => h.status === "failed")

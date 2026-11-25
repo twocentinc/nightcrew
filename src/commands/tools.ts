@@ -1,8 +1,6 @@
+import { toolDefinitionSchema } from "../schemas/tool.js";
 import { z } from "zod";
-import {
-  builtinTools,
-  toolDefinitionSchema,
-} from "../engine/capabilities/registry.js";
+import { builtinTools } from "../engine/capabilities/registry.js";
 import { Service, fail } from "../engine/service.js";
 import { fingerprint } from "../utils/json.js";
 import { createOperations } from "../utils/commands/definition.js";

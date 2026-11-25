@@ -12,6 +12,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { inspect, metrics as projectMetrics } from "./inspect.ts";
 import { report } from "./report.ts";
+import {
+  workingExecution,
+  executionRecord,
+} from "../../dist/schemas/execution.js";
 import { runOutcome } from "../../dist/engine/supervision.js";
 const canonical = (r?: any) =>
   runOutcome({
@@ -20,6 +24,7 @@ const canonical = (r?: any) =>
     validations: [],
 
     ...r,
+    ...workingExecution(r.execution),
   });
 const metrics = (r?: any, parent?: any) =>
   projectMetrics(r, parent, canonical(r));
@@ -38,7 +43,7 @@ const readOutcomes = async (home: string) =>
     ),
   );
 const now = Date.parse("2026-11-12T00:00:00Z");
-const run = (id: string, overrides = {}): any => ({
+const run = (id: string, overrides: any = {}): any => ({
   runID: id,
   revision: 1,
   agent: { agentID: "worker", modelID: "local", thinking: false },
@@ -55,6 +60,15 @@ const run = (id: string, overrides = {}): any => ({
   events: [],
   result: "ok",
   ...overrides,
+  execution: executionRecord({
+    state: "completed",
+    held: false,
+    pauseReason: null,
+    ...overrides,
+    error: overrides.error
+      ? { message: "fixture error", ...overrides.error }
+      : null,
+  }),
 });
 async function fixture(t: import("node:test").TestContext) {
   const home = await mkdtemp(path.join(tmpdir(), "supervisor-"));
@@ -198,39 +212,43 @@ test("recovered delivery and validation supersede historical failures ", () => {
     segment: 1,
     deliveryExpected: true,
     events: [
-      { sequence: 1, segment: 0 },
-      { sequence: 2, segment: 1 },
-      { sequence: 3, segment: 1 },
-      { sequence: 4, segment: 1 },
+      { eventID: 1, sequence: 1, segment: 0 },
+      { eventID: 2, sequence: 2, segment: 1 },
+      { eventID: 3, sequence: 3, segment: 1 },
+      { eventID: 4, sequence: 4, segment: 1 },
     ],
     hookReceipts: [
       {
-        eventSequence: 1,
+        eventID: 1,
+        receiptID: "receipt-0",
         executablePath: "/private/old",
         purpose: "delivery",
         status: "failed",
-        retryOf: null,
+        retryOfReceiptID: null,
       },
       {
-        eventSequence: 2,
+        eventID: 2,
+        receiptID: "receipt-1",
         executablePath: "/private/send",
         purpose: "delivery",
         status: "failed",
-        retryOf: null,
+        retryOfReceiptID: null,
       },
       {
-        eventSequence: 3,
+        eventID: 3,
+        receiptID: "receipt-2",
         executablePath: "/private/send",
         purpose: "delivery",
         status: "failed",
-        retryOf: 1,
+        retryOfReceiptID: "receipt-1",
       },
       {
-        eventSequence: 4,
+        eventID: 4,
+        receiptID: "receipt-3",
         executablePath: "/private/send",
         purpose: "delivery",
         status: "succeeded",
-        retryOf: 2,
+        retryOfReceiptID: "receipt-2",
       },
     ],
     validations: [
@@ -308,6 +326,7 @@ test("priority failures survive checkpoints and every page, and reports must add
     deliveryExpected: true,
     events: [
       {
+        eventID: 1,
         sequence: 1,
         segment: 0,
         type: "hookResult",
@@ -316,9 +335,10 @@ test("priority failures survive checkpoints and every page, and reports must add
     ],
     hookReceipts: [
       {
-        eventSequence: 1,
+        eventID: 1,
+        receiptID: "receipt-4",
         executablePath: "/send",
-        retryOf: null,
+        retryOfReceiptID: null,
         purpose: "delivery",
         status: "failed",
       },

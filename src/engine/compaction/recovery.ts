@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { now, terminal } from "../../schemas/common.js";
-import { runSchema, type Run } from "../../schemas/run.js";
+import { type Run } from "../../schemas/run.js";
 import type { Dependencies as ParentDependencies } from "./coordinator.js";
 import { sourceEvidence } from "./evidence.js";
 import {
@@ -124,7 +124,7 @@ export class CompactionRecovery {
             const content = JSON.stringify(request);
             if (content.length > 262144)
               throw Error("Compactor request is too large; compact earlier");
-            child = runSchema.parse({
+            child = {
               ...parent,
               runID: pending.childRunID,
               revision: 1,
@@ -175,7 +175,7 @@ export class CompactionRecovery {
                   toolCallID: null,
                 },
               ],
-            });
+            };
             this.ports.dependencies.records.event(child, "message", {
               messageID: child.messages[1]!.messageID,
             });

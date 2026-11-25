@@ -1,3 +1,12 @@
+import { eventSchema } from "./event.js";
+import {
+  executionSchema,
+  executionRecord,
+  workingExecution,
+  type WorkingExecution,
+} from "./execution.js";
+import { toolDefinitionSchema } from "./tool.js";
+import { hookReceiptSchema } from "./hook.js";
 import { z } from "zod";
 import {
   checkpointSchema,
@@ -19,39 +28,6 @@ import {
 } from "./common.js";
 import { slotSchema } from "./model.js";
 
-export const eventSchema = z.strictObject({
-  sequence: z.number().int().positive().max(2147483647),
-  at: timestamp,
-  type: z.enum([
-    "queued",
-    "started",
-    "paused",
-    "resumed",
-    "message",
-    "toolResult",
-    "completed",
-    "failed",
-    "cancelled",
-    "timedOut",
-    "interrupted",
-    "hookResult",
-    "held",
-    "released",
-    "coalesced",
-    "pendingInput",
-    "attempt",
-    "storageLimit",
-    "compactionRequested",
-    "compacted",
-    "compactionFailed",
-    "outputValidation",
-    "loopRecovery",
-    "retried",
-    "compactionRetry",
-  ]),
-  segment: z.number().int().nonnegative(),
-  data: z.json(),
-});
 export const runState = z.enum([
   "queued",
   "running",
@@ -107,7 +83,7 @@ export const runSchema = z.strictObject({
         sourceAgentRevision: z.number().int().positive(),
         previousToolIDs: z.array(id),
         previousSkillIDs: z.array(id),
-        previousTools: z.array(z.json()),
+        previousTools: z.array(toolDefinitionSchema),
         previousSkills: z.array(skillSchema),
       }),
     )
@@ -121,9 +97,8 @@ export const runSchema = z.strictObject({
   compactions: z.array(checkpointSchema).max(1000).default([]),
   compaction: compactionStateSchema.nullable().default(null),
   parentRunID: id.nullable().default(null),
-  version: z.union([z.literal(1), z.literal(2)]),
-  toolSnapshots: z.array(z.json()).max(65).default([]),
-  held: z.boolean().default(false),
+  version: z.literal(3),
+  toolSnapshots: z.array(toolDefinitionSchema).max(65).default([]),
   interactive: z.boolean().nullable().default(null),
   pendingInputs: z
     .array(
@@ -133,7 +108,7 @@ export const runSchema = z.strictObject({
         source: triggerSourceSchema.nullable(),
         agent: agentSchema.optional(),
         skills: z.array(skillSchema).optional(),
-        tools: z.array(z.json()).optional(),
+        tools: z.array(toolDefinitionSchema).optional(),
       }),
     )
     .max(1000)
@@ -147,61 +122,38 @@ export const runSchema = z.strictObject({
   agent: agentSchema,
   skills: z.array(skillSchema).max(40),
   segment: z.number().int().nonnegative().max(2147483647),
-  state: runState,
-  pauseReason: z
-    .enum([
-      "presence",
-      "cooldown",
-      "instant",
-      "restart",
-      "manualStop",
-      "timeSlice",
-      "scheduler",
-      "compaction",
-      "context_full",
-      "runtime_error",
-      "storage_limit",
-    ])
-    .nullable(),
+  execution: executionSchema,
   activeMs: z.number().int().min(0).max(86400000),
   messages: z.array(messageSchema).max(10000),
   events: z.array(eventSchema).max(20000),
   result: z.string().max(1048576).nullable(),
-  error: runErrorSchema,
-  hookReceipts: z
-    .array(
-      z.strictObject({
-        requestID: z.uuid().nullable().default(null),
-        retryOf: z.number().int().nonnegative().nullable().default(null),
-        note: z.string().max(2000).nullable().default(null),
-        eventSequence: z.number().int().positive().max(2147483647),
-        purpose: z.enum(["notification", "delivery"]).default("notification"),
-        executablePath: z.string().max(4096),
-        status: z.enum([
-          "pending",
-          "started",
-          "succeeded",
-          "failed",
-          "unknown",
-        ]),
-        diagnostic: z.string().max(2000).nullable(),
-      }),
-    )
-    .max(1000),
+  hookReceipts: z.array(hookReceiptSchema).max(1000),
 });
-export type Run = z.infer<typeof runSchema>;
-export type Event = z.infer<typeof eventSchema>;
+export type StoredRun = z.infer<typeof runSchema>;
+export type Run = Omit<StoredRun, "execution"> & WorkingExecution;
+export function encodeRun(run: Run): StoredRun {
+  const { state, held, pauseReason, error, storageLimit, ...record } = run;
+  const stored = runSchema.parse({
+    ...record,
+    execution: executionRecord(run),
+  });
+  validateRunLinks(stored);
+  return stored;
+}
+export function decodeRun(record: StoredRun): Run {
+  validateRunLinks(record);
+  const { execution, ...rest } = record;
+  return { ...rest, ...workingExecution(execution) };
+}
 export const runSummarySchema = runSchema
   .pick({
-    held: true,
     runID: true,
     revision: true,
     createdAt: true,
     updatedAt: true,
-    state: true,
+    execution: true,
     segment: true,
     activeMs: true,
-    pauseReason: true,
   })
   .extend({
     agentID: id,
@@ -221,15 +173,16 @@ export const runDetailSchema = runSummarySchema.extend({
   pendingInputs: runSchema.shape.pendingInputs,
   skills: z.array(skillSchema),
   result: runSchema.shape.result,
-  error: runSchema.shape.error,
   hookReceipts: z.array(
     runSchema.shape.hookReceipts.element.omit({ executablePath: true }),
   ),
 });
-export const transcriptEntrySchema = eventSchema.extend({
-  attempt: attemptSchema.nullable().default(null),
-  message: messageSchema.nullable(),
-});
+export const transcriptEntrySchema = eventSchema.and(
+  z.object({
+    attempt: attemptSchema.nullable().default(null),
+    message: messageSchema.nullable(),
+  }),
+);
 export const statusSchema = z.object({
   presence: z.object({
     state: z.enum(["present", "away"]),
@@ -269,3 +222,62 @@ export const acceptanceSchema = z.object({
 export const chatAcceptanceSchema = acceptanceSchema
   .omit({ runID: true })
   .extend({ requestID: id });
+
+/** Identity links are checked on both reads and commits, within the storage transaction. */
+function validateRunLinks(run: StoredRun) {
+  const events = new Map(run.events.map((e) => [e.eventID, e]));
+  const receipts = new Map(run.hookReceipts.map((r) => [r.receiptID, r]));
+  if (
+    events.size !== run.events.length ||
+    receipts.size !== run.hookReceipts.length
+  )
+    throw Error("Duplicate event or receipt identity");
+  const retried = new Set<string>();
+  for (const receipt of run.hookReceipts) {
+    if (!events.has(receipt.eventID))
+      throw Error("Missing hook event reference");
+    if (
+      receipt.startedAt &&
+      receipt.finishedAt &&
+      receipt.finishedAt < receipt.startedAt
+    )
+      throw Error("Invalid hook receipt timestamps");
+    if (["pending", "started"].includes(receipt.status) && receipt.finishedAt)
+      throw Error("Unsettled hook has a finish timestamp");
+    if (receipt.status === "pending" && receipt.startedAt)
+      throw Error("Pending hook has a start timestamp");
+    if (receipt.retryOfReceiptID) {
+      if (retried.has(receipt.retryOfReceiptID))
+        throw Error("Hook receipt has multiple retries");
+      retried.add(receipt.retryOfReceiptID);
+      const prior = receipts.get(receipt.retryOfReceiptID);
+      if (
+        !prior ||
+        prior.hookID !== receipt.hookID ||
+        prior.eventID !== receipt.eventID ||
+        prior.purpose !== receipt.purpose
+      )
+        throw Error("Invalid hook retry reference");
+      const seen = new Set([receipt.receiptID]);
+      let current = receipt;
+      while (current.retryOfReceiptID) {
+        if (seen.has(current.retryOfReceiptID))
+          throw Error("Cyclic hook retry reference");
+        seen.add(current.retryOfReceiptID);
+        const previous = receipts.get(current.retryOfReceiptID);
+        if (!previous) throw Error("Missing hook retry reference");
+        current = previous;
+      }
+    }
+  }
+  for (const e of run.events)
+    if (e.type === "hookResult") {
+      if (!events.has(e.data.sourceEventID))
+        throw Error("Missing hook result source event");
+      if (
+        e.data.receiptID &&
+        receipts.get(e.data.receiptID)?.eventID !== e.data.sourceEventID
+      )
+        throw Error("Invalid hook result receipt reference");
+    }
+}

@@ -379,8 +379,11 @@ export async function waitForWork(
         values: {},
       }),
     );
-    const value = output as { run?: { state: string }; state?: string };
-    const state = value.run?.state ?? value.state ?? "";
+    const value = output as {
+      run?: { execution: { state: string } };
+      state?: string;
+    };
+    const state = value.run?.execution.state ?? value.state ?? "";
     if (state === "completed") return output;
     if (["failed", "cancelled", "timedOut"].includes(state))
       throw new NightcrewError(

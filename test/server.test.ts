@@ -309,7 +309,8 @@ test("instant work waits for compute release before starting; managed work pause
   );
   assert.deepEqual(calls, ["background", "instant"]);
   assert.equal(
-    (await f.request("GET", `/v1/runs/${r.body.runID}`)).body.run.state,
+    (await f.request("GET", `/v1/runs/${r.body.runID}`)).body.run.execution
+      .state,
     "paused",
   );
 });
@@ -329,7 +330,7 @@ test("completed replies preserve snapshots, attachments and stable transcript cu
   ).body;
   await until(
     async () =>
-      (await q("GET", `/v1/runs/${first.runID}`)).body.run.state ===
+      (await q("GET", `/v1/runs/${first.runID}`)).body.run.execution.state ===
       "completed",
   );
   await q("PATCH", "/v1/agents/researcher", {
@@ -381,7 +382,7 @@ test("completed replies preserve snapshots, attachments and stable transcript cu
   );
   await until(
     async () =>
-      (await q("GET", `/v1/runs/${first.runID}`)).body.run.state ===
+      (await q("GET", `/v1/runs/${first.runID}`)).body.run.execution.state ===
       "completed",
   );
   const transcript = f.app.service.transcript(
@@ -526,7 +527,13 @@ test("active timeout settles a run and hook delivery survives restart without re
   const storage = f.app.service.storage;
   const config = structuredClone(storage.store);
   config.config.hooks = [
-    { event: "run.timedOut", executablePath: "/usr/bin/true", timeoutMs: 1000 },
+    {
+      hookID: "test-hook",
+      purpose: "notification",
+      event: "run.timedOut",
+      executablePath: "/usr/bin/true",
+      timeoutMs: 1000,
+    },
   ];
   await storage.exclusive(() => storage.saveConfig(config));
   await f.request("PATCH", "/v1/agents/researcher", {
@@ -550,7 +557,8 @@ test("active timeout settles a run and hook delivery survives restart without re
   };
   const settled = await until(async () => {
     const r = (await f.request("GET", `/v1/runs/${first.runID}`)).body.run;
-    return r.state === "timedOut" && r.hookReceipts[0]?.status === "succeeded"
+    return r.execution.state === "timedOut" &&
+      r.hookReceipts[0]?.status === "succeeded"
       ? r
       : false;
   });
@@ -625,7 +633,7 @@ test("custom executable tools run with snapshotted definitions and appear in dis
       await readFile(path.join(f.home, "runs", r.runID, "state.json"), "utf8")
     ).toString(),
   );
-  assert.equal(original.version, 2);
+  assert.equal(original.version, 3);
   assert.equal(original.toolSnapshots[0].toolID, "inspect");
   f.app.service.presence = {
     state: "away",
@@ -636,8 +644,8 @@ test("custom executable tools run with snapshotted definitions and appear in dis
   };
   await until(
     async () =>
-      (await f.request("GET", `/v1/runs/${r.runID}`)).body.run.state ===
-      "completed",
+      (await f.request("GET", `/v1/runs/${r.runID}`)).body.run.execution
+        .state === "completed",
   );
   assert.equal(calls, 2);
 });
@@ -719,7 +727,7 @@ test("turn thinking overrides persist, deduplicate and reset to agent defaults o
   const completed = () =>
     until(async () => {
       const r = (await f.request("GET", "/v1/runs/" + runID)).body.run;
-      return r.state === "completed" && r;
+      return r.execution.state === "completed" && r;
     });
   await completed();
   assert.equal(seen[0], false);
@@ -758,8 +766,8 @@ test("turn thinking overrides persist, deduplicate and reset to agent defaults o
   assert.equal(seen[2], true);
   await until(
     async () =>
-      (await f.request("GET", "/v1/runs/" + next.body.runID)).body.run.state ===
-      "completed",
+      (await f.request("GET", "/v1/runs/" + next.body.runID)).body.run.execution
+        .state === "completed",
   );
   assert.equal(
     (await f.request("GET", "/v1/agents/researcher")).body.agent.thinking,
@@ -815,7 +823,7 @@ test("instant agents bypass presence and cooldown, extend cooldown, and preempt 
   await until(
     async () =>
       (await f.request("GET", "/v1/runs/" + first.body.runID)).body.run
-        .state === "completed",
+        .execution.state === "completed",
   );
   assert.deepEqual(order, ["instant-start"]);
   assert.ok(
@@ -848,7 +856,7 @@ test("instant agents bypass presence and cooldown, extend cooldown, and preempt 
   await until(
     async () =>
       (await f.request("GET", "/v1/runs/" + instant.body.runID)).body.run
-        .state === "completed",
+        .execution.state === "completed",
   );
   assert.deepEqual(order, [
     "background-start",
@@ -857,7 +865,7 @@ test("instant agents bypass presence and cooldown, extend cooldown, and preempt 
   ]);
   assert.equal(
     (await f.request("GET", "/v1/runs/" + background.body.runID)).body.run
-      .state,
+      .execution.state,
     "paused",
   );
   await delay(100);
@@ -1187,7 +1195,13 @@ test("storage limit holds a persistent run and delivers one bounded hook with us
   });
   const store = structuredClone(f.app.service.storage.store);
   store.config.hooks = [
-    { event: "run.storageLimit", executablePath: hookPath, timeoutMs: 1000 },
+    {
+      hookID: "test-hook",
+      purpose: "notification",
+      event: "run.storageLimit",
+      executablePath: hookPath,
+      timeoutMs: 1000,
+    },
   ];
   await f.app.service.storage.exclusive(() =>
     f.app.service.storage.saveConfig(store),
@@ -1217,8 +1231,8 @@ test("storage limit holds a persistent run and delivers one bounded hook with us
   });
   const payload = JSON.parse((await readFile(output, "utf8")).toString());
   assert.equal(payload.event, "run.storageLimit");
-  assert.equal(payload.storage.limitMB, 1);
-  assert.ok(payload.storage.bytes >= 1024 * 1024);
+  assert.equal(payload.storage.limit.maximum, 1024 * 1024);
+  assert.ok(payload.storage.limit.used >= 1024 * 1024);
   await f.request("POST", "/v1/agents/researcher/runs", {
     message: message("again"),
   });

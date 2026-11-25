@@ -206,6 +206,7 @@ export class RunControls {
             if (this.ports.dependencies.context.atStorageLimit(updated))
               fail("run_storage_limit", 409);
             run.agent.storageLimitMB = updated.agent.storageLimitMB;
+            delete run.storageLimit;
             const boundary = [...run.events]
               .reverse()
               .find((e) => e.type === "storageLimit");
@@ -217,6 +218,8 @@ export class RunControls {
             run.error = null;
           }
           run.held = action === "hold";
+          if (action === "release" && run.pauseReason === "manualStop")
+            run.pauseReason = null;
           if (action === "release" && run.pauseReason === "context_full") {
             run.compaction = null;
             run.agent.compaction = structuredClone(

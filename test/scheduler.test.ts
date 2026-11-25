@@ -531,9 +531,9 @@ test("runs pause interrupts active generation and holds across restart until res
     resourceID: run.runID,
     request: { expectedRevision: run.revision },
   });
-  assert.equal(paused.run.state, "paused");
-  assert.equal(paused.run.held, true);
-  assert.equal(paused.run.pauseReason, "manualStop");
+  assert.equal(paused.run.execution.state, "paused");
+  assert.equal(paused.run.execution.resume, "manual");
+  assert.equal(paused.run.execution.reason, "manualStop");
   await f.restart();
   await delay(100);
   assert.equal(calls, 1);

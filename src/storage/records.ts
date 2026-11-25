@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import { checkpoint } from "../engine/execution/process.js";
 import { fail } from "../engine/protocol.js";
 import { now, terminal } from "../schemas/common.js";
-import { type Event, type Run } from "../schemas/run.js";
+import { eventSchema, type Event } from "../schemas/event.js";
+import { type Run } from "../schemas/run.js";
 import { Storage } from "./store.js";
-import { summarize } from "./transcript.js";
+import { summarize, publicSummary } from "./transcript.js";
 
 type PageSnapshot = {
   key: string;
@@ -18,14 +19,21 @@ interface Dependencies {
 }
 export class RunRecords {
   constructor(private readonly ports: Dependencies) {}
-  event(r: Run, type: Event["type"], data: Event["data"]) {
-    r.events.push({
-      sequence: r.events.length + 1,
-      at: now(),
-      type,
-      segment: r.segment,
-      data,
-    });
+  event<T extends Event["type"]>(
+    r: Run,
+    type: T,
+    data: Extract<Event, { type: T }>["data"],
+  ) {
+    r.events.push(
+      eventSchema.parse({
+        eventID: randomUUID(),
+        sequence: r.events.length + 1,
+        at: now(),
+        type,
+        segment: r.segment,
+        data,
+      }),
+    );
   }
   async save(r: Run) {
     r.revision++;
@@ -38,7 +46,7 @@ export class RunRecords {
   }
   detail(r: Run) {
     return {
-      ...summarize(r),
+      ...publicSummary(summarize(r)),
       contextUsage: r.contextUsage,
       capabilityRefreshes: r.capabilityRefreshes,
       validations: r.validations,
@@ -51,7 +59,6 @@ export class RunRecords {
       pendingInputs: r.pendingInputs,
       skills: r.skills,
       result: r.result,
-      error: r.error,
       hookReceipts: r.hookReceipts.map(({ executablePath, ...x }) => x),
     };
   }
@@ -217,6 +224,7 @@ export class RunRecords {
       for (const receipt of r.hookReceipts)
         if (receipt.status === "started" || receipt.status === "pending") {
           receipt.status = "unknown";
+          receipt.finishedAt = null; // The actual finish time was not observed.
           receipt.diagnostic = "Daemon stopped during delivery; not retried";
           changed = true;
         }

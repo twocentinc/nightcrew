@@ -17,7 +17,13 @@ import { checkpoint } from "../engine/execution/process.js";
 import { invalidInput, NightcrewError } from "../engine/protocol.js";
 import { type Service } from "../engine/service.js";
 import { agentSchema, skillSchema } from "../schemas/agent.js";
-import { runSchema, transcriptEntrySchema, type Run } from "../schemas/run.js";
+import {
+  encodeRun,
+  decodeRun,
+  runSchema,
+  transcriptEntrySchema,
+  type Run,
+} from "../schemas/run.js";
 import { canonical } from "../utils/json.js";
 
 const filenames = [
@@ -155,7 +161,7 @@ function validate(run: Run, runID: string) {
       throw Error("Message has no transcript event");
   }
   for (const receipt of run.hookReceipts) {
-    if (!run.events.some((e) => e.sequence === receipt.eventSequence))
+    if (!run.events.some((e) => e.eventID === receipt.eventID))
       throw Error("Missing hook event reference");
   }
   if (
@@ -163,7 +169,7 @@ function validate(run: Run, runID: string) {
     run.agent.skillIDs.some((id) => !run.skills.some((s) => s.skillID === id))
   )
     throw Error("Missing or duplicate skill snapshot");
-  if (run.version === 2) {
+  if (run.version === 3) {
     const tools = run.toolSnapshots.map((tool) => normalizeStoredTool(tool));
     if (
       new Set(tools.map((t) => t.toolID)).size !== tools.length ||
@@ -176,14 +182,14 @@ function validate(run: Run, runID: string) {
 }
 function documents(service: Service, run: Run) {
   return {
-    "run.json": run,
+    "run.json": encodeRun(run),
     "transcript.json": service.transcript(run),
     "configuration.json": {
       agent: run.agent,
       skills: run.skills,
       tools: run.toolSnapshots,
     },
-    "result.json": { state: run.state, result: run.result, error: run.error },
+    "result.json": { execution: encodeRun(run).execution, result: run.result },
   };
 }
 async function regularRead(file: string) {
@@ -312,7 +318,7 @@ export async function verifyRun(
         docs[file.path] = JSON.parse(bytes.toString());
       }
       checks.push("fileChecksums");
-      run = runSchema.parse(docs["run.json"]);
+      run = decodeRun(runSchema.parse(docs["run.json"]));
       const configuration = docs["configuration.json"] as {
         agent?: unknown;
         skills?: unknown;
@@ -324,7 +330,7 @@ export async function verifyRun(
       docs["transcript.json"] = z
         .array(transcriptEntrySchema)
         .parse(docs["transcript.json"]);
-      docs["run.json"] = run; // Normalize additive defaults in older exported runs.
+      docs["run.json"] = encodeRun(run);
       if (
         run.revision !== manifest.revision ||
         (run.events.at(-1)?.sequence ?? 0) !== manifest.lastEventSequence

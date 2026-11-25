@@ -284,7 +284,7 @@ test("trigger admission deduplicates, skips, coalesces only pending input and pe
   await f.restart();
   run = await f.service.run(first.runID);
   assert.equal(run.held, true);
-  assert.equal(run.state, "queued");
+  assert.equal(run.state, "paused");
   await f.invoke("runs cancel", run.runID);
   assert.equal(
     (await f.invoke("triggers fire", "timer", { occurrenceID: skippedID }))
@@ -327,7 +327,7 @@ test("trigger admission deduplicates, skips, coalesces only pending input and pe
   );
   // Hold all other work, then release only the coalesced run while away.
   for (const item of (await f.invoke("runs list")).items.filter((r?: any) =>
-    ["queued", "paused"].includes(r.state),
+    ["queued", "paused"].includes(r.execution.state),
   )) {
     await f.invoke("runs pause", item.runID, {
       expectedRevision: item.revision,

@@ -233,7 +233,7 @@ export class Runs {
       compactions: [],
       compaction: null,
       parentRunID: null,
-      version: 2,
+      version: 3,
       held: false,
       interactive:
         source?.admission !== "timer" &&

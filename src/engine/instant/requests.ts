@@ -7,7 +7,7 @@ import {
   type ChatInput,
   type Message,
 } from "../../schemas/common.js";
-import { type Event } from "../../schemas/run.js";
+import { eventSchema, type Event } from "../../schemas/event.js";
 import type { RunRecords } from "../../storage/records.js";
 import { Storage } from "../../storage/store.js";
 import { canonical } from "../../utils/json.js";
@@ -90,15 +90,22 @@ export class Instant {
       error: c.error,
     };
   }
-  chatEvent(c: Chat, type: Event["type"], data: Event["data"]) {
+  chatEvent<T extends Event["type"]>(
+    c: Chat,
+    type: T,
+    data: Extract<Event, { type: T }>["data"],
+  ) {
     c.updatedAt = now();
-    c.events.push({
-      sequence: c.events.length + 1,
-      at: now(),
-      type,
-      segment: 0,
-      data,
-    });
+    c.events.push(
+      eventSchema.parse({
+        eventID: randomUUID(),
+        sequence: c.events.length + 1,
+        at: now(),
+        type,
+        segment: 0,
+        data,
+      }),
+    );
   }
   expire() {
     for (const [id, c] of this.chats)

@@ -1,5 +1,6 @@
 // Opt-in real inference. Stop the production daemon before running this fixture.
 import test from "node:test";
+import { decodeRun, runSchema } from "../../dist/schemas/run.js";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -8,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import { fork, execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
-import {storeSchema} from "../../dist/schemas/config.js";
+import { storeSchema } from "../../dist/schemas/config.js";
 import { tokenHash } from "../../dist/storage/config.js";
 const alive = (pid?: any) => {
   try {
@@ -86,6 +87,7 @@ test(
         slots: [],
         hooks: [
           {
+            hookID: "test-hook",
             event: "run.completed",
             purpose: "delivery",
             executablePath: hook,
@@ -191,7 +193,9 @@ test(
       return value;
     };
     const read = (id: string) =>
-      readFile(`${home}/runs/${id}/state.json`, "utf8").then(JSON.parse);
+      readFile(`${home}/runs/${id}/state.json`, "utf8")
+        .then(JSON.parse)
+        .then((value) => decodeRun(runSchema.parse(value)));
     const complete = (id: string) =>
       until(async () => {
         const r = await read(id);

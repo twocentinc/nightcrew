@@ -99,6 +99,7 @@ test(
         slots: [],
         hooks: [
           {
+            hookID: "test-hook",
             event: "run.completed",
             purpose: "delivery",
             executablePath: hook,

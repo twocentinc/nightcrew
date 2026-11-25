@@ -1,4 +1,4 @@
-import { realpath } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { now, terminal } from "../schemas/common.js";
 import { type Run } from "../schemas/run.js";
 import type { RunRecords } from "../storage/records.js";
@@ -28,11 +28,10 @@ export class Hooks {
     runID: string,
     input: {
       expectedRevision: number;
-      receiptIndex: number;
+      receiptID: string;
       requestID: string;
       note: string;
       acceptUnknown: boolean;
-      hookPath?: string;
     },
     dryRun: boolean,
   ) {
@@ -43,61 +42,50 @@ export class Hooks {
       );
       if (prior) {
         if (
-          prior.retryOf !== input.receiptIndex ||
-          prior.note !== input.note ||
-          (input.hookPath && prior.executablePath !== input.hookPath)
+          prior.retryOfReceiptID !== input.receiptID ||
+          prior.note !== input.note
         )
           fail("request_conflict", 409);
         return {
           run: this.ports.records.detail(run),
           changed: false,
-          index: null,
+          receiptID: null,
         };
       }
       if (run.revision !== input.expectedRevision)
         fail("revision_conflict", 409);
       if (!terminal(run.state) || this.ports.dispatch.hasActivity(runID))
         fail("run_not_terminal", 409);
-      const receipt = run.hookReceipts[input.receiptIndex];
+      const receipt = run.hookReceipts.find(
+        (h) => h.receiptID === input.receiptID,
+      );
       if (!receipt || !["failed", "unknown"].includes(receipt.status))
         fail("hook_not_retryable", 409);
-      if (run.hookReceipts.some((h) => h.retryOf === input.receiptIndex))
+      if (run.hookReceipts.some((h) => h.retryOfReceiptID === input.receiptID))
         fail("hook_already_retried", 409);
       if (receipt.status === "unknown" && !input.acceptUnknown)
         fail("hook_outcome_unknown", 409);
-      const event = run.events.find(
-        (e) => e.sequence === receipt.eventSequence,
-      );
+      const event = run.events.find((e) => e.eventID === receipt.eventID);
       if (!event || event.segment !== run.segment)
         fail("hook_segment_changed", 409);
-      const original = await realpath(receipt.executablePath).catch(
-        () => receipt.executablePath,
+      const hook = this.ports.storage.store.config.hooks.find(
+        (h) =>
+          h.hookID === receipt.hookID &&
+          h.event === `run.${event.type}` &&
+          h.purpose === receipt.purpose,
       );
-      const candidates = this.ports.storage.store.config.hooks.filter(
-        (h) => h.event === `run.${event.type}` && h.purpose === receipt.purpose,
-      );
-      let hook;
-      for (const candidate of candidates) {
-        if (
-          input.hookPath
-            ? candidate.executablePath === input.hookPath
-            : (await realpath(candidate.executablePath).catch(
-                () => candidate.executablePath,
-              )) === original
-        ) {
-          hook = candidate;
-          break;
-        }
-      }
       if (!hook) fail("hook_not_registered", 409);
       if (run.hookReceipts.length >= 1000) fail("hook_receipt_capacity", 409);
-      const index = run.hookReceipts.length;
+      const receiptID = randomUUID();
       if (!dryRun) {
         run.hookReceipts.push({
           ...receipt,
           executablePath: hook.executablePath,
           requestID: input.requestID,
-          retryOf: input.receiptIndex,
+          receiptID,
+          retryOfReceiptID: input.receiptID,
+          startedAt: null,
+          finishedAt: null,
           note: input.note,
           status: "pending",
           diagnostic: null,
@@ -107,15 +95,15 @@ export class Hooks {
       return {
         run: this.ports.records.detail(run),
         changed: !dryRun,
-        index: dryRun ? null : index,
+        receiptID: dryRun ? null : receiptID,
       };
     });
-    if (result.index !== null) {
+    if (result.receiptID !== null) {
       const work = withoutExecution(async () =>
         this.deliverHooks(
           await this.ports.records.run(runID),
           undefined,
-          result.index!,
+          result.receiptID!,
         ),
       );
       this.hookWork.add(work);
@@ -130,14 +118,13 @@ export class Hooks {
       changed: result.changed,
     };
   }
-  private async deliverHooks(
-    r: Run,
-    selectedEvent?: string,
-    retryIndex?: number,
-  ) {
-    const retry = retryIndex === undefined ? null : r.hookReceipts[retryIndex];
+  private async deliverHooks(r: Run, selectedEvent?: string, retryID?: string) {
+    const retry =
+      retryID === undefined
+        ? null
+        : r.hookReceipts.find((h) => h.receiptID === retryID);
     const retryEvent = retry
-      ? r.events.find((e) => e.sequence === retry.eventSequence)
+      ? r.events.find((e) => e.eventID === retry.eventID)
       : null;
     const eventType =
       retryEvent?.type ??
@@ -148,36 +135,38 @@ export class Hooks {
       retryEvent ?? [...r.events].reverse().find((e) => e.type === eventType);
     if (!event) return;
     for (const hook of this.ports.storage.store.config.hooks.filter(
-      (h) =>
-        h.event === eventName &&
-        (!retry || h.executablePath === retry.executablePath),
+      (h) => h.event === eventName && (!retry || h.hookID === retry.hookID),
     )) {
       const accepted = await this.ports.storage.exclusive(async () => {
         const current =
           this.ports.runner.liveRun(r.runID) ??
           (await this.ports.records.run(r.runID));
-        if (retryIndex !== undefined) {
-          const receipt = current.hookReceipts[retryIndex];
-          if (!receipt || receipt.status !== "pending") return -1;
+        if (retryID !== undefined) {
+          const receipt = current.hookReceipts.find(
+            (h) => h.receiptID === retryID,
+          );
+          if (!receipt || receipt.status !== "pending") return null;
         } else if (
           current.hookReceipts.some(
-            (h) =>
-              h.eventSequence === event.sequence &&
-              h.executablePath === hook.executablePath,
+            (h) => h.eventID === event.eventID && h.hookID === hook.hookID,
           )
         )
-          return -1;
+          return null;
         const blocked =
           hook.purpose === "delivery" &&
           r.validations.some((v) => v.segment === event.segment) &&
           r.validations.filter((v) => v.segment === event.segment).at(-1)
             ?.status !== "passed";
-        const index = retryIndex ?? current.hookReceipts.length;
+        const receiptID = retryID ?? randomUUID();
         const updated = {
           requestID: retry?.requestID ?? null,
-          retryOf: retry?.retryOf ?? null,
+          receiptID,
+          hookID: hook.hookID,
+          retryOfReceiptID: retry?.retryOfReceiptID ?? null,
+          startedAt: blocked ? null : now(),
+          finishedAt: blocked ? now() : null,
           note: retry?.note ?? null,
-          eventSequence: event.sequence,
+          eventID: event.eventID,
           executablePath: hook.executablePath,
           purpose: hook.purpose,
           status: blocked ? ("failed" as const) : ("started" as const),
@@ -185,12 +174,16 @@ export class Hooks {
             ? "Delivery not dispatched: output validation did not pass"
             : null,
         };
-        if (retryIndex === undefined) current.hookReceipts.push(updated);
-        else current.hookReceipts[index] = updated;
+        if (retryID === undefined) current.hookReceipts.push(updated);
+        else
+          Object.assign(
+            current.hookReceipts.find((h) => h.receiptID === retryID)!,
+            updated,
+          );
         await this.ports.records.save(current);
-        return blocked ? -1 : index;
+        return blocked ? null : receiptID;
       });
-      if (accepted < 0) continue;
+      if (accepted === null) continue;
       let hookResult: { ok: boolean; diagnostic: string | null };
       try {
         await runExecutable({
@@ -206,7 +199,10 @@ export class Hooks {
               agentID: r.agent.agentID,
               segment: event.segment,
               state: eventType === "storageLimit" ? "paused" : eventType,
+              eventID: event.eventID,
               eventSequence: event.sequence,
+              hookID: hook.hookID,
+              receiptID: accepted,
               ...(eventType === "storageLimit" ? { storage: event.data } : {}),
               result: r.result,
               error: r.error,
@@ -233,16 +229,24 @@ export class Hooks {
         const current =
           this.ports.runner.liveRun(r.runID) ??
           (await this.ports.records.run(r.runID));
-        const receipt = current.hookReceipts[accepted]!;
+        const receipt = current.hookReceipts.find(
+          (h) => h.receiptID === accepted,
+        )!;
         receipt.status = hookResult.ok ? "succeeded" : "failed";
         receipt.diagnostic = hookResult.diagnostic;
+        receipt.finishedAt = now();
         // Delivery may settle after a follow-up begins; retain its originating segment.
         current.events.push({
+          eventID: randomUUID(),
           sequence: current.events.length + 1,
           at: now(),
           type: "hookResult",
           segment: event.segment,
-          data: { eventSequence: event.sequence, status: receipt.status },
+          data: {
+            receiptID: receipt.receiptID,
+            sourceEventID: event.eventID,
+            status: receipt.status,
+          },
         });
         await this.ports.records.save(current);
       });

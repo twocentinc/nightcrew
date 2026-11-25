@@ -1,7 +1,7 @@
 # Public contract and compatibility
 
-The current frozen public contract is protocol 1, schema 42, introduced in
-0.41.0. Version 0.41.1 preserves that contract. The freeze began at schema 34;
+The current frozen public contract is protocol 1, schema 43, introduced in
+0.42.0 through an owner-approved run-schema redesign. The freeze began at schema 34;
 owner-approved changes since then are recorded below. This is the baseline for
 the upcoming 1.0 release, not a claim that acceptance work is complete.
 
@@ -148,3 +148,27 @@ The owner explicitly reopened the contract for these changes. There are no alias
 Online `status --doctor` invokes the same authenticated status operation as HTTP and TypeScript. When the control socket is unavailable, the CLI runs read-only local diagnostics, reports the daemon as unavailable, and does not create a runtime home. Other daemon errors are preserved rather than replaced with local results.
 
 Generated `/v1/operations/...` routes are the complete remote management surface, except local filesystem operations and internal eval procedures. Older resource routes are explicitly shaped adapters (for example, `/v1/status` returns runtime status only); they are not a second management inventory. Clients needing the CLI-shaped result use the operation routes.
+
+## Approved run schema redesign (0.42.0 / schema 43)
+
+- Stored run version 3 replaces top-level state/held/pauseReason/error with one
+  `execution` object. Run detail, lists, status and exports use that same shape.
+  This does not change the transient instant-request state contract.
+- Events carry UUIDs and validated type-specific payloads. Tool snapshots use
+  the executable tool schema, including pending inputs and refresh evidence.
+- Configured hooks require `hookID`. Receipts carry `receiptID`, `eventID`,
+  `retryOfReceiptID`, nullable `startedAt` and `finishedAt`; executablePath is
+  execution evidence, not identity. Automatic delivery deduplicates by eventID
+  and hookID, regardless of executable relocation.
+- Hook results carry sourceEventID and receiptID. Historical events without an
+  unambiguous receipt association retain null receiptID. Unrecorded historical
+  timing remains null; migration must not invent timing or delivery outcomes.
+- Pauses declare manual or automatic resumption. Storage pauses include the
+  exhausted resource, used count/bytes and maximum. Increasing MB only resolves
+  byte limits; count limits require a new run or an explicit future retention policy.
+- Upgrade offline: back up config.json and every state.json, assign hook/event/
+  receipt IDs, replace positional references, convert execution and validate all
+  records before atomic replacement. Preserve message IDs, content, attempt
+  evidence, receipt outcomes, compaction links and run IDs. Migration never
+  dispatches hooks. Update external consumers to read execution.state before
+  restarting. There is no old-format reader or compatibility alias.

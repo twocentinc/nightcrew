@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { type Message } from "../../schemas/common.js";
-import { type Event } from "../../schemas/run.js";
+import { type Event } from "../../schemas/event.js";
 import { executeModelTool } from "../capabilities/registry.js";
 import { withSkillCatalog } from "../capabilities/skills.js";
 import { executionSlots } from "../scheduling/policy.js";

@@ -61,8 +61,10 @@ function recentProblem(r?: any, outcome?: any, since?: any) {
     ["failed", "timedOut"].includes(outcome.execution) ||
     ["failed", "error"].includes(outcome.output) ||
     ["failed", "unknown"].includes(outcome.delivery) ||
-    (terminal(r.state) && outcome.delivery === "pending") ||
-    (r.held && !terminal(r.state));
+    (terminal(r.execution.state) && outcome.delivery === "pending") ||
+    (r.execution.state === "paused" &&
+      r.execution.resume === "manual" &&
+      !terminal(r.execution.state));
   if (!bad) return false;
   // Capability refreshes and old reviewer notes do not create new incidents.
   const relevant = (r.events ?? []).filter((e?: any) =>
@@ -143,7 +145,7 @@ export function metrics(r?: any, parent?: any, outcome?: any) {
       }
     }).length;
   const qualityFlags = [];
-  if (r.state === "completed") {
+  if (r.execution.state === "completed") {
     if (!r.result?.trim()) qualityFlags.push("empty_output");
     try {
       const parsed = JSON.parse(r.result);
@@ -159,13 +161,14 @@ export function metrics(r?: any, parent?: any, outcome?: any) {
     ? parent
       ? {
           runID: parent.runID,
-          state: parent.state,
+          state: parent.execution.state,
           revision: parent.revision,
           awaitsThisChild:
-            !terminal(parent.state) &&
+            !terminal(parent.execution.state) &&
             parent.compaction?.childRunID === r.runID,
           relationship:
-            terminal(parent.state) || parent.compaction?.childRunID !== r.runID
+            terminal(parent.execution.state) ||
+            parent.compaction?.childRunID !== r.runID
               ? "no_longer_required"
               : "required",
         }
@@ -183,11 +186,14 @@ export function metrics(r?: any, parent?: any, outcome?: any) {
     outcome,
     current: {
       execution: outcome.execution,
-      activeHold: !!r.held && !terminal(r.state),
+      activeHold:
+        !!(r.execution.state === "paused" && r.execution.resume === "manual") &&
+        !terminal(r.execution.state),
       error:
-        terminal(r.state) && !["failed", "timedOut"].includes(r.state)
+        terminal(r.execution.state) &&
+        !["failed", "timedOut"].includes(r.execution.state)
           ? null
-          : (r.error ?? null),
+          : (r.execution.error ?? null),
       delivery,
       validation: validation
         ? { status: validation.status, at: validation.at }
@@ -201,20 +207,21 @@ export function metrics(r?: any, parent?: any, outcome?: any) {
       validationFailures: (r.validations ?? []).filter(
         (v?: any) => v.status === "failed",
       ).length,
-      retainedError: r.error ?? null,
+      retainedError: r.execution.error ?? null,
       note: "Past evidence, not current failure status. Later successful retries or terminal parent states supersede earlier status claims.",
     },
     statusMeaning: ["completed", "failed", "timedOut", "cancelled"].includes(
-      r.state,
+      r.execution.state,
     )
-      ? r.state
+      ? r.execution.state
       : parentState?.relationship === "no_longer_required"
         ? "stale_compactor_child"
-        : r.held
+        : r.execution.state === "paused" && r.execution.resume === "manual"
           ? "held_requires_review"
-          : r.state === "paused" && r.pauseReason === "compaction"
+          : r.execution.state === "paused" &&
+              r.execution.reason === "compaction"
             ? "waiting_for_compactor_not_held"
-            : r.state,
+            : r.execution.state,
     quality: {
       assessment: "unreviewed",
       flags: qualityFlags,
@@ -224,9 +231,9 @@ export function metrics(r?: any, parent?: any, outcome?: any) {
     revision: r.revision,
     agentID: r.agent.agentID,
     parentRunID: r.parentRunID ?? null,
-    state: r.state,
-    held: r.held,
-    pauseReason: r.pauseReason,
+    state: r.execution.state,
+    held: r.execution.state === "paused" && r.execution.resume === "manual",
+    pauseReason: r.execution.reason,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
     activeMs: r.activeMs,
@@ -323,8 +330,10 @@ export async function inspect(
         if (
           !priority &&
           Date.parse(r.updatedAt) < Date.parse(baselineAt) &&
-          !r.held &&
-          !["failed", "timedOut"].includes(r.state)
+          !(
+            r.execution.state === "paused" && r.execution.resume === "manual"
+          ) &&
+          !["failed", "timedOut"].includes(r.execution.state)
         )
           continue;
         const item = await project(r, home, summaries.get(r.runID));

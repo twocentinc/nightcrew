@@ -298,11 +298,10 @@ export class Service {
     runID: string,
     input: {
       expectedRevision: number;
-      receiptIndex: number;
+      receiptID: string;
       requestID: string;
       note: string;
       acceptUnknown: boolean;
-      hookPath?: string;
     },
     dryRun: boolean,
   ) {

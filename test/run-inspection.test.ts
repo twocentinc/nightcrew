@@ -19,7 +19,7 @@ import { Service } from "../dist/engine/service.js";
 import { manage as rawmanage } from "../dist/utils/commands/management.js";
 const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
   rawmanage;
-import { runSchema } from "../dist/schemas/run.js";
+import { runSchema, decodeRun } from "../dist/schemas/run.js";
 import { startupLogs } from "../dist/server/startup.js";
 
 async function fixture(t: import("node:test").TestContext) {
@@ -57,69 +57,71 @@ async function fixture(t: import("node:test").TestContext) {
   const makeRun = async (runID: string, state = "completed") => {
     const at = "2026-01-01T00:00:00.000Z";
     const messageID = randomUUID();
-    const run = runSchema.parse({
-      version: 2,
-      runID,
-      revision: 1,
-      createdAt: at,
-      updatedAt: at,
-      agent: {
-        agentID: "reviewer",
-        name: "reviewer",
+    const run = decodeRun(
+      runSchema.parse({
+        version: 3,
+        runID,
         revision: 1,
-        systemPrompt: "Test",
-        mode: "single-turn",
-        modelID: "test",
-        slotID: "background",
-        skillIDs: [],
-        toolIDs: [],
-        timeoutMs: 1000,
-        enabled: false,
         createdAt: at,
         updatedAt: at,
-      },
-      skills: [],
-      toolSnapshots: [],
-      segment: 0,
-      state,
-      pauseReason: null,
-      activeMs: 0,
-      messages: [
-        {
-          messageID,
-          role: "user" as const,
-          content: "hello world",
-          attachments: [
-            {
-              name: "note.txt",
-              mediaType: "text/plain" as const,
-              dataBase64: Buffer.from("attachment needle").toString("base64"),
-            },
-          ],
-          toolCalls: [],
-          toolCallID: null,
+        agent: {
+          agentID: "reviewer",
+          name: "reviewer",
+          revision: 1,
+          systemPrompt: "Test",
+          mode: "single-turn",
+          modelID: "test",
+          slotID: "background",
+          skillIDs: [],
+          toolIDs: [],
+          timeoutMs: 1000,
+          enabled: false,
+          createdAt: at,
+          updatedAt: at,
         },
-      ],
-      events: [
-        {
-          sequence: 1,
-          at,
-          type: "message" as const,
-          segment: 0,
-          data: { messageID },
-        },
-        {
-          sequence: 2,
-          at,
-          type: state === "completed" ? "completed" : "queued",
-          segment: 0,
-          data: {},
-        },
-      ],
-      result: state === "completed" ? "result needle" : null,
-      error: null,
-      hookReceipts: [],
-    });
+        skills: [],
+        toolSnapshots: [],
+        segment: 0,
+        execution: { state },
+        activeMs: 0,
+        messages: [
+          {
+            messageID,
+            role: "user" as const,
+            content: "hello world",
+            attachments: [
+              {
+                name: "note.txt",
+                mediaType: "text/plain" as const,
+                dataBase64: Buffer.from("attachment needle").toString("base64"),
+              },
+            ],
+            toolCalls: [],
+            toolCallID: null,
+          },
+        ],
+        events: [
+          {
+            eventID: randomUUID(),
+            sequence: 1,
+            at,
+            type: "message" as const,
+            segment: 0,
+            data: { messageID },
+          },
+          {
+            eventID: randomUUID(),
+            sequence: 2,
+            at,
+            type: state === "completed" ? "completed" : "queued",
+            segment: 0,
+            data: {},
+          },
+        ],
+        result: state === "completed" ? "result needle" : null,
+        hookReceipts: [],
+      }),
+    );
     await storage.write(run, true);
     return run;
   };
@@ -512,20 +514,19 @@ test("transcript projection resolves pending inputs and attempts without changin
     messageID: null,
   };
   run.attempts.push(attempt);
-  const data: (typeof run.events)[number]["data"][] = [
-    { messageID: pending.messageID },
-    { attemptID: attempt.attemptID, messageID: run.messages[0]!.messageID },
-    { messageID: randomUUID(), attemptID: randomUUID() },
-    null,
-    { messageID: pending.messageID },
-  ];
-  run.events = data.map((data, index) => ({
+  run.events = [
+    { type: "pendingInput", data: { messageID: pending.messageID } },
+    { type: "attempt", data: { attemptID: attempt.attemptID } },
+    { type: "message", data: { messageID: randomUUID() } },
+    { type: "started", data: {} },
+    { type: "pendingInput", data: { messageID: pending.messageID } },
+  ].map((event, index) => ({
+    eventID: randomUUID(),
     sequence: index + 1,
     at: run.createdAt,
-    type: "message",
     segment: 0,
-    data,
-  }));
+    ...event,
+  })) as typeof run.events;
   const before = structuredClone(run);
   const projected = service.transcript(run);
   assert.deepEqual(
@@ -539,7 +540,7 @@ test("transcript projection resolves pending inputs and attempts without changin
     toolCallID: null,
   });
   assert.equal(projected[1]!.attempt, attempt);
-  assert.equal(projected[1]!.message, run.messages[0]);
+  assert.equal(projected[1]!.message, null);
   assert.equal(projected[2]!.message, null);
   assert.equal(projected[2]!.attempt, null);
   assert.equal(projected[3]!.message, null);
@@ -565,4 +566,19 @@ test("canonical fingerprints retain persisted hash encoding and ignore object ke
     fingerprint(value),
     fingerprint({ ...value, a: [2, { c: null, d: true }] }),
   );
+});
+
+test("holding a queued run has consistent stored and indexed state and releases safely", async (t) => {
+  const { service, makeRun } = await fixture(t);
+  const run = await makeRun("queued-hold", "queued");
+  await service.pauseRun(run.runID, run.revision, false);
+  const held = await service.run(run.runID);
+  assert.equal(held.state, "paused");
+  assert.equal(held.held, true);
+  assert.equal((await service.listRuns(undefined, "paused")).length, 1);
+  assert.equal((await service.listRuns(undefined, "queued")).length, 0);
+  await service.queueControl(run.runID, "release", held.revision, false);
+  const released = await service.run(run.runID);
+  assert.equal(released.held, false);
+  assert.equal(released.pauseReason, "scheduler");
 });

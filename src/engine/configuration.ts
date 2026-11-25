@@ -23,7 +23,8 @@ export class Configuration {
     return {
       ...rest,
       models: models.map(({ weightsPath, projectorPath, ...model }) => model),
-      hooks: hooks.map(({ event, timeoutMs, purpose }) => ({
+      hooks: hooks.map(({ hookID, event, timeoutMs, purpose }) => ({
+        hookID,
         event,
         timeoutMs,
         purpose,

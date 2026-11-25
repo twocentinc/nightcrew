@@ -1,6 +1,6 @@
 # Nightcrew specification
 
-Status: release 0.41.1, protocol 1, schema 42.
+Status: release 0.42.0, protocol 1, schema 43.
 See [compatibility.md](compatibility.md) for stable surfaces and change policy.
 Runtime schemas and registered procedures are authoritative; this document
 explains behavior rather than maintaining another endpoint inventory.
@@ -224,8 +224,9 @@ also pause growth; the underlying state-file hard limit retains reserved space.
 No automatic transcript deletion, splitting, or archive rotation is performed.
 Compaction does not reduce transcript storage.
 
-To continue, raise the agent's limit where capacity permits, then explicitly
-release the held queue entry. Release refreshes that limit and rejects a run
+For a byte limit, raise the agent's storageLimitMB where capacity permits, then explicitly
+release the held queue entry. Count limits identify the exhausted collection and
+require a new run; increasing MB cannot resolve them. Release refreshes that limit and rejects a run
 still over capacity. Exporting history does not free storage. At the maximum
 limit the run stays held; automatic pruning or starting a replacement persistent
 run is not implemented.
@@ -314,13 +315,15 @@ Instant request compaction and automatic multi-stage chunking remain deferred.
 Configured notification events are run.completed, run.failed, run.timedOut,
 run.cancelled and run.storageLimit. Each executable receives one JSON line on
 stdin with version, event, runID, agentID, segment, state, result, error and
-eventSequence. Storage-limit notifications additionally include storage with
-limitMB, bytes and message/event/attempt counts captured at the boundary.
+eventSequence, eventID, hookID and receiptID. Storage-limit notifications
+additionally include storage.previousState and storage.limit with resource, used
+and maximum captured at the boundary.
 
 A storage hook runs after the hold is persisted and does not unpause the run.
 It can notify a supervisor or use the CLI to export/review the run. Hook stdout
 is ignored; it is not a summary protocol. Explicit runs resume is still required.
-One automatic delivery attempt is recorded per event sequence and executable;
+Each configured hook has a stable hookID. One automatic delivery attempt is
+recorded per eventID and hookID;
 explicit supervisor retries append linked receipts without replacing old ones. Repeated
 submissions to the same held run do not create new storage-limit events.
 A later release and subsequent limit crossing can produce a new event.
@@ -729,3 +732,24 @@ Use `status --doctor` for configuration, executable, presence and live daemon ch
 Instant inference uses `instant create`, `instant get`, and `instant delete`. Delete first settles cancellation, then forgets the request and result. `models unload` retains the guarded instant-model unload behavior and takes no operand. `agents cache delete` removes saved KV only; `runs refresh` adopts current capabilities in a terminal run.
 
 There is no manual annotation/review workflow or public hook retry command. Run outcomes retain execution, validation and delivery evidence; `needsAttention`, status `issues` and `issuesTruncated` are derived rather than manually acknowledged.
+
+## Run records (schema 43)
+
+- One state.json per run remains the durable source. No transcript split or
+  separate run database is introduced. Stored version is 3.
+- `execution` replaces state, held, pauseReason and error at the top level:
+  queued/running/completed carry only state; failed/cancelled/timedOut may carry
+  error; paused carries reason and resume (`automatic` or `manual`), optional
+  error, and limit evidence when reason is storage_limit. Context/runtime/storage
+  errors and manualStop require manual resumption.
+- Messages, attempts and events remain separate evidence collections. Every event
+  has eventID, sequence, timestamp, segment and a validated type-specific payload.
+  Sequence remains the transcript cursor; stable IDs link receipts to events.
+- Receipts have stable IDs and retryOfReceiptID links, start/finish timestamps,
+  status and diagnostics. Historical missing timestamps and ambiguous hook-result
+  receipt links remain null. Internal explicit retry logic uses IDs; no public
+  hook retry command is restored.
+- Configured tools and all run tool snapshots use the same typed executable schema.
+  Persistence validates event/receipt uniqueness and reference integrity.
+- The scheduler retains a mutable internal working representation until an atomic
+  commit; CLI/HTTP and files expose only the discriminated execution record.
