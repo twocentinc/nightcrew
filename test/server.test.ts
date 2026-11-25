@@ -1121,7 +1121,7 @@ test("failed generation retains partial answer, thinking and tool fragments as v
   assert.equal(run.attempts[0].reasoningContent, "unfinished reasoning");
   assert.equal(run.attempts[0].status, "failed");
   assert.equal(run.error.message, "stream disconnected");
-  const visible = await f.app.service["runner"].invokeTool(
+  const visible = await f.app.service["toolStep"].invokeTool(
     run,
     "runs_transcript",
     JSON.stringify({ runID, limit: 20 }),
@@ -1643,9 +1643,9 @@ test("history tools exclude the current nonterminal run", async (t) => {
   });
   const run = await f.app.service.storage.read(submitted.body.runID);
   const signal = new AbortController().signal;
-  const list = await f.app.service["runner"].invokeTool(run, "runs_list", "{}", signal);
+  const list = await f.app.service["toolStep"].invokeTool(run, "runs_list", "{}", signal);
   assert.deepEqual(list, []);
-  const history = await f.app.service["runner"].invokeTool(
+  const history = await f.app.service["toolStep"].invokeTool(
     run,
     "runs_transcript",
     JSON.stringify({ runID: run.runID }),
@@ -1675,7 +1675,7 @@ test("worker history bounds long evidence while administrator transcripts remain
     const r = await f.app.service.storage.read(submitted.body.runID);
     return r.state === "completed" && r;
   });
-  const output = await f.app.service["runner"].invokeTool(
+  const output = await f.app.service["toolStep"].invokeTool(
     run,
     "runs_transcript",
     JSON.stringify({ runID: run.runID, limit: 100 }),
@@ -1703,7 +1703,7 @@ test("worker history bounds long evidence while administrator transcripts remain
       (e?: any) => e.message?.messageID === run.messages.at(-1).messageID,
     );
   assert(offset >= 0);
-  const oversized = await f.app.service["runner"].invokeTool(
+  const oversized = await f.app.service["toolStep"].invokeTool(
     run,
     "runs_transcript",
     JSON.stringify({ runID: run.runID, offset, limit: 100 }),
@@ -1783,8 +1783,8 @@ test("tool budget rejects excess batch calls and requests a tool-free final answ
     changes: { mode: "agent-loop", toolIDs: ["runs_list"], maxToolCalls: 1 },
   });
   let invoked = 0;
-  const invoke = f.app.service["runner"].invokeTool.bind(f.app.service["runner"]);
-  f.app.service["runner"].invokeTool = (...args: any[]) => {
+  const invoke = f.app.service["toolStep"].invokeTool.bind(f.app.service["toolStep"]);
+  f.app.service["toolStep"].invokeTool = (...args: any[]) => {
     invoked++;
     return invoke(...args);
   };

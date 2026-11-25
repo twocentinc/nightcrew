@@ -663,7 +663,10 @@ and their shared contracts, `src/engine/` owns agent execution and scheduling,
 control socket and daemon hosting. See [the spec](docs/spec.md#source-organization)
 for module boundaries. The service facade delegates to run control, generation,
 instant inference, dispatch, context management and hook components, each with
-explicit dependencies and owned state. npm exports remain `nightcrew` and `nightcrew/operations`.
+explicit dependencies and owned state. The runner coordinates context, request
+building, compaction, inference, response recording, tool execution and completion
+steps. Compaction schemas and evidence helpers live separately in
+`engine/compactionFormat.ts`. npm exports remain `nightcrew` and `nightcrew/operations`.
 
 ## Shared contracts, evidence and storage (0.14)
 

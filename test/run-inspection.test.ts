@@ -291,7 +291,7 @@ test("idle scheduling does not reread archived transcripts", async (t) => {
     reads++;
     return original(...args);
   };
-  await service["context"]["reconcileCompactions"]();
+  await service["compaction"]["reconcileCompactions"]();
   await service["runs"]["activatePending"]();
   assert.equal(reads, 0);
 });

@@ -3,7 +3,7 @@ import {
   configSchema,
   messageSchema,
 } from "../dist/engine/contracts.js";
-import type { CompactionRequest } from "../dist/engine/compaction.js";
+import type { CompactionRequest } from "../dist/engine/compactionFormat.js";
 
 // Tests author input objects; normalize defaults exactly as runtime admission does.
 export const settings = configSchema

@@ -22,7 +22,7 @@ import { runOutcome, loopProblem } from "../dist/engine/supervision.js";
 import {
   validateSummaryEvidence,
   compactionInstructions,
-} from "../dist/engine/compaction.js";
+} from "../dist/engine/compactionFormat.js";
 const input = () => ({
   messageID: randomUUID(),
   content: "perform the task",
@@ -177,7 +177,7 @@ test("finish validates and commits a result without executable dispatch, survive
     );
     return finish({ answer: 42 });
   });
-  f.service["runner"]["invokeTool"] = async () => {
+  f.service["toolStep"]["invokeTool"] = async () => {
     throw Error("finish must not dispatch");
   };
   const r = await f.submit();
@@ -232,7 +232,7 @@ test("mixed finish batch executes neither finish nor sibling", async (t) => {
     { mode: "agent-loop" },
   );
   let invoked = 0;
-  f.service["runner"]["invokeTool"] = async () => {
+  f.service["toolStep"]["invokeTool"] = async () => {
     invoked++;
     return { ok: true };
   };
@@ -262,7 +262,7 @@ test("finish remains available after the ordinary tool budget", async (t) => {
     { mode: "agent-loop", maxToolCalls: 1 },
   );
   let invoked = 0;
-  f.service["runner"]["invokeTool"] = async () => {
+  f.service["toolStep"]["invokeTool"] = async () => {
     invoked++;
     return { ok: true };
   };

@@ -12,6 +12,7 @@ import {
   type Skill,
 } from "./contracts.js";
 import type { Dispatch } from "./dispatch.js";
+import type { Inference } from "./inference.js";
 import { fail } from "./protocol.js";
 import type { AgentRegistry } from "./registry.js";
 import { executeModelTool } from "./registry.js";
@@ -37,6 +38,7 @@ export type Chat = {
   deadline: number;
 };
 interface Dependencies {
+  readonly inference: Pick<Inference, "deltas">;
   readonly storage: Storage;
   readonly registry: Pick<AgentRegistry, "skills" | "tools">;
   readonly dispatch: Pick<
@@ -52,7 +54,7 @@ interface Dependencies {
     | "activityCount"
     | "clearResidentModel"
   >;
-  readonly runner: Pick<Runner, "liveRun" | "deltas">;
+  readonly runner: Pick<Runner, "liveRun">;
   readonly records: Pick<RunRecords, "run">;
   readonly runtime: Runtime;
   readonly runs: Pick<Runs, "cancelRun">;
@@ -361,7 +363,7 @@ export class Instant {
         c.result = await this.ports.runtime.generate(
           input,
           controller.signal,
-          this.ports.runner.deltas(c.requestID),
+          this.ports.inference.deltas(c.requestID),
         );
         controller.signal.throwIfAborted();
         if (Buffer.byteLength(JSON.stringify(c.result)) > 1024 * 1024)
@@ -394,7 +396,7 @@ export class Instant {
               .find((m) => m.role === "user")?.thinking,
           },
           controller.signal,
-          this.ports.runner.deltas(c.requestID),
+          this.ports.inference.deltas(c.requestID),
         );
         controller.signal.throwIfAborted();
         if (Buffer.byteLength(JSON.stringify(result)) > 1024 * 1024)

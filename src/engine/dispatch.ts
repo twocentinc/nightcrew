@@ -2,9 +2,10 @@ import { createHash } from "node:crypto";
 import type { OperationalLog } from "../server/logging.js";
 import type { RunRecords } from "../storage/records.js";
 import { Storage } from "../storage/store.js";
-import type { Context } from "./context.js";
+import type { Compaction } from "./compaction.js";
 import { now, terminal, type Run } from "./contracts.js";
 import { withoutExecution } from "./execution.js";
+import type { Inference } from "./inference.js";
 import type { Instant } from "./instant.js";
 import { fail } from "./protocol.js";
 import type { Runner } from "./runner.js";
@@ -20,6 +21,7 @@ import {
 import { nextFireAt } from "./triggers.js";
 
 interface Dependencies {
+  readonly inference: Pick<Inference, "clearProvisional">;
   readonly storage: Storage;
   readonly instant: Pick<
     Instant,
@@ -31,11 +33,11 @@ interface Dependencies {
     | "chat"
   >;
   readonly runtime: Runtime;
-  readonly runner: Pick<Runner, "liveRun" | "executeRun" | "clearProvisional">;
+  readonly runner: Pick<Runner, "liveRun" | "executeRun">;
   readonly logger: OperationalLog | undefined;
   readonly samplePresence: () => Promise<Presence>;
   readonly records: Pick<RunRecords, "listRuns" | "run">;
-  readonly context: Pick<Context, "reconcileCompactions">;
+  readonly compaction: Pick<Compaction, "reconcileCompactions">;
   readonly runs: Pick<Runs, "activatePending" | "fireTrigger">;
 }
 export class Dispatch {
@@ -305,7 +307,7 @@ export class Dispatch {
       .catch(() => {})
       .finally(() => {
         this.activities.delete(id);
-        this.ports.runner.clearProvisional(id);
+        this.ports.inference.clearProvisional(id);
         this.wake();
       });
   }
@@ -319,7 +321,7 @@ export class Dispatch {
       return;
     this.pumping = true;
     try {
-      await this.ports.context.reconcileCompactions();
+      await this.ports.compaction.reconcileCompactions();
       await this.ports.runs.activatePending();
       const chat = [...this.ports.instant.chats.values()].find(
         (c) => c.state === "queued",

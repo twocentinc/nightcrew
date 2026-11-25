@@ -10,7 +10,7 @@ import {
   compactionSchema,
   compactionStateSchema,
   checkpointSchema,
-} from "./compaction.js";
+} from "./compactionFormat.js";
 import { executionSlots, schedulerSchema } from "./scheduler.js";
 import { scheduleSchema } from "./triggers.js";
 import { loggingSchema } from "../server/logging.js";

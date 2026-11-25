@@ -1,4 +1,4 @@
-import { validateCompactionState } from "../engine/compaction.js";
+import { validateCompactionState } from "../engine/compactionFormat.js";
 import path from "node:path";
 import { constants } from "node:fs";
 import { createHash } from "node:crypto";

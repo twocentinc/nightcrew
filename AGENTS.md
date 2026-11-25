@@ -29,20 +29,27 @@ receive explicit, narrow dependencies, never the entire Service.
 admission, plan revalidation, presence and interaction cooldown.
 `src/engine/runs.ts` owns submissions, persistent conversation segments, pending
 inputs and administrative run transitions. `src/engine/runner.ts` owns background
-execution, live runs, streamed output and turn preparation/settlement. Its phases
-must preserve the order of durable attempt, tool-result and message writes.
+execution order and live runs. Its step modules receive explicit dependencies:
+`src/engine/request.ts` builds model inputs, instructions and sampling settings;
+`src/engine/inference.ts` records attempts and captures generation evidence, and
+owns the streaming buffer shared with instant requests;
+`src/engine/response.ts` assembles continuations and commits model responses;
+`src/engine/tools.ts` recovers pending calls and commits paired tool results;
+`src/engine/completion.ts` validates final output and settles interruption and
+completion. Preserve the order of durable attempt, tool-result and message writes.
 `src/engine/instant.ts` owns instant/eval request state, deadlines and generation.
-`src/engine/context.ts` owns context budgets, linked compactor admission and
-checkpoint reconciliation. `src/engine/hooks.ts` owns delivery tasks, durable
+`src/engine/context.ts` owns model-visible history projection, skill catalog
+injection and transcript storage-limit checks. `src/engine/compaction.ts` owns
+token budgets, linked compactor admission, checkpoint reconciliation and retries. `src/engine/hooks.ts` owns delivery tasks, durable
 receipts, explicit retries and draining on shutdown.
 `src/storage/records.ts` owns run projections, pagination snapshots, search,
 event/save helpers and interrupted-run recovery inside the startup transaction.
 `src/engine/configuration.ts` owns shared agent/configuration validation and
 mutation; `src/engine/runtimeTypes.ts` owns the runtime adapter interfaces.
-`src/engine/compaction.ts` owns compaction handler/checkpoint schemas, safe history
-projection and bounded script execution. It generates domain-independent source
+`src/engine/compactionFormat.ts` owns compaction handler/checkpoint schemas,
+summary parsing, source evidence and bounded script execution. It generates domain-independent source
 references for original records/text excerpts and restores selected evidence into
-legacy resumed context; structured summaries retain source references only as checkpoint metadata and inject Markdown bullets. Summaries never own source identity or wording. The context component schedules linked compactor
+legacy resumed context; structured summaries retain source references only as checkpoint metadata and inject Markdown bullets. Summaries never own source identity or wording. The compaction component schedules linked compactor
 runs; the runtime counts templated tokens and validates KV checkpoint generations.
 Managed output-limit continuation is reconstructed from durable attempt records;
 never validate/deliver partial answers or execute truncated tool calls.

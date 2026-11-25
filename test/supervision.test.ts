@@ -22,7 +22,7 @@ import { runOutcome, loopProblem } from "../dist/engine/supervision.js";
 import {
   validateSummaryEvidence,
   compactionInstructions,
-} from "../dist/engine/compaction.js";
+} from "../dist/engine/compactionFormat.js";
 const input = () => ({
   messageID: randomUUID(),
   content: "perform the task",

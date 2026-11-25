@@ -1,6 +1,6 @@
 import { runOutcome, type outcomeSchema } from "../engine/supervision.js";
 import type { z } from "zod";
-import { validateCompactionState } from "../engine/compaction.js";
+import { validateCompactionState } from "../engine/compactionFormat.js";
 import type { OperationalLog } from "../server/logging.js";
 import { NightcrewError } from "../engine/protocol.js";
 import { checkpoint } from "../engine/execution.js";

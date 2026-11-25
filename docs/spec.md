@@ -46,19 +46,27 @@ and stops the engine; each component receives only its declared dependencies.
 | Module | Ownership |
 | --- | --- |
 | `engine/runs.ts` | Submission, persistent segments, pending inputs, trigger firing and run controls |
-| `engine/runner.ts` | Background generation, tool recovery, output continuation, live runs and attempt settlement |
+| `engine/runner.ts` | Coordinates turn steps, live runs, active-time charging and cancellation settlement |
+| `engine/request.ts` | Builds prompts, recovery/finalization instructions, tools and sampling parameters |
+| `engine/inference.ts` | Persists attempts, invokes generation and captures streamed evidence; shared streaming buffer |
+| `engine/response.ts` | Reassembles continuation chunks and commits model responses |
+| `engine/tools.ts` | Recovers pending calls, executes tools and commits paired results |
+| `engine/completion.ts` | Validates final answers and settles interruption, completion and hook scheduling |
 | `engine/instant.ts` | Instant/eval requests, their deadlines, events and generation |
 | `engine/dispatch.ts` | Timer admission, scheduling, active execution handles, interruption, presence and cooldown |
-| `engine/context.ts` | Context limits, compactor execution handoffs and checkpoint recovery |
+| `engine/context.ts` | Model-visible history, skill catalog injection and transcript storage limits |
+| `engine/compaction.ts` | Token budgets, compactor handoffs, retries and checkpoint recovery |
+| `engine/compactionFormat.ts` | Compaction schemas, summary parsing, evidence provenance and script protocol |
 | `engine/hooks.ts` | Hook receipts, delivery, explicit retry and shutdown draining |
 | `engine/configuration.ts` | Shared agent/configuration validation and mutation |
 | `engine/registry.ts` | Executable tools and loaded agent capabilities |
 | `engine/runtimeTypes.ts` | Runtime adapter, generation result and presence interfaces |
 | `storage/records.ts` | Run reads/projections, search, pagination, event/save helpers and startup recovery |
 
-The runner separates tool recovery, final-output validation, turn preparation,
-attempt persistence, generation, output recording and interruption/terminal
-settlement. These phases keep the existing storage-lock boundaries and write
+The runner calls the tool, completion, request, compaction, inference and response
+steps in order. Context projection supplies the request and compaction steps.
+Instant requests keep their distinct tool permissions and request lifecycle while
+sharing the inference streaming buffer; they do not acquire the background tool loop. These phases keep the existing storage-lock boundaries and write
 ordering. Compaction hands execution back through dispatch; it does not start a
 second independent scheduler. Shutdown stops and settles execution before closing
 the model runtime, drains outstanding hooks, then closes storage. Startup recovery
@@ -129,7 +137,7 @@ still supplied on stdin; arrays do not spread and optional flags are not omitted
 
 Models define chat or audio behavior, paths, idle unloading, priority, optional KV
 snapshots, and compactionThresholdTokens. Configuration schemas in src/engine/contracts.ts,
-src/engine/scheduler.ts, src/engine/triggers.ts and src/engine/compaction.ts define limits and defaults.
+src/engine/scheduler.ts, src/engine/triggers.ts and src/engine/compactionFormat.ts define limits and defaults.
 Examples are opt-in files under examples; init does not install bespoke agents.
 
 ## On-demand skills

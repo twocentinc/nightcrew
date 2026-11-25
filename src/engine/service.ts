@@ -1,6 +1,8 @@
 import type { OperationalLog } from "../server/logging.js";
 import { RunRecords } from "../storage/records.js";
 import { Storage } from "../storage/store.js";
+import { Compaction } from "./compaction.js";
+import { Completion } from "./completion.js";
 import { Configuration } from "./configuration.js";
 import { Context } from "./context.js";
 import {
@@ -12,12 +14,16 @@ import {
 } from "./contracts.js";
 import { Dispatch } from "./dispatch.js";
 import { Hooks } from "./hooks.js";
+import { Inference } from "./inference.js";
 import { Instant, type Chat } from "./instant.js";
 import { AgentRegistry, builtinTools } from "./registry.js";
+import { RequestBuilder } from "./request.js";
+import { ResponseRecorder } from "./response.js";
 import { Runner } from "./runner.js";
 import { Runs } from "./runs.js";
 import type { Presence, Runtime } from "./runtimeTypes.js";
 import { type SchedulerSnapshot } from "./scheduler.js";
+import { ToolExecution } from "./tools.js";
 
 export { fail } from "./protocol.js";
 export type {
@@ -30,6 +36,12 @@ export type {
 export const tools = builtinTools;
 
 export class Service {
+  private readonly request: RequestBuilder;
+  private readonly inference: Inference;
+  private readonly response: ResponseRecorder;
+  private readonly toolStep: ToolExecution;
+  private readonly completion: Completion;
+  private readonly compaction: Compaction;
   private readonly registry: AgentRegistry;
   private readonly records: RunRecords;
   private readonly configuration: Configuration;
@@ -56,6 +68,7 @@ export class Service {
     let context: Context;
     let hooks: Hooks;
     let dispatch: Dispatch;
+    let compaction: Compaction;
     this.registry = registry = new AgentRegistry({ storage });
     this.records = records = new RunRecords({ storage });
     this.configuration = configuration = new Configuration({
@@ -87,14 +100,19 @@ export class Service {
       },
       registry,
     });
-    this.runner = runner = new Runner({
+    this.context = context = new Context({ records });
+    this.inference = new Inference({ storage, records, runtime });
+    this.request = new RequestBuilder({ storage, records, context, registry });
+    this.response = new ResponseRecorder({
       storage,
       records,
-      get context() {
-        return context;
-      },
-      registry,
-      runtime,
+      inference: this.inference,
+    });
+    this.toolStep = new ToolExecution({ storage, records, context, registry });
+    this.completion = new Completion({
+      storage,
+      records,
+      context,
       get dispatch() {
         return dispatch;
       },
@@ -102,7 +120,21 @@ export class Service {
         return hooks;
       },
     });
+    this.runner = runner = new Runner({
+      storage,
+      records,
+      context,
+      get compaction() {
+        return compaction;
+      },
+      inference: this.inference,
+      request: this.request,
+      response: this.response,
+      tools: this.toolStep,
+      completion: this.completion,
+    });
     this.instant = instant = new Instant({
+      inference: this.inference,
       storage,
       registry,
       get dispatch() {
@@ -113,8 +145,9 @@ export class Service {
       runtime,
       runs,
     });
-    this.context = context = new Context({
+    this.compaction = compaction = new Compaction({
       records,
+      context,
       storage,
       runtime,
       get dispatch() {
@@ -131,6 +164,7 @@ export class Service {
       runner,
     });
     this.dispatch = dispatch = new Dispatch({
+      inference: this.inference,
       storage,
       instant,
       runtime,
@@ -138,7 +172,7 @@ export class Service {
       logger,
       samplePresence,
       records,
-      context,
+      compaction,
       runs,
     });
   }
@@ -152,7 +186,7 @@ export class Service {
     return this.instant.chats;
   }
   get provisional() {
-    return this.runner.provisional;
+    return this.inference.provisional;
   }
   get presence() {
     return this.dispatch.presence;
