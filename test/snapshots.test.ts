@@ -1,3 +1,4 @@
+import { runtimeConfig } from "./fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, readFile, chmod, rm } from "node:fs/promises";
@@ -35,7 +36,7 @@ test("slot snapshots survive model switches, use the selected home, and reject s
   const models = ["qwen", "other"].map((modelID) =>
     modelSchema.parse({
       modelID,
-      kind: "chat",
+      kind: "chat" as const,
       weightsPath: weights,
       projectorPath: null,
       idleUnloadMs: 300000,
@@ -52,13 +53,13 @@ test("slot snapshots survive model switches, use the selected home, and reject s
       instant: i === 0,
     })),
   };
-  const runtime = new LlamaRuntime(() => config, home);
+  const runtime = new LlamaRuntime(() => runtimeConfig(config), home);
   t.after(async () => {
     await runtime.close();
     process.env.PATH = previous;
     await rm(home, { recursive: true, force: true });
   });
-  const run = (modelID) =>
+  const run = (modelID: string) =>
     runtime.generate(
       {
         modelID,
@@ -76,7 +77,7 @@ test("slot snapshots survive model switches, use the selected home, and reject s
   );
   await assert.rejects(
     runtime.snapshot("qwen", "save"),
-    (e) => e.code === "runtime.modelUnloaded",
+    (e: any) => e.code === "runtime.modelUnloaded",
   );
   await run("qwen");
   assert.equal((await runtime.snapshot("qwen", "save")).changed, true);
@@ -85,7 +86,7 @@ test("slot snapshots survive model switches, use the selected home, and reject s
   const events = (await readFile(log, "utf8"))
     .trim()
     .split("\n")
-    .map(JSON.parse);
+    .map((text: string) => JSON.parse(text));
   assert.ok(events.some((e) => e.model === "qwen" && e.action === "restore"));
   const save = events.findIndex(
     (e) => e.model === "qwen" && e.action === "save",
@@ -101,7 +102,9 @@ test("slot snapshots survive model switches, use the selected home, and reject s
   await runtime.close();
   assert.ok(
     JSON.parse(
-      await readFile(path.join(home, "slots", "qwen", "qwen.json"), "utf8"),
+      (
+        await readFile(path.join(home, "slots", "qwen", "qwen.json"), "utf8")
+      ).toString(),
     ).signature,
   );
   const original = runtime.generate(
@@ -117,7 +120,7 @@ test("slot snapshots survive model switches, use the selected home, and reject s
   );
   await assert.rejects(
     runtime.snapshot("qwen", "restore"),
-    (e) => e.code === "runtime.busy",
+    (e: any) => e.code === "runtime.busy",
   );
   await original;
 });
@@ -157,7 +160,7 @@ test("named KV contexts move between concurrent live slots and respect the disk 
     models: [
       modelSchema.parse({
         modelID: "q",
-        kind: "chat",
+        kind: "chat" as const,
         weightsPath: weights,
         projectorPath: null,
         idleUnloadMs: 300000,
@@ -172,15 +175,15 @@ test("named KV contexts move between concurrent live slots and respect the disk 
       contextTokens: 1024,
     })),
   };
-  const runtime = new LlamaRuntime(() => config, home);
+  const runtime = new LlamaRuntime(() => runtimeConfig(config), home);
   t.after(async () => {
     await runtime.close();
     process.env.PATH = previous;
     await rm(home, { recursive: true, force: true });
   });
   const generate = (
-    slotID,
-    contextID,
+    slotID?: any,
+    contextID?: any,
     persistContext = true,
     contextEpoch = 0,
   ) =>
@@ -204,12 +207,12 @@ test("named KV contexts move between concurrent live slots and respect the disk 
     messages: [
       {
         messageID: "test",
-        role: "user",
+        role: "user" as const,
         content: "hello",
         attachments: [
           {
             name: "note",
-            mediaType: "text/plain",
+            mediaType: "text/plain" as const,
             dataBase64: Buffer.from("attachment").toString("base64"),
           },
         ],
@@ -218,7 +221,11 @@ test("named KV contexts move between concurrent live slots and respect the disk 
       },
     ],
     tools: [
-      { name: "inspect", description: "read", parameters: { type: "object" } },
+      {
+        name: "inspect",
+        description: "read",
+        parameters: { type: "object" as const },
+      },
     ],
     thinking: true,
     maxOutputTokens: 10,
@@ -231,7 +238,7 @@ test("named KV contexts move between concurrent live slots and respect the disk 
   const counted = (await readFile(log, "utf8"))
     .trim()
     .split("\n")
-    .map(JSON.parse);
+    .map((text: string) => JSON.parse(text));
   assert.ok(counted[0].template.messages[0].content.includes("attachment"));
   assert.equal(counted[0].template.tools[0].function.name, "inspect");
   assert.equal(counted[0].template.chat_template_kwargs.enable_thinking, true);
@@ -239,7 +246,7 @@ test("named KV contexts move between concurrent live slots and respect the disk 
   for (const [content, endpoint, status] of [
     ["template-error", "/apply-template", 500],
     ["tokenize-error", "/tokenize", 422],
-  ]) {
+  ] as Array<[string, string, number]>) {
     await assert.rejects(
       runtime.countTokens(
         {
@@ -248,7 +255,7 @@ test("named KV contexts move between concurrent live slots and respect the disk 
         },
         new AbortController().signal,
       ),
-      (error) =>
+      (error: any) =>
         error.name === "ContextPreparationError" &&
         error.message.includes(endpoint) &&
         error.message.includes(`HTTP ${status}`) &&
@@ -261,17 +268,38 @@ test("named KV contexts move between concurrent live slots and respect the disk 
   }
 
   const continuedInput = {
-    ...input, continueFinalMessage: true, thinking: false, tools: [],
-    messages: [...input.messages, { ...input.messages[0], role: "assistant", content: "unfinished prefix", attachments: [] }],
+    ...input,
+    continueFinalMessage: true,
+    thinking: false,
+    tools: [],
+    messages: [
+      ...input.messages,
+      {
+        ...input.messages[0],
+        role: "assistant" as const,
+        content: "unfinished prefix",
+        attachments: [],
+      },
+    ],
   };
   await runtime.countTokens(continuedInput, new AbortController().signal);
   await runtime.generate(continuedInput, new AbortController().signal);
-  const continuationEntries = (await readFile(log, "utf8")).trim().split("\n").map(JSON.parse);
-  const continuationTemplate = continuationEntries.filter(e => e.template).at(-1).template;
+  const continuationEntries = (await readFile(log, "utf8"))
+    .trim()
+    .split("\n")
+    .map((text: string) => JSON.parse(text));
+  const continuationTemplate = continuationEntries
+    .filter((e) => e.template)
+    .at(-1).template;
   assert.equal(continuationTemplate.continue_final_message, "content");
   assert.equal(continuationTemplate.add_generation_prompt, false);
-  assert.equal(continuationTemplate.messages.at(-1).content, "unfinished prefix");
-  const continuationRequest = continuationEntries.filter(e => e.start !== undefined).at(-1);
+  assert.equal(
+    continuationTemplate.messages.at(-1).content,
+    "unfinished prefix",
+  );
+  const continuationRequest = continuationEntries
+    .filter((e) => e.start !== undefined)
+    .at(-1);
   assert.equal(continuationRequest.continuation, "content");
   assert.equal(continuationRequest.generationPrompt, false);
 
@@ -279,14 +307,16 @@ test("named KV contexts move between concurrent live slots and respect the disk 
   assert.ok((await readFile(log, "utf8")).includes('"concurrent":2'));
   assert.ok(
     JSON.parse(
-      await readFile(path.join(home, "slots/q/alpha.json"), "utf8"),
+      (
+        await readFile(path.join(home, "slots/q/alpha.json"), "utf8")
+      ).toString(),
     ).filename.startsWith("alpha-"),
   );
   await generate("s2", "alpha");
   const entries = (await readFile(log, "utf8"))
     .trim()
     .split("\n")
-    .map(JSON.parse);
+    .map((text: string) => JSON.parse(text));
   assert.ok(
     entries.some(
       (e) =>
@@ -306,7 +336,7 @@ test("named KV contexts move between concurrent live slots and respect the disk 
   const takeover = (await readFile(log, "utf8"))
     .trim()
     .split("\n")
-    .map(JSON.parse)
+    .map((text: string) => JSON.parse(text))
     .slice(entries.length);
   assert.deepEqual(
     takeover.filter((e) => e.action).map((e) => e.action),
@@ -325,7 +355,7 @@ test("named KV contexts move between concurrent live slots and respect the disk 
   const resumed = (await readFile(log, "utf8"))
     .trim()
     .split("\n")
-    .map(JSON.parse)
+    .map((text: string) => JSON.parse(text))
     .slice(entries.length + takeover.length);
   assert.deepEqual(
     resumed.filter((e) => e.action).map((e) => e.action),
@@ -337,7 +367,7 @@ test("named KV contexts move between concurrent live slots and respect the disk 
   const epochEvents = (await readFile(log, "utf8"))
     .trim()
     .split("\n")
-    .map(JSON.parse)
+    .map((text: string) => JSON.parse(text))
     .slice(beforeEpoch);
   assert.deepEqual(
     epochEvents.filter((e) => e.action).map((e) => e.action),
@@ -347,7 +377,7 @@ test("named KV contexts move between concurrent live slots and respect the disk 
   const epochRestore = (await readFile(log, "utf8"))
     .trim()
     .split("\n")
-    .map(JSON.parse)
+    .map((text: string) => JSON.parse(text))
     .slice(beforeEpoch + epochEvents.length);
   assert.deepEqual(
     epochRestore.filter((e) => e.action).map((e) => e.action),

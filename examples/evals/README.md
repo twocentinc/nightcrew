@@ -7,8 +7,8 @@ Eval fixtures and TypeScript graders live alongside their agents:
   from current problems and cover priority incidents.
 
 Each directory contains `eval.json`, `eval.ts`, `grade.ts`, and `test.ts`.
-The supervisor also keeps deterministic inspector/exporter tests in `test.mjs`.
-Core eval runner tests stay in `test/evals.test.mjs`.
+The supervisor also keeps deterministic inspector/exporter tests in `inspect.test.ts`.
+Core eval runner tests stay in `test/evals.test.ts`.
 
 The model sees synthetic fixtures; executable tools are intercepted. Graders run
 after each case and leave semantic judgments marked for review. See the

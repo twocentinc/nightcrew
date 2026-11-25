@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { ownedProcessGuard } from "../dist/execution.js";
-const alive = (pid) => {
+const alive = (pid?: any) => {
   try {
     process.kill(pid, 0);
     return true;
@@ -14,7 +14,7 @@ const alive = (pid) => {
     return false;
   }
 };
-const until = async (fn) => {
+const until = async (fn?: any) => {
   for (let i = 0; i < 100; i++) {
     if (await fn()) return;
     await delay(50);
@@ -26,7 +26,7 @@ test(
   { timeout: 8000 },
   async (t) => {
     const home = await mkdtemp(path.join(tmpdir(), "nc-owned-"));
-    let guardPID, workerPID;
+    let guardPID: any, workerPID: any;
     const parent = spawn(
       process.execPath,
       [
@@ -78,15 +78,15 @@ test(
     t.after(() => {
       if (alive(child.pid))
         try {
-          process.kill(-child.pid, "SIGKILL");
+          process.kill(-child.pid!, "SIGKILL");
         } catch {}
     });
     let result = "";
-    child.stdout.on("data", (c) => (result += c));
-    const exited = new Promise((resolve) =>
+    child.stdout!.on("data", (c) => (result += c));
+    const exited = new Promise<any>((resolve) =>
       child.once("exit", (code, signal) => resolve({ code, signal })),
     );
-    child.stdin.end("complete hook payload");
+    child.stdin!.end("complete hook payload");
     assert.deepEqual(await exited, { code: 0, signal: null });
     assert.equal(result, "complete hook payload");
   },
@@ -115,7 +115,7 @@ test("shared runner preserves auxiliary skill pipe and bounds byte output", asyn
       `const fs=require('node:fs');let s='';process.stdin.on('data',c=>s+=c);process.stdin.on('end',()=>console.log(JSON.stringify({input:s,extra:fs.readFileSync(3,'utf8'),owner:process.env.NIGHTCREW_OWNER_FD??null})));`,
     ],
   });
-  assert.deepEqual(JSON.parse(result), {
+  assert.deepEqual(JSON.parse(result.toString()), {
     input: "payload",
     extra: "skills",
     owner: null,

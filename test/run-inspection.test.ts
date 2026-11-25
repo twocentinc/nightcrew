@@ -1,3 +1,4 @@
+import { settings } from "./fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -14,20 +15,25 @@ import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { Storage, initializeHome } from "../dist/storage.js";
 import { Service } from "../dist/service.js";
-import { manage } from "../dist/management.js";
+import { manage as rawmanage } from "../dist/management.js";
+const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
+  rawmanage;
 import { runSchema } from "../dist/contracts.js";
 import { startupLogs } from "../dist/startup.js";
 
-async function fixture(t) {
+async function fixture(t: import("node:test").TestContext) {
   const root = await mkdtemp(path.join(tmpdir(), "nc-inspect-"));
   const home = path.join(root, "home");
-  await initializeHome(home, {
-    host: "127.0.0.1",
-    port: 6970,
-    models: [],
-    slots: [],
-    hooks: [],
-  });
+  await initializeHome(
+    home,
+    settings.parse({
+      host: "127.0.0.1",
+      port: 6970,
+      models: [],
+      slots: [],
+      hooks: [],
+    }),
+  );
   const storage = new Storage(home);
   await storage.initialize();
   t.after(async () => {
@@ -47,7 +53,7 @@ async function fixture(t) {
       throw Error("Must not sample");
     },
   );
-  const makeRun = async (runID, state = "completed") => {
+  const makeRun = async (runID: string, state = "completed") => {
     const at = "2026-01-01T00:00:00.000Z";
     const messageID = randomUUID();
     const run = runSchema.parse({
@@ -80,12 +86,12 @@ async function fixture(t) {
       messages: [
         {
           messageID,
-          role: "user",
+          role: "user" as const,
           content: "hello world",
           attachments: [
             {
               name: "note.txt",
-              mediaType: "text/plain",
+              mediaType: "text/plain" as const,
               dataBase64: Buffer.from("attachment needle").toString("base64"),
             },
           ],
@@ -94,7 +100,13 @@ async function fixture(t) {
         },
       ],
       events: [
-        { sequence: 1, at, type: "message", segment: 0, data: { messageID } },
+        {
+          sequence: 1,
+          at,
+          type: "message" as const,
+          segment: 0,
+          data: { messageID },
+        },
         {
           sequence: 2,
           at,
@@ -117,7 +129,8 @@ test("run inspection pages are stable, filtered, replayable and query-bound", as
   await makeRun("a");
   await makeRun("b");
   await makeRun("c", "queued");
-  const list = (request) => manage(service, { command: "runs list", request });
+  const list = (request?: any) =>
+    manage(service, { command: "runs list", request });
   const first = await list({
     agentID: "reviewer",
     state: "completed",
@@ -160,7 +173,7 @@ test("run inspection pages are stable, filtered, replayable and query-bound", as
     request: { state: "queued" },
   });
   assert.deepEqual(
-    search.items.map((x) => x.runID),
+    search.items.map((x?: any) => x.runID),
     ["c"],
   );
   const result = await manage(service, {
@@ -211,7 +224,7 @@ test("exports preserve committed source, refuse overwrite, verify checksums and 
   const broken = await verify();
   assert.equal(broken.valid, false);
   assert.match(broken.errors[0], /Checksum mismatch/);
-  const invalid = JSON.parse(before);
+  const invalid = JSON.parse(before.toString());
   invalid.events[0].data.messageID = randomUUID();
   await writeFile(source, JSON.stringify(invalid));
   assert.equal(
@@ -252,17 +265,17 @@ test("log pagination is bounded, replayable, and rejects rotation or changed que
   await writeFile(log, "one\ntwo\nthree\n");
   const first = await startupLogs(root, 100, 2);
   assert.deepEqual(first.files[0].lines, ["one", "two"]);
-  const second = await startupLogs(root, 100, 2, first.nextCursor);
+  const second = await startupLogs(root, 100, 2, first.nextCursor!);
   assert.deepEqual(second.files[0].lines, ["three"]);
   assert.equal(second.nextCursor, null);
-  assert.deepEqual(second, await startupLogs(root, 100, 2, first.nextCursor));
+  assert.deepEqual(second, await startupLogs(root, 100, 2, first.nextCursor!));
   await assert.rejects(
-    startupLogs(root, 100, 1, first.nextCursor),
+    startupLogs(root, 100, 1, first.nextCursor!),
     /Logs or query changed/,
   );
   await writeFile(log, "replacement\n");
   await assert.rejects(
-    startupLogs(root, 100, 2, first.nextCursor),
+    startupLogs(root, 100, 2, first.nextCursor!),
     /Logs or query changed/,
   );
   await assert.rejects(startupLogs(root, 100, 0), /limit/);
@@ -278,8 +291,8 @@ test("idle scheduling does not reread archived transcripts", async (t) => {
     reads++;
     return original(...args);
   };
-  await service.reconcileCompactions();
-  await service.activatePending();
+  await service["reconcileCompactions"]();
+  await service["activatePending"]();
   assert.equal(reads, 0);
 });
 
@@ -289,6 +302,7 @@ test("pending work index survives reload and clears after cancellation", async (
   run.pendingInputs.push({
     message: { messageID: randomUUID(), content: "next", attachments: [] },
     source: null,
+    cancelled: false,
   });
   await storage.write(run);
   assert.ok(storage.pendingRunIDs.has(run.runID));
@@ -308,12 +322,12 @@ test("pending work index survives reload and clears after cancellation", async (
 test("a stalled read releases the serialization queue without accepting late results", async (t) => {
   const { boundedRead } = await import("../dist/storage.js");
   const { storage } = await fixture(t);
-  let finish,
+  let finish: any,
     committed = false;
   const stalled = storage.exclusive(async () => {
     await boundedRead(
       () =>
-        new Promise((resolve) => {
+        new Promise<any>((resolve) => {
           finish = resolve;
         }),
       20,
@@ -321,10 +335,10 @@ test("a stalled read releases the serialization queue without accepting late res
     committed = true;
   });
   const next = storage.exclusive(async () => "queue recovered");
-  await assert.rejects(stalled, (e) => e.code === "storage.readTimeout");
+  await assert.rejects(stalled, (e: any) => e.code === "storage.readTimeout");
   assert.equal(await next, "queue recovered");
   finish("late");
-  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise<any>((resolve) => setImmediate(resolve));
   assert.equal(committed, false);
   await storage.close();
 });
@@ -334,10 +348,10 @@ test(
   { timeout: 15000 },
   async (t) => {
     const { storage } = await fixture(t);
-    storage.readRun = () => new Promise(() => {});
+    storage["readRun"] = () => new Promise<any>(() => {});
     await assert.rejects(
       storage.exclusive(() => storage.read(randomUUID())),
-      (e) => e.code === "storage.readTimeout",
+      (e: any) => e.code === "storage.readTimeout",
     );
     assert.equal(await storage.exclusive(async () => true), true);
   },
@@ -352,13 +366,17 @@ test("durable replacement and exclusive claims preserve distinct semantics", asy
   await assert.rejects(claimJSON(file, { claimed: false }, 100), {
     code: "EEXIST",
   });
-  assert.deepEqual(JSON.parse(await readFile(file, "utf8")), { claimed: true });
+  assert.deepEqual(JSON.parse((await readFile(file, "utf8")).toString()), {
+    claimed: true,
+  });
   await atomicJSON(file, { revision: 2 }, 100);
   await assert.rejects(
     atomicJSON(file, { large: "x".repeat(200) }, 100),
     /resource_limit/,
   );
-  assert.deepEqual(JSON.parse(await readFile(file, "utf8")), { revision: 2 });
+  assert.deepEqual(JSON.parse((await readFile(file, "utf8")).toString()), {
+    revision: 2,
+  });
   assert.equal((await stat(file)).mode & 0o777, 0o600);
 });
 test("updating one run leaves other message ownership indexed and rejects collisions before writing", async (t) => {
@@ -368,7 +386,7 @@ test("updating one run leaves other message ownership indexed and rejects collis
   a.revision++;
   a.messages.push({ ...a.messages[0], messageID: randomUUID() });
   await storage.write(a);
-  assert.equal(storage.messages.get(b.messages[0].messageID).runID, b.runID);
+  assert.equal(storage.messages.get(b.messages[0].messageID)!.runID, b.runID);
   const bad = structuredClone(a);
   bad.messages[0].messageID = b.messages[0].messageID;
   await assert.rejects(storage.write(bad), /Duplicate message UUID/);
@@ -376,7 +394,7 @@ test("updating one run leaves other message ownership indexed and rejects collis
     (await storage.read(a.runID)).messages[0].messageID,
     a.messages[0].messageID,
   );
-  assert.equal(storage.messages.get(a.messages[1].messageID).runID, a.runID);
+  assert.equal(storage.messages.get(a.messages[1].messageID)!.runID, a.runID);
 });
 test("pagination shares one frozen snapshot across replayed cursors", async (t) => {
   const { service } = await fixture(t);
@@ -385,11 +403,11 @@ test("pagination shares one frozen snapshot across replayed cursors", async (t) 
     payload: "x".repeat(1024 * 1024),
   }));
   let calls = 0;
-  const first = await service.paginate("large", { limit: 1 }, () => {
+  const first = await service["paginate"]("large", { limit: 1 }, () => {
     calls++;
     return items;
   });
-  const second = await service.paginate(
+  const second = await service["paginate"](
     "large",
     { limit: 1, cursor: first.nextCursor },
     () => {
@@ -398,7 +416,7 @@ test("pagination shares one frozen snapshot across replayed cursors", async (t) 
   );
   items[1].id = 99;
   for (let i = 0; i < 20; i++) {
-    const page = await service.paginate(
+    const page = await service["paginate"](
       "large",
       { limit: 1, cursor: first.nextCursor },
       () => [],

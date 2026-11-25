@@ -10,8 +10,13 @@ import { control, parseCLI } from "../dist/cli.js";
 import { executeExternalTool, toolDefinitionSchema } from "../dist/registry.js";
 import { renderPlist } from "../dist/startup.js";
 const cli = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
-async function call(home, args, request, env = process.env) {
-  return new Promise((resolve, reject) => {
+async function call(
+  home: string,
+  args: string[],
+  request?: any,
+  env = process.env,
+) {
+  return new Promise<any>((resolve, reject) => {
     const child = spawn(
       process.execPath,
       [
@@ -52,7 +57,7 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
   await writeFile(weights, "fixture");
   const model = {
     modelID: "qwen",
-    kind: "chat",
+    kind: "chat" as const,
     weightsPath: weights,
     projectorPath: null,
     idleUnloadMs: 300000,
@@ -77,7 +82,7 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
     description: "read-only fixture",
     executablePath: process.execPath,
     argv: ["-e", "process.stdout.write(JSON.stringify({ok:true}))"],
-    parameters: { type: "object", additionalProperties: false },
+    parameters: { type: "object" as const, additionalProperties: false },
     timeoutMs: 1000,
   };
   assert.equal(
@@ -124,7 +129,7 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
     name: "timer",
     agentID: "reviewer",
     enabled: true,
-    schedule: { type: "interval", everyMs: 900000 },
+    schedule: { type: "interval" as const, everyMs: 900000 },
   };
   assert.equal(
     (await call(home, ["triggers", "create"], { trigger })).ok,
@@ -155,7 +160,8 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
   assert.equal(
     (
       await call(home, ["agents", "update", "reviewer"], {
-        expectedRevision: 1, changes: { enabled: false },
+        expectedRevision: 1,
+        changes: { enabled: false },
       })
     ).result.agent.enabled,
     false,
@@ -262,7 +268,7 @@ test("external tools validate input, isolate environment, bound timeout and retu
       'process.stdin.resume();process.stdin.on("end",()=>process.stdout.write(JSON.stringify({secret:process.env.PASSWORD??null,ok:true})));',
     ],
     parameters: {
-      type: "object",
+      type: "object" as const,
       properties: { query: { type: "string" } },
       required: ["query"],
       additionalProperties: false,
@@ -295,11 +301,11 @@ test("external tools validate input, isolate environment, bound timeout and retu
 });
 test("CLI-only daemon serves local CRUD without an HTTP listener and shuts down cleanly", async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "nightcrew-daemon-"));
-  let child;
+  let child: any;
   t.after(async () => {
     if (child?.exitCode === null) {
       child.kill("SIGTERM");
-      await new Promise((resolve) => child.once("exit", resolve));
+      await new Promise<any>((resolve) => child.once("exit", resolve));
     }
     await rm(home, { recursive: true, force: true });
   });
@@ -315,16 +321,19 @@ test("CLI-only daemon serves local CRUD without an HTTP listener and shuts down 
   };
   const net = await import("node:net");
   const probe = net.createServer();
-  await new Promise((resolve) => probe.listen(0, "127.0.0.1", resolve));
-  const port = probe.address().port;
-  await new Promise((resolve) => probe.close(resolve));
-  assert.equal((await call(home, ["init"], { port, httpEnabled: false }, env)).ok, true);
+  await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+  const port = (probe.address() as import("node:net").AddressInfo).port;
+  await new Promise<any>((resolve) => probe.close(resolve));
+  assert.equal(
+    (await call(home, ["init"], { port, httpEnabled: false }, env)).ok,
+    true,
+  );
   child = spawn(process.execPath, [cli, "daemon", "run", "--home", home], {
     env,
     stdio: "ignore",
   });
-  const exit = new Promise((resolve) => child.once("exit", resolve));
-  let status;
+  const exit = new Promise<any>((resolve) => child.once("exit", resolve));
+  let status: any;
   for (let i = 0; i < 100; i++) {
     try {
       status = await control(home, { command: "status" }, 1000);
@@ -335,20 +344,25 @@ test("CLI-only daemon serves local CRUD without an HTTP listener and shuts down 
   assert.equal(status.pid, child.pid);
   const config = await call(home, ["config", "get"], undefined, env);
   assert.equal(config.result.config.httpEnabled, false);
-  const updated = await call(home, ["config", "update"], {
-    expectedRevision: config.result.config.revision,
-    changes: {httpEnabled: true},
-  }, env);
+  const updated = await call(
+    home,
+    ["config", "update"],
+    {
+      expectedRevision: config.result.config.revision,
+      changes: { httpEnabled: true },
+    },
+    env,
+  );
   assert.equal(updated.ok, true);
   assert.equal(updated.result.restartRequired, true);
   // A config edit alone must not open the listener before restart.
 
   // Binding the configured port proves that CLI-only startup opened no TCP listener.
-  await new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     probe.once("error", reject);
     probe.listen(port, "127.0.0.1", resolve);
   });
-  await new Promise((resolve) => probe.close(resolve));
+  await new Promise<any>((resolve) => probe.close(resolve));
   const overview = await call(home, ["status", "--details"], undefined, env);
   assert.equal(overview.ok, true);
   assert.ok(overview.result.scheduler);
@@ -398,7 +412,10 @@ test("CLI-only daemon serves local CRUD without an HTTP listener and shuts down 
       await call(
         home,
         ["config", "update"],
-        { expectedRevision: updated.result.config.revision, changes: { interactionCooldownMs: 1000 } },
+        {
+          expectedRevision: updated.result.config.revision,
+          changes: { interactionCooldownMs: 1000 },
+        },
         env,
       )
     ).ok,
@@ -456,14 +473,14 @@ test("executable-only tools preserve structured JSON input and reject adapter fi
       'let s="";process.stdin.on("data",x=>s+=x);process.stdin.on("end",()=>process.stdout.write(JSON.stringify(JSON.parse(s))));',
     ],
     parameters: {
-      type: "object",
+      type: "object" as const,
       properties: {
-        count: { type: "integer" },
-        enabled: { type: "boolean" },
-        tags: { type: "array", items: { type: "string" } },
+        count: { type: "integer" as const },
+        enabled: { type: "boolean" as const },
+        tags: { type: "array" as const, items: { type: "string" } },
         filter: {
-          type: "object",
-          properties: { nested: { type: "number" } },
+          type: "object" as const,
+          properties: { nested: { type: "number" as const } },
           required: ["nested"],
           additionalProperties: false,
         },
@@ -523,7 +540,7 @@ test("executable-only tools preserve structured JSON input and reject adapter fi
     toolID: "old_history",
     description: "history",
     adapter: "runs_list",
-    parameters: { type: "object" },
+    parameters: { type: "object" as const },
   });
   assert.ok(legacy.executablePath);
   assert.equal("adapter" in legacy, false);
@@ -542,8 +559,10 @@ test("tool JSON parameters reach Nightcrew CLI through --request -", async (t) =
     executablePath: process.execPath,
     argv: [cli, "runs", "list", "--home", home, "--request", "-"],
     parameters: {
-      type: "object",
-      properties: { limit: { type: "integer", minimum: 1, maximum: 100 } },
+      type: "object" as const,
+      properties: {
+        limit: { type: "integer" as const, minimum: 1, maximum: 100 },
+      },
       required: ["limit"],
       additionalProperties: false,
     },
@@ -590,19 +609,19 @@ test("argv placeholders preserve boundaries and typed stdin without shell evalua
       "%object%",
     ],
     parameters: {
-      type: "object",
+      type: "object" as const,
       properties: {
         position: { type: "string" },
-        limit: { type: "integer", default: 7 },
-        enabled: { type: "boolean" },
+        limit: { type: "integer" as const, default: 7 },
+        enabled: { type: "boolean" as const },
         filter: {
-          type: "object",
+          type: "object" as const,
           properties: { owner: { type: "string" } },
           required: ["owner"],
         },
-        items: { type: "array", items: { type: "string" } },
-        nothing: { type: "null" },
-        object: { type: "object" },
+        items: { type: "array" as const, items: { type: "string" } },
+        nothing: { type: "null" as const },
+        object: { type: "object" as const },
       },
       required: ["position", "enabled", "filter", "items", "nothing", "object"],
       additionalProperties: false,
@@ -671,7 +690,7 @@ test("tool schema edits invalidate cached argument validation", async () => {
     argv: ["-e", `process.stdin.pipe(process.stdout)`],
     timeoutMs: 5000,
     parameters: {
-      type: "object",
+      type: "object" as const,
       properties: { value: { type: "string" } },
       required: ["value"],
       additionalProperties: false,

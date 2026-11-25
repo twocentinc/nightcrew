@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S node --experimental-strip-types
 import {
   readFile,
   readdir,
@@ -12,20 +12,21 @@ import { promisify } from "node:util";
 import { homedir } from "node:os";
 import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 const ID = /^[a-zA-Z0-9_-]{1,128}$/;
 const homeDefault = () =>
   process.env.NIGHTCREW_HOME ?? path.join(homedir(), ".nightcrew");
-async function json(file) {
+async function json(file: string) {
   const st = await lstat(file);
   if (!st.isFile() || st.isSymbolicLink() || st.size > 50 * 1024 * 1024)
     throw Error("Unsafe or oversized state file");
   return JSON.parse(await readFile(file, "utf8"));
 }
-const terminal = (state) =>
+const terminal = (state?: any) =>
   ["completed", "failed", "timedOut", "cancelled"].includes(state);
 // Public CLI outcomes are authoritative; this example only adds operational metrics.
-async function call(home, args) {
+async function call(home: string, args: string[]) {
   const { stdout } = await promisify(execFile)(
     "nightcrew",
     [...args, "--home", home],
@@ -38,7 +39,7 @@ async function call(home, args) {
   if (!result.ok) throw Error("Nightcrew inspection failed");
   return result.result;
 }
-async function outcomes(home) {
+async function outcomes(home: string) {
   const runs = new Map();
   let cursor;
   do {
@@ -54,7 +55,7 @@ async function outcomes(home) {
   } while (cursor);
   return runs;
 }
-function recentProblem(r, outcome, since) {
+function recentProblem(r?: any, outcome?: any, since?: any) {
   if (!outcome) return false;
   const bad =
     ["failed", "timedOut"].includes(outcome.execution) ||
@@ -64,7 +65,7 @@ function recentProblem(r, outcome, since) {
     (r.held && !terminal(r.state));
   if (!bad) return false;
   // Capability refreshes and old reviewer notes do not create new incidents.
-  const relevant = (r.events ?? []).filter((e) =>
+  const relevant = (r.events ?? []).filter((e?: any) =>
     ["failed", "timedOut", "outputValidation", "hookResult", "held"].includes(
       e.type,
     ),
@@ -72,14 +73,14 @@ function recentProblem(r, outcome, since) {
   return (
     Math.max(
       Date.parse(r.createdAt),
-      ...relevant.map((e) => Date.parse(e.at)).filter(Number.isFinite),
+      ...relevant.map((e?: any) => Date.parse(e.at)).filter(Number.isFinite),
     ) >= since
   );
 }
-function priorityIssues(snapshot) {
+function priorityIssues(snapshot?: any) {
   return snapshot.priorityIssues ?? [];
 }
-function coverage(snapshot) {
+function coverage(snapshot?: any) {
   return {
     priorityIssues: priorityIssues(snapshot),
     summaryRunsRead: Object.keys(snapshot.examined).length,
@@ -91,7 +92,7 @@ function coverage(snapshot) {
     detailedRunsRead: Object.keys(snapshot.detailsExamined ?? {}).length,
   };
 }
-async function saveSnapshot(file, snapshot) {
+async function saveSnapshot(file: string, snapshot?: any) {
   const temporary = file + "." + randomUUID() + ".tmp";
   await writeFile(temporary, JSON.stringify(snapshot), {
     flag: "wx",
@@ -99,7 +100,7 @@ async function saveSnapshot(file, snapshot) {
   });
   await rename(temporary, file);
 }
-async function project(r, home, summary) {
+async function project(r: any, home: string, summary?: any) {
   if (!summary || summary.revision !== r.revision)
     throw Error(
       "Run changed during inspection; retry with a new review snapshot",
@@ -114,7 +115,7 @@ async function project(r, home, summary) {
   }
   return metrics(r, parent, summary.outcome);
 }
-export function metrics(r, parent, outcome) {
+export function metrics(r?: any, parent?: any, outcome?: any) {
   if (!outcome) throw Error("Canonical run outcome is required");
   const groups = new Map();
   for (const m of r.messages ?? [])
@@ -132,8 +133,8 @@ export function metrics(r, parent, outcome) {
   const events = r.events ?? [];
   const repeated = [...groups.values()].filter((g) => g.count > 1);
   const toolErrors = (r.messages ?? [])
-    .filter((m) => m.role === "tool")
-    .filter((m) => {
+    .filter((m?: any) => m.role === "tool")
+    .filter((m?: any) => {
       try {
         const v = JSON.parse(m.content);
         return v.ok === false || !!v.error;
@@ -143,7 +144,7 @@ export function metrics(r, parent, outcome) {
     }).length;
   const qualityFlags = [];
   const lastReview = (r.reviews ?? [])
-    .filter((review) => review.segment === (r.segment ?? 0))
+    .filter((review?: any) => review.segment === (r.segment ?? 0))
     .at(-1);
   if (["open", "acknowledged"].includes(outcome.review))
     qualityFlags.push("review_requested");
@@ -181,7 +182,7 @@ export function metrics(r, parent, outcome) {
       "Canonical Nightcrew run outcome; external delivery is not independently verified.",
   };
   const validation = (r.validations ?? [])
-    .filter((v) => v.segment === (r.segment ?? 0))
+    .filter((v?: any) => v.segment === (r.segment ?? 0))
     .at(-1);
   return {
     outcome,
@@ -199,10 +200,11 @@ export function metrics(r, parent, outcome) {
       parent: parentState,
     },
     historical: {
-      hookFailures: (r.hookReceipts ?? []).filter((h) => h.status === "failed")
-        .length,
+      hookFailures: (r.hookReceipts ?? []).filter(
+        (h?: any) => h.status === "failed",
+      ).length,
       validationFailures: (r.validations ?? []).filter(
-        (v) => v.status === "failed",
+        (v?: any) => v.status === "failed",
       ).length,
       retainedError: r.error ?? null,
       note: "Past evidence, not current failure status. Later successful retries or terminal parent states supersede earlier status claims.",
@@ -247,14 +249,14 @@ export function metrics(r, parent, outcome) {
     ),
     attempts: (r.attempts ?? []).length,
     unsuccessfulAttempts: (r.attempts ?? []).filter(
-      (a) => a.status !== "completed" && a.status !== "running",
+      (a?: any) => a.status !== "completed" && a.status !== "running",
     ).length,
     toolCalls: [...groups.values()].reduce((n, g) => n + g.count, 0),
     toolErrors,
     repeatedCalls: repeated.slice(0, 10),
     repeatedGroupsOmitted: Math.max(0, repeated.length - 10),
     compactions: (r.compactions ?? []).length,
-    compactionRetries: events.filter((e) => e.type === "compactionRetry")
+    compactionRetries: events.filter((e?: any) => e.type === "compactionRetry")
       .length,
     resultCharacters: r.result?.length ?? 0,
     modelID: r.agent.modelID,
@@ -263,13 +265,13 @@ export function metrics(r, parent, outcome) {
   };
 }
 export async function inspect(
-  input,
+  input?: any,
   {
     home = homeDefault(),
     runID = process.env.NIGHTCREW_RUN_ID,
     now = Date.now(),
     readOutcomes = outcomes,
-    readOutcome = async (home, id) =>
+    readOutcome = async (home: string, id: string) =>
       (await call(home, ["runs", "get", id])).run,
   } = {},
 ) {
@@ -292,13 +294,18 @@ export async function inspect(
   let snapshot;
   try {
     snapshot = await json(file);
-  } catch (e) {
-    if (e.code !== "ENOENT") throw e;
-    let previous = { revisions: {} };
+  } catch (e: unknown) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+    let previous: {
+      revisions: Record<string, number>;
+      baselineAt?: string;
+      completedAt?: string;
+      report?: string;
+    } = { revisions: {} };
     try {
       previous = await json(path.join(directory, "checkpoint.json"));
-    } catch (e) {
-      if (e.code !== "ENOENT") throw e;
+    } catch (e: unknown) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     }
     const baselineAt =
       previous.baselineAt ?? new Date(now - 86400000).toISOString();
@@ -343,7 +350,7 @@ export async function inspect(
             delivery: item.outcome.delivery,
             reasons: item.outcome.reasons
               .slice(0, 3)
-              .map((x) => x.slice(0, 300)),
+              .map((x?: any) => x.slice(0, 300)),
             parent: item.current.parent,
           });
         items.push(item);
@@ -417,7 +424,7 @@ export async function inspect(
       complete: input.page + 1 >= totalPages,
     };
   }
-  if (!snapshot.items.some((r) => r.runID === input.runID))
+  if (!snapshot.items.some((r?: any) => r.runID === input.runID))
     throw Error("Run is outside this review snapshot");
   const r = await json(path.join(home, "runs", input.runID, "state.json"));
   const projected = await project(r, home, await readOutcome(home, r.runID));
@@ -427,16 +434,21 @@ export async function inspect(
   return {
     ...projected,
     coverage: coverage(snapshot),
-    snapshotRevision: snapshot.items.find((x) => x.runID === input.runID)
+    snapshotRevision: snapshot.items.find((x?: any) => x.runID === input.runID)
       .revision,
     reviews: (r.reviews ?? [])
       .slice(-2)
-      .map(({ status, note, at, segment }) => ({ status, note, at, segment })),
+      .map(({ status, note, at, segment }: any) => ({
+        status,
+        note,
+        at,
+        segment,
+      })),
     reportExcerpt:
       typeof r.result === "string" ? r.result.slice(0, 4000) : null,
     reportTruncated: (r.result?.length ?? 0) > 4000,
     historicalFailureEvents: (r.events ?? [])
-      .filter((e) =>
+      .filter((e?: any) =>
         ["compactionRetry", "failed", "timedOut", "recovery"].includes(e.type),
       )
       .slice(-6),
@@ -446,7 +458,7 @@ export async function inspect(
 }
 if (
   process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
+  import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href
 ) {
   try {
     let input = "";
@@ -457,7 +469,12 @@ if (
     console.log(
       JSON.stringify({ ok: true, result: await inspect(JSON.parse(input)) }),
     );
-  } catch (e) {
-    console.log(JSON.stringify({ ok: false, error: { message: e.message } }));
+  } catch (e: unknown) {
+    console.log(
+      JSON.stringify({
+        ok: false,
+        error: { message: e instanceof Error ? e.message : String(e) },
+      }),
+    );
   }
 }

@@ -108,3 +108,14 @@ work when a client disconnects, times out or receives a signal. Finite commands
 emit one envelope; tails emit JSONL batches. Preserve accepted IDs on observation
 errors. Transcript tails advance by committed event sequence; log tails follow
 byte offsets and inodes without deduplicating identical lines by their text.
+
+
+Repository-owned executable source, scripts, tests, and example helpers must use
+TypeScript (`.ts`), never `.mjs`. Run standalone TypeScript with Node's
+`--experimental-strip-types` flag on the minimum supported Node version.
+Dependencies, generated `dist/`, and historical Git contents are outside this rule.
+`test/contracts.test.ts` enforces the source-file ban and verifies immutable
+contract snapshots; `scripts/contracts.ts --update` remains the explicit updater.
+`test/package.test.ts` is opt-in through `npm run test:package`; ordinary tests
+must not perform package installation. Keep strict type checks for tests and
+scripts in `tsconfig.tests.json`, alongside the core source check.

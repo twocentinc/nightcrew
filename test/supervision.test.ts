@@ -1,3 +1,4 @@
+import { settings, agentDraft, compactionFixture } from "./fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
@@ -7,8 +8,16 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { Storage, initializeHome } from "../dist/storage.js";
 import { Service } from "../dist/service.js";
-import { manage } from "../dist/management.js";
-import { operations, callOperation } from "../dist/operations.js";
+import { manage as rawmanage } from "../dist/management.js";
+const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
+  rawmanage;
+import {
+  operations,
+  callOperation as rawcallOperation,
+} from "../dist/operations.js";
+const callOperation: (
+  ...args: Parameters<typeof rawcallOperation>
+) => Promise<any> = rawcallOperation;
 import { runOutcome, loopProblem } from "../dist/supervision.js";
 import {
   validateSummaryEvidence,
@@ -21,17 +30,17 @@ const input = () => ({
 });
 const validation = {
   validator: {
-    type: "json-schema",
+    type: "json-schema" as const,
     schema: {
-      type: "object",
-      properties: { answer: { type: "number" } },
+      type: "object" as const,
+      properties: { answer: { type: "number" as const } },
       required: ["answer"],
       additionalProperties: false,
     },
   },
   repairAttempts: 1,
 };
-async function until(fn) {
+async function until(fn?: any) {
   for (let i = 0; i < 500; i++) {
     const value = await fn();
     if (value) return value;
@@ -39,47 +48,63 @@ async function until(fn) {
   }
   throw Error("timeout");
 }
-async function fixture(t, generate, extra = {}, hooks = []) {
+async function fixture(
+  t: import("node:test").TestContext,
+  generate?: any,
+  extra = {},
+  hooks: any[] = [],
+) {
   const home = await mkdtemp(path.join(tmpdir(), "nc-supervision-"));
-  await initializeHome(home, {
-    host: "127.0.0.1",
-    port: 6970,
-    interactionCooldownMs: 0,
-    models: [
-      {
-        modelID: "q",
-        kind: "chat",
-        weightsPath: "/unused",
-        projectorPath: null,
-        idleUnloadMs: 0,
-      },
-    ],
-    slots: [
-      {
-        slotID: "instant",
-        modelID: "q",
-        index: 0,
-        contextTokens: 4096,
-        instant: true,
-      },
-    ],
-    hooks,
-  });
-  const calls = [];
+  await initializeHome(
+    home,
+    settings.parse({
+      host: "127.0.0.1",
+      port: 6970,
+      interactionCooldownMs: 0,
+      models: [
+        {
+          modelID: "q",
+          kind: "chat" as const,
+          weightsPath: "/unused",
+          projectorPath: null,
+          idleUnloadMs: 0,
+        },
+      ],
+      slots: [
+        {
+          slotID: "instant",
+          modelID: "q",
+          index: 0,
+          contextTokens: 4096,
+          instant: true,
+        },
+      ],
+      hooks,
+    }),
+  );
+  const calls: any[] = [];
   const runtime = {
     status: () => [],
     close: async () => {},
-    generate: async (request, signal, onDelta, onEvidence) => {
+    generate: async (
+      request?: any,
+      signal?: any,
+      onDelta?: any,
+      onEvidence?: any,
+    ) => {
       calls.push(request);
       return {
         text: "done",
         toolCalls: [],
         usage: { inputTokens: 1, outputTokens: 1 },
-        ...(await generate(request, calls.length, signal, { onDelta, onEvidence })),
+        ...(await generate(request, calls.length, signal, {
+          onDelta,
+          onEvidence,
+        })),
       };
     },
   };
-  let service;
+  let service!: Service;
   const start = async () => {
     service = new Service(new Storage(home), runtime, async () => ({
       state: "away",
@@ -95,21 +120,23 @@ async function fixture(t, generate, extra = {}, hooks = []) {
     await service.close();
     await rm(home, { recursive: true, force: true });
   });
-  await service.createAgent({
-    agentID: "worker",
-    name: "worker",
-    systemPrompt: "Return the requested result.",
-    mode: "single-turn",
-    modelID: "q",
-    slotID: "instant",
-    skillIDs: [],
-    toolIDs: [],
-    enabled: true,
-    timeoutMs: 30000,
-    thinking: false,
-    maxOutputTokens: 128,
-    ...extra,
-  });
+  await service.createAgent(
+    agentDraft.parse({
+      agentID: "worker",
+      name: "worker",
+      systemPrompt: "Return the requested result.",
+      mode: "single-turn",
+      modelID: "q",
+      slotID: "instant",
+      skillIDs: [],
+      toolIDs: [],
+      enabled: true,
+      timeoutMs: 30000,
+      thinking: false,
+      maxOutputTokens: 128,
+      ...extra,
+    }),
+  );
   const submit = async () => {
     const a = await service.submit("worker", input());
     return until(async () => {
@@ -133,24 +160,29 @@ async function fixture(t, generate, extra = {}, hooks = []) {
 test("output repair preserves original answer, disables tools and thinking, persists verdicts", async (t) => {
   const f = await fixture(
     t,
-    async (_, n) => ({ text: n === 1 ? "bad JSON" : '{"answer":42}' }),
+    async (_?: any, n?: any) => ({
+      text: n === 1 ? "bad JSON" : '{"answer":42}',
+    }),
     { outputValidation: validation },
   );
   const r = await f.submit();
   assert.equal(r.state, "completed");
   assert.equal(r.result, '{"answer":42}');
   assert.equal(
-    r.messages.filter((m) => m.role === "assistant")[0].content,
+    r.messages.filter((m?: any) => m.role === "assistant")[0].content,
     "bad JSON",
   );
   assert.deepEqual(
-    r.validations.map((v) => v.status),
+    r.validations.map((v?: any) => v.status),
     ["failed", "passed"],
   );
   assert.equal(f.calls.length, 2);
   for (const call of f.calls) {
     assert.equal(call.messages[0].role, "system");
-    assert.equal(call.messages.filter((m) => m.role === "system").length, 1);
+    assert.equal(
+      call.messages.filter((m?: any) => m.role === "system").length,
+      1,
+    );
     assert.match(call.messages[0].content, /Final output must be JSON/);
   }
   assert.equal(f.calls[1].thinking, false);
@@ -205,7 +237,7 @@ test("unconfigured output is unverified and ordinary hooks are not deliveries", 
   const r = await f.submit();
   const settled = await until(async () => {
     const x = await f.service.run(r.runID);
-    return x.hookReceipts.some((h) => h.status === "failed") && x;
+    return x.hookReceipts.some((h?: any) => h.status === "failed") && x;
   });
   const o = runOutcome(settled);
   assert.equal(o.output, "notConfigured");
@@ -230,7 +262,7 @@ test("validator hook verdicts use bounded repair; hook process failures do not r
       changes: {
         outputValidation: {
           validator: {
-            type: "hook",
+            type: "hook" as const,
             executablePath: executable,
             argv: [],
             timeoutMs: 1000,
@@ -251,7 +283,7 @@ test("validator hook verdicts use bounded repair; hook process failures do not r
       changes: {
         outputValidation: {
           validator: {
-            type: "hook",
+            type: "hook" as const,
             executablePath: "/not-installed",
             argv: [],
             timeoutMs: 100,
@@ -269,7 +301,7 @@ test("validator hook verdicts use bounded repair; hook process failures do not r
 test("loop errors get one recovery opportunity then tool-free finalization with failure evidence", async (t) => {
   const f = await fixture(
     t,
-    async (request, n) =>
+    async (request?: any, n?: any) =>
       request.tools.length
         ? {
             text: "",
@@ -291,12 +323,12 @@ test("loop errors get one recovery opportunity then tool-free finalization with 
   assert.match(f.calls[2].messages.at(-1).content, /recovery opportunity/);
   assert.deepEqual(f.calls[3].tools, []);
   assert.equal(runOutcome(r).needsReview, true);
-  assert.equal(r.messages.filter((m) => m.role === "tool").length, 3);
+  assert.equal(r.messages.filter((m?: any) => m.role === "tool").length, 3);
 });
 test("persistent follow-up gets its own repair budget and retains old evidence", async (t) => {
   const f = await fixture(
     t,
-    async (_, n) => ({ text: n % 2 ? "invalid" : '{"answer":1}' }),
+    async (_?: any, n?: any) => ({ text: n % 2 ? "invalid" : '{"answer":1}' }),
     { outputValidation: validation, contextMode: "persistent" },
   );
   const first = await f.submit();
@@ -319,14 +351,19 @@ test("compaction guard rejects invented quantities and evidence IDs, retains unc
   };
   validateSummaryEvidence(
     "Unverified hypothesis; 215 of 238 scanned rows approved. Rent 1800 USD/month. evidence-abc123. Still need a comparison group.",
-    request,
+    compactionFixture(request),
   );
   assert.throws(
-    () => validateSummaryEvidence("98% approved (215/217)", request),
+    () =>
+      validateSummaryEvidence(
+        "98% approved (215/217)",
+        compactionFixture(request),
+      ),
     /unsupported numeric/,
   );
   assert.throws(
-    () => validateSummaryEvidence("evidence-deadbeef", request),
+    () =>
+      validateSummaryEvidence("evidence-deadbeef", compactionFixture(request)),
     /unknown evidence/,
   );
   assert.match(compactionInstructions, /unverified hypotheses/);
@@ -337,7 +374,7 @@ test("compaction guard rejects invented quantities and evidence IDs, retains unc
 test("unchanged successful calls stop after the single recovery opportunity", async (t) => {
   const f = await fixture(
     t,
-    async (request) =>
+    async (request?: any) =>
       request.tools.length
         ? {
             text: "",
@@ -355,7 +392,7 @@ test("unchanged successful calls stop after the single recovery opportunity", as
   const r = await f.submit();
   assert.equal(f.calls.length, 5);
   assert.equal(r.recovery.finalizing, true);
-  assert.equal(r.messages.filter((m) => m.role === "tool").length, 4);
+  assert.equal(r.messages.filter((m?: any) => m.role === "tool").length, 4);
 });
 
 test("review notes resolve attention without changing evidence and reopen on new failures", async (t) => {
@@ -552,7 +589,7 @@ test("unknown hooks require explicit acceptance and pending attempts become unkn
 });
 
 test("failed runs retry in place with a new segment and preserved failure evidence", async (t) => {
-  const f = await fixture(t, async (_, n) => {
+  const f = await fixture(t, async (_?: any, n?: any) => {
     if (n === 1) throw Error("fixture generation failure");
     return { text: "recovered" };
   });
@@ -588,93 +625,151 @@ test("failed runs retry in place with a new segment and preserved failure eviden
   );
   assert.deepEqual(done.events.slice(0, failed.events.length), failed.events);
   assert.equal(
-    done.messages.filter((m) => m.messageID === request.messageID).length,
+    done.messages.filter((m?: any) => m.messageID === request.messageID).length,
     1,
   );
   assert.equal(dry.runID, done.runID);
 });
 
 test("output-limit chunks form one validated JSON answer and remain inspectable", async (t) => {
-  const f = await fixture(t, async (request, n) => {
-    assert.equal(request.continueOnOutputLimit, true);
-    if (n === 1) return { text: '{"answer":', outputLimitReached: true };
-    assert.equal(request.continueFinalMessage, true);
-    assert.equal(request.messages.at(-1).role, "assistant");
-    assert.equal(request.messages.at(-1).content, '{"answer":');
-    assert.deepEqual(request.tools, []);
-    return { text: '42}' };
-  }, { outputValidation: validation });
+  const f = await fixture(
+    t,
+    async (request?: any, n?: any) => {
+      assert.equal(request.continueOnOutputLimit, true);
+      if (n === 1) return { text: '{"answer":', outputLimitReached: true };
+      assert.equal(request.continueFinalMessage, true);
+      assert.equal(request.messages.at(-1).role, "assistant");
+      assert.equal(request.messages.at(-1).content, '{"answer":');
+      assert.deepEqual(request.tools, []);
+      return { text: "42}" };
+    },
+    { outputValidation: validation },
+  );
   const r = await f.submit();
-  assert.equal(r.state, 'completed');
+  assert.equal(r.state, "completed");
   assert.equal(r.result, '{"answer":42}');
   assert.equal(r.validations.length, 1);
-  assert.equal(r.validations[0].status, 'passed');
-  assert.equal(r.messages.filter(m => m.role === 'assistant').length, 1);
-  assert.equal(r.attempts[0].reason, 'output_limit');
+  assert.equal(r.validations[0].status, "passed");
+  assert.equal(
+    r.messages.filter((m?: any) => m.role === "assistant").length,
+    1,
+  );
+  assert.equal(r.attempts[0].reason, "output_limit");
   assert.equal(r.attempts[0].text, '{"answer":');
   assert.equal(r.attempts[0].messageID, r.messages.at(-1).messageID);
-  const { verifyRun } = await import('../dist/runArtifacts.js');
+  const { verifyRun } = await import("../dist/runArtifacts.js");
   assert.equal((await verifyRun(f.service, r.runID)).valid, true);
 });
 
 test("multiple output chunks survive an interrupted continuation and daemon restart", async (t) => {
-  const f = await fixture(t, async (request, n, signal) => {
-    if (n === 1) return { text: 'first ', outputLimitReached: true };
-    if (n === 2) return { text: 'second ', outputLimitReached: true };
+  const f = await fixture(t, async (request?: any, n?: any, signal?: any) => {
+    if (n === 1) return { text: "first ", outputLimitReached: true };
+    if (n === 2) return { text: "second ", outputLimitReached: true };
     if (n === 3) {
-      await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
-      throw Error('interrupted');
+      await new Promise<any>((resolve) =>
+        signal.addEventListener("abort", resolve, { once: true }),
+      );
+      throw Error("interrupted");
     }
-    assert.equal(request.messages.at(-1).content, 'first second ');
-    return { text: 'last' };
+    assert.equal(request.messages.at(-1).content, "first second ");
+    return { text: "last" };
   });
-  const accepted = await f.service.submit('worker', input());
+  const accepted = await f.service.submit("worker", input());
   await until(() => f.calls.length === 3);
   await f.restart();
   const r = await until(async () => {
     const r = await f.service.run(accepted.runID);
-    return r.state === 'completed' && r;
+    return r.state === "completed" && r;
   });
-  assert.equal(r.result, 'first second last');
-  assert.equal(r.attempts.filter(a => a.reason === 'output_limit').length, 2);
-  assert.equal(r.messages.filter(m => m.role === 'assistant').length, 1);
+  assert.equal(r.result, "first second last");
+  assert.equal(
+    r.attempts.filter((a?: any) => a.reason === "output_limit").length,
+    2,
+  );
+  assert.equal(
+    r.messages.filter((m?: any) => m.role === "assistant").length,
+    1,
+  );
 });
 
 test("truncated tool calls are regenerated, never executed as fragments", async (t) => {
-  const f = await fixture(t, async (request, n, signal, evidence) => {
-    if (n === 1) {
-      evidence.onEvidence({ reasoningContent: '', toolCalls: [{ index: 0, callID: 'partial', name: 'runs_list', arguments: '{"limit":' }] });
-      return { text: '', outputLimitReached: true };
-    }
-    if (n === 2) {
-      assert.equal(request.messages.filter(m => m.role === 'tool').length, 0);
-      assert.match(request.messages.at(-1).content, /NOT executed/);
-      assert(request.tools.some(t => t.name === 'runs_list'));
-      return { text: '', toolCalls: [{ callID: 'complete', name: 'runs_list', arguments: '{"limit":1}' }] };
-    }
-    return { text: 'done' };
-  }, { mode: 'agent-loop', toolIDs: ['runs_list'] });
+  const f = await fixture(
+    t,
+    async (request?: any, n?: any, signal?: any, evidence?: any) => {
+      if (n === 1) {
+        evidence.onEvidence({
+          reasoningContent: "",
+          toolCalls: [
+            {
+              index: 0,
+              callID: "partial",
+              name: "runs_list",
+              arguments: '{"limit":',
+            },
+          ],
+        });
+        return { text: "", outputLimitReached: true };
+      }
+      if (n === 2) {
+        assert.equal(
+          request.messages.filter((m?: any) => m.role === "tool").length,
+          0,
+        );
+        assert.match(request.messages.at(-1).content, /NOT executed/);
+        assert(
+          request.tools.some(
+            (t: import("node:test").TestContext) => t.name === "runs_list",
+          ),
+        );
+        return {
+          text: "",
+          toolCalls: [
+            { callID: "complete", name: "runs_list", arguments: '{"limit":1}' },
+          ],
+        };
+      }
+      return { text: "done" };
+    },
+    { mode: "agent-loop", toolIDs: ["runs_list"] },
+  );
   const r = await f.submit();
-  assert.equal(r.state, 'completed');
-  assert.deepEqual(r.messages.filter(m => m.role === 'tool').map(m => m.toolCallID), ['complete']);
+  assert.equal(r.state, "completed");
+  assert.deepEqual(
+    r.messages
+      .filter((m?: any) => m.role === "tool")
+      .map((m?: any) => m.toolCallID),
+    ["complete"],
+  );
 });
 
 test("thinking-only output limits retain reasoning and request a visible answer", async (t) => {
-  const f = await fixture(t, async (request, n) => {
-    if (n === 1) return { text: '', reasoningContent: 'Unfinished hypothesis', outputLimitReached: true };
-    assert.equal(request.thinking, false);
-    assert.match(request.messages.at(-2).content, /Unfinished hypothesis/);
-    return { text: 'qualified answer' };
-  }, { thinking: true });
+  const f = await fixture(
+    t,
+    async (request?: any, n?: any) => {
+      if (n === 1)
+        return {
+          text: "",
+          reasoningContent: "Unfinished hypothesis",
+          outputLimitReached: true,
+        };
+      assert.equal(request.thinking, false);
+      assert.match(request.messages.at(-2).content, /Unfinished hypothesis/);
+      return { text: "qualified answer" };
+    },
+    { thinking: true },
+  );
   const r = await f.submit();
-  assert.equal(r.result, 'qualified answer');
-  assert.equal(r.messages.at(-1).reasoningContent, 'Unfinished hypothesis');
+  assert.equal(r.result, "qualified answer");
+  assert.equal(r.messages.at(-1).reasoningContent, "Unfinished hypothesis");
 });
 
 test("empty length responses cannot spin through continuation forever", async (t) => {
-  const f = await fixture(t, async () => ({ text: '', outputLimitReached: true }));
+  const f = await fixture(t, async () => ({
+    text: "",
+    outputLimitReached: true,
+  }));
   const r = await f.submit();
-  assert.equal(r.state, 'failed');
+  assert.equal(r.state, "failed");
   assert.match(r.error.message, /no progress/);
   assert.equal(f.calls.length, 1);
 });

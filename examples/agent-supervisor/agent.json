@@ -41,7 +41,8 @@
         "type": "hook",
         "executablePath": "/absolute/path/to/node",
         "argv": [
-          "/absolute/path/to/agent-supervisor/report.mjs",
+          "--experimental-strip-types",
+          "/absolute/path/to/agent-supervisor/report.ts",
           "--validate"
         ],
         "timeoutMs": 10000

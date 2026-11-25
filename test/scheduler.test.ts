@@ -1,3 +1,5 @@
+import { runtimeConfig } from "./fixtures.ts";
+import { settings, agentDraft } from "./fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -7,7 +9,9 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { Storage, initializeHome } from "../dist/storage.js";
 import { Service } from "../dist/service.js";
-import { manage } from "../dist/management.js";
+import { manage as rawmanage } from "../dist/management.js";
+const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
+  rawmanage;
 import {
   schedulerSchema,
   executionSlots,
@@ -15,39 +19,46 @@ import {
   validatePlan,
   policyPlan,
 } from "../dist/scheduler.js";
-const message = (content) => ({
+const message = (content: string) => ({
   messageID: randomUUID(),
   content,
   attachments: [],
 });
-async function until(fn) {
+async function until(fn?: any) {
   for (let i = 0; i < 200; i++) {
     if (await fn()) return;
     await delay(10);
   }
   throw Error("Condition timed out");
 }
-async function setup(t, generate, settings = {}) {
+async function setup(
+  t: import("node:test").TestContext,
+  generate: any,
+  schedulerSettings = {},
+) {
   const home = await mkdtemp(path.join(tmpdir(), "nc-scheduler-"));
-  await initializeHome(home, {
-    host: "127.0.0.1",
-    port: 6970,
-    interactionCooldownMs: 0,
-    scheduler: schedulerSchema.parse(settings),
-    models: [
-      {
-        modelID: "q",
-        kind: "chat",
-        weightsPath: "/unused",
-        projectorPath: null,
-        idleUnloadMs: 300000,
-      },
-    ],
-    slots: [],
-    hooks: [],
-  });
+  await initializeHome(
+    home,
+    settings.parse({
+      host: "127.0.0.1",
+      port: 6970,
+      interactionCooldownMs: 0,
+      scheduler: schedulerSchema.parse(schedulerSettings),
+      models: [
+        {
+          modelID: "q",
+          kind: "chat" as const,
+          weightsPath: "/unused",
+          projectorPath: null,
+          idleUnloadMs: 300000,
+        },
+      ],
+      slots: [],
+      hooks: [],
+    }),
+  );
   const state = { away: true };
-  let service;
+  let service!: Service;
   const start = async () => {
     service = new Service(
       new Storage(home),
@@ -67,20 +78,22 @@ async function setup(t, generate, settings = {}) {
     await service.close();
     await rm(home, { recursive: true, force: true });
   });
-  const agent = async (id, extra = {}) => {
-    await service.createAgent({
-      agentID: id,
-      name: id,
-      systemPrompt: "test",
-      modelID: "q",
-      slotID: "auto",
-      mode: "single-turn",
-      skillIDs: [],
-      toolIDs: [],
-      enabled: true,
-      timeoutMs: 30000,
-      ...extra,
-    });
+  const agent = async (id: string, extra = {}) => {
+    await service.createAgent(
+      agentDraft.parse({
+        agentID: id,
+        name: id,
+        systemPrompt: "test",
+        modelID: "q",
+        slotID: "auto",
+        mode: "single-turn",
+        skillIDs: [],
+        toolIDs: [],
+        enabled: true,
+        timeoutMs: 30000,
+        ...extra,
+      }),
+    );
   };
   return {
     home,
@@ -129,7 +142,7 @@ test("scheduler batches resident work, eventually switches, and validates extern
         waitingSince: 9000,
       },
     ],
-    active: [],
+    active: [] as Array<{ runID: string; modelID: string; slotID: string }>,
     slots: [
       { slotID: "q1", modelID: "q" },
       { slotID: "g1", modelID: "g" },
@@ -166,7 +179,7 @@ test("scheduler batches resident work, eventually switches, and validates extern
       "process.stdin.resume();process.stdin.on('end',()=>console.log(JSON.stringify({start:[],pause:[],reason:'wait'})))",
     ],
     timeoutMs: 1000,
-    failurePolicy: "builtin",
+    failurePolicy: "builtin" as const,
   };
   assert.equal(
     (await policyPlan({ ...s, settings: { ...settings, hook } })).source,
@@ -194,7 +207,7 @@ test("scheduler batches resident work, eventually switches, and validates extern
             ...hook,
             arguments: ["-e", "setTimeout(()=>{},10000)"],
             timeoutMs: 100,
-            failurePolicy: "hold",
+            failurePolicy: "hold" as const,
           },
         },
       })
@@ -206,10 +219,10 @@ test("two background slots run concurrently and instant work waits for both to r
   let live = 0,
     max = 0,
     released = 0;
-  const seen = [];
+  const seen: any[] = [];
   const f = await setup(
     t,
-    async (input, signal) => {
+    async (input?: any, signal?: any) => {
       seen.push(input);
       live++;
       max = Math.max(max, live);
@@ -218,7 +231,7 @@ test("two background slots run concurrently and instant work waits for both to r
           assert.equal(released, 2);
           return done;
         }
-        await new Promise((resolve, reject) =>
+        await new Promise<any>((resolve, reject) =>
           signal.addEventListener(
             "abort",
             () => {
@@ -246,10 +259,16 @@ test("two background slots run concurrently and instant work waits for both to r
   assert.notEqual(seen[0].slotID, seen[1].slotID);
   f.state.away = false;
   const accepted = await f.service.submitChat({
+    skillIDs: [],
     conversationID: randomUUID(),
     slotID: "instant",
     messages: [
-      { ...message("instant"), role: "user", toolCalls: [], toolCallID: null },
+      {
+        ...message("instant"),
+        role: "user" as const,
+        toolCalls: [],
+        toolCallID: null,
+      },
     ],
     tools: [],
     timeoutMs: 1000,
@@ -260,12 +279,12 @@ test("two background slots run concurrently and instant work waits for both to r
   assert.equal(max, 2);
 });
 test("persistent agents keep one run across completion, queued input and restart", async (t) => {
-  let release;
-  const inputs = [];
-  const f = await setup(t, async (input, signal) => {
+  let release: any;
+  const inputs: any[] = [];
+  const f = await setup(t, async (input?: any, signal?: any) => {
     inputs.push(input);
     if (input.messages.at(-1).content === "one")
-      await new Promise((r, reject) => {
+      await new Promise<any>((r, reject) => {
         release = r;
         signal.addEventListener("abort", () => reject(Error("abort")), {
           once: true,
@@ -291,7 +310,9 @@ test("persistent agents keep one run across completion, queued input and restart
       (await f.service.run(first.runID)).state === "completed",
   );
   assert.deepEqual(
-    inputs[1].messages.filter((m) => m.role === "user").map((m) => m.content),
+    inputs[1].messages
+      .filter((m?: any) => m.role === "user")
+      .map((m?: any) => m.content),
     ["one", "two"],
   );
   await f.restart();
@@ -302,7 +323,7 @@ test("persistent agents keep one run across completion, queued input and restart
   );
   const run = await f.service.run(first.runID);
   assert.equal(run.segment, 2);
-  assert.equal(run.messages.filter((m) => m.role === "user").length, 3);
+  assert.equal(run.messages.filter((m?: any) => m.role === "user").length, 3);
   assert.equal(
     [...f.service.storage.summaries.values()].filter(
       (r) => r.agentID === "persistent",
@@ -313,10 +334,10 @@ test("persistent agents keep one run across completion, queued input and restart
 });
 test("time slices pause without failing and timer admission has no catch-up", async (t) => {
   let count = 0;
-  const f = await setup(t, async (input, signal) => {
+  const f = await setup(t, async (input?: any, signal?: any) => {
     count++;
     if (count === 1)
-      await new Promise((resolve, reject) =>
+      await new Promise<any>((resolve, reject) =>
         signal.addEventListener("abort", () => reject(Error("yield")), {
           once: true,
         }),
@@ -329,7 +350,7 @@ test("time slices pause without failing and timer admission has no catch-up", as
     async () => (await f.service.run(accepted.runID)).state === "completed",
   );
   const run = await f.service.run(accepted.runID);
-  assert.ok(run.events.some((e) => e.type === "paused"));
+  assert.ok(run.events.some((e?: any) => e.type === "paused"));
   assert.ok(run.activeMs >= 90);
   assert.equal(run.segment, 0);
   await manage(f.service, {
@@ -340,27 +361,30 @@ test("time slices pause without failing and timer admission has no catch-up", as
         name: "timer",
         agentID: "sliced",
         enabled: true,
-        schedule: { type: "interval", everyMs: 60000 },
+        schedule: { type: "interval" as const, everyMs: 60000 },
       },
     },
   });
-  await f.service.dispatchTimers();
-  assert.ok(f.service.triggerDue.get("timer").at > Date.now());
-  f.service.triggerDue.set("timer", { revision: 1, at: Date.now() - 100000 });
-  await f.service.dispatchTimers();
+  await f.service["dispatchTimers"]();
+  assert.ok(f.service["triggerDue"].get("timer").at > Date.now());
+  f.service["triggerDue"].set("timer", {
+    revision: 1,
+    at: Date.now() - 100000,
+  });
+  await f.service["dispatchTimers"]();
   assert.equal((await f.service.run(run.runID)).segment, 0);
-  f.service.triggerDue.set("timer", { revision: 1, at: Date.now() - 100 });
-  await f.service.dispatchTimers();
+  f.service["triggerDue"].set("timer", { revision: 1, at: Date.now() - 100 });
+  await f.service["dispatchTimers"]();
   await until(async () => (await f.service.run(run.runID)).segment === 1);
   assert.equal(f.service.storage.summaries.size, 1);
 });
 
 test("cancelling a persistent run does not execute its pending inputs", async (t) => {
-  const inputs = [];
-  const f = await setup(t, async (input, signal) => {
+  const inputs: any[] = [];
+  const f = await setup(t, async (input?: any, signal?: any) => {
     inputs.push(input);
     if (input.messages.at(-1).content === "first")
-      await new Promise((resolve, reject) =>
+      await new Promise<any>((resolve, reject) =>
         signal.addEventListener("abort", () => reject(Error("cancel")), {
           once: true,
         }),
@@ -386,7 +410,9 @@ test("cancelling a persistent run does not execute its pending inputs", async (t
     async () => (await f.service.run(first.runID)).state === "completed",
   );
   assert.equal(inputs.length, 2);
-  assert.ok(!inputs[1].messages.some((m) => m.content === "cancelled-input"));
+  assert.ok(
+    !inputs[1].messages.some((m?: any) => m.content === "cancelled-input"),
+  );
 });
 test("scheduler partial updates preserve existing limits and hook configuration", async (t) => {
   const f = await setup(t, async () => done, {
@@ -395,7 +421,7 @@ test("scheduler partial updates preserve existing limits and hook configuration"
     maxWaitMs: 123456,
   });
   const { requestSchemas } = await import("../dist/operationInputs.js");
-  const request = requestSchemas["config update"].parse({
+  const request: any = requestSchemas["config update"].parse({
     expectedRevision: f.service.storage.store.config.revision,
     changes: { scheduler: { timersEnabled: false } },
   });
@@ -404,12 +430,12 @@ test("scheduler partial updates preserve existing limits and hook configuration"
   assert.equal(out.config.scheduler.maxConcurrent, 3);
   assert.equal(out.config.scheduler.contextTokens, 8192);
   assert.equal(out.config.scheduler.maxWaitMs, 123456);
-  const config = requestSchemas["config update"].parse({
+  const config: any = requestSchemas["config update"].parse({
     expectedRevision: 1,
     changes: { interactionCooldownMs: 0 },
   });
   assert.deepEqual(config.changes, { interactionCooldownMs: 0 });
-  const model = requestSchemas["models update"].parse({
+  const model: any = requestSchemas["models update"].parse({
     expectedRevision: 1,
     changes: { idleUnloadMs: 123 },
   });
@@ -421,12 +447,12 @@ test("only the designated chat model reserves an instant slot", () => {
     scheduler: schedulerSchema.parse({ instantModelID: "b" }),
     slots: [],
     models: [
-      { modelID: "a", kind: "chat" },
-      { modelID: "b", kind: "chat" },
-      { modelID: "speech", kind: "audio" },
+      { modelID: "a", kind: "chat" as const },
+      { modelID: "b", kind: "chat" as const },
+      { modelID: "speech", kind: "audio" as const },
     ],
   };
-  const slots = executionSlots(config);
+  const slots = executionSlots(runtimeConfig(config));
   assert.equal(slots.filter((s) => s.modelID === "b").length, 2);
   assert.deepEqual(
     slots.filter((s) => s.instant).map((s) => s.modelID),
@@ -438,7 +464,9 @@ test("only the designated chat model reserves an instant slot", () => {
 test("instant inference rejects other models and invalid configuration", async (t) => {
   const f = await setup(t, async () => ({ content: "ok", toolCalls: [] }));
   await assert.rejects(
-    f.service.submitChat({ modelID: "other" }),
+    f.service.submitChat({ modelID: "other" } as Parameters<
+      typeof f.service.submitChat
+    >[0]),
     /invalid_instant_model/,
   );
   await assert.rejects(
@@ -454,10 +482,10 @@ test("instant inference rejects other models and invalid configuration", async (
 });
 
 test("default background agents borrow the same slot serially with fresh run contexts", async (t) => {
-  const seen = [];
+  const seen: any[] = [];
   let active = 0,
     max = 0;
-  const f = await setup(t, async (input) => {
+  const f = await setup(t, async (input?: any) => {
     seen.push(input);
     active++;
     max = Math.max(max, active);
@@ -477,33 +505,52 @@ test("default background agents borrow the same slot serially with fresh run con
   assert.notEqual(a.runID, b.runID);
 });
 
-test('runs pause interrupts active generation and holds across restart until resumed', async t => {
-  let calls=0;
-  const f=await setup(t,async (input,signal)=>{
+test("runs pause interrupts active generation and holds across restart until resumed", async (t) => {
+  let calls = 0;
+  const f = await setup(t, async (input?: any, signal?: any) => {
     calls++;
-    if(calls>1)return done;
-    return new Promise((resolve,reject)=>signal.addEventListener('abort',()=>reject(Error('paused')),{once:true}));
+    if (calls > 1) return done;
+    return new Promise<any>((resolve, reject) =>
+      signal.addEventListener("abort", () => reject(Error("paused")), {
+        once: true,
+      }),
+    );
   });
-  await f.agent('pausable');
-  const accepted=await f.service.submit('pausable',message('work'));
-  await until(()=>calls===1);
-  let run=await f.service.run(accepted.runID);
-  const paused=await manage(f.service,{command:'runs pause',resourceID:run.runID,request:{expectedRevision:run.revision}});
-  assert.equal(paused.run.state,'paused');assert.equal(paused.run.held,true);
-  assert.equal(paused.run.pauseReason,'manualStop');
-  await f.restart();await delay(100);assert.equal(calls,1);
-  run=await f.service.run(run.runID);
-  await manage(f.service,{command:'runs resume',resourceID:run.runID,request:{expectedRevision:run.revision}});
-  await until(async()=> (await f.service.run(run.runID)).state==='completed');
-  assert.equal(calls,2);
+  await f.agent("pausable");
+  const accepted = await f.service.submit("pausable", message("work"));
+  await until(() => calls === 1);
+  let run = await f.service.run(accepted.runID);
+  const paused = await manage(f.service, {
+    command: "runs pause",
+    resourceID: run.runID,
+    request: { expectedRevision: run.revision },
+  });
+  assert.equal(paused.run.state, "paused");
+  assert.equal(paused.run.held, true);
+  assert.equal(paused.run.pauseReason, "manualStop");
+  await f.restart();
+  await delay(100);
+  assert.equal(calls, 1);
+  run = await f.service.run(run.runID);
+  await manage(f.service, {
+    command: "runs resume",
+    resourceID: run.runID,
+    request: { expectedRevision: run.revision },
+  });
+  await until(
+    async () => (await f.service.run(run.runID)).state === "completed",
+  );
+  assert.equal(calls, 2);
 });
 
 test("fresh runs accept a reply after cancellation without replaying cancelled work", async (t) => {
-  const inputs = [];
-  const f = await setup(t, async (input, signal) => {
+  const inputs: any[] = [];
+  const f = await setup(t, async (input?: any, signal?: any) => {
     inputs.push(input);
     if (input.messages.at(-1).content === "first") {
-      await new Promise(resolve => signal.addEventListener("abort", resolve, { once: true }));
+      await new Promise<any>((resolve) =>
+        signal.addEventListener("abort", resolve, { once: true }),
+      );
       signal.throwIfAborted();
     }
     return done;
@@ -514,15 +561,39 @@ test("fresh runs accept a reply after cancellation without replaying cancelled w
   await f.service.cancelRun(first.runID);
   const cancelled = await f.service.run(first.runID);
   assert.equal(cancelled.state, "cancelled");
-  cancelled.messages.push({messageID: randomUUID(), role: "assistant", content: "", attachments: [],
-    toolCalls: [{callID: "unfinished", name: "mutation", arguments: "{}"}], toolCallID: null});
+  cancelled.messages.push({
+    messageID: randomUUID(),
+    role: "assistant" as const,
+    content: "",
+    attachments: [],
+    toolCalls: [{ callID: "unfinished", name: "mutation", arguments: "{}" }],
+    toolCallID: null,
+  });
   cancelled.held = true;
   const childID = randomUUID();
-  await f.service.storage.write({...structuredClone(cancelled), runID:childID,
-    state:"paused",parentRunID:first.runID,compaction:null,
-    messages:[{...cancelled.messages[0],messageID:randomUUID()}],events:[]},true);
-  cancelled.compaction = {retries:0,requestID:randomUUID(),coveredThrough:1,
-    targetTokens:100,inputTokens:200,childRunID:childID,status:"failed",summary:null,handler:null};
+  await f.service.storage.write(
+    {
+      ...structuredClone(cancelled),
+      runID: childID,
+      state: "paused",
+      parentRunID: first.runID,
+      compaction: null,
+      messages: [{ ...cancelled.messages[0], messageID: randomUUID() }],
+      events: [],
+    },
+    true,
+  );
+  cancelled.compaction = {
+    retries: 0,
+    requestID: randomUUID(),
+    coveredThrough: 1,
+    targetTokens: 100,
+    inputTokens: 200,
+    childRunID: childID,
+    status: "failed",
+    summary: null,
+    handler: null,
+  };
   await f.service.storage.write(cancelled);
   await f.restart();
   const next = message("continue");
@@ -531,110 +602,227 @@ test("fresh runs accept a reply after cancellation without replaying cancelled w
   assert.equal((await f.service.run(childID)).state, "paused");
   const accepted = await f.service.submit(first.runID, next, true);
   assert.equal(accepted.runID, first.runID);
-  await until(async () => (await f.service.run(first.runID)).state === "completed");
+  await until(
+    async () => (await f.service.run(first.runID)).state === "completed",
+  );
   const run = await f.service.run(first.runID);
   assert.equal(run.segment, 1);
   assert.equal(run.compaction, null);
   assert.equal((await f.service.run(childID)).state, "cancelled");
   assert.equal(run.held, false);
   assert.equal(inputs.length, 2);
-  const result = inputs[1].messages.find(m => m.toolCallID === "unfinished");
+  const result = inputs[1].messages.find(
+    (m?: any) => m.toolCallID === "unfinished",
+  );
   assert.equal(JSON.parse(result.content).error.outcome, "unknown");
-  assert.equal((await f.service.submit(first.runID, next, true)).replayed, true);
-  assert.equal(run.messages.filter(m => m.messageID === next.messageID).length, 1);
-  assert.ok(run.events.some(e => e.type === "cancelled"));
+  assert.equal(
+    (await f.service.submit(first.runID, next, true)).replayed,
+    true,
+  );
+  assert.equal(
+    run.messages.filter((m?: any) => m.messageID === next.messageID).length,
+    1,
+  );
+  assert.ok(run.events.some((e?: any) => e.type === "cancelled"));
 });
 
-test("passive annotations preserve state and never become model input", async t => {
-  let calls=0;
-  const f=await setup(t,async()=>{calls++;return done;});
+test("passive annotations preserve state and never become model input", async (t) => {
+  let calls = 0;
+  const f = await setup(t, async () => {
+    calls++;
+    return done;
+  });
   await f.agent("daily");
-  const accepted=await f.service.submit("daily",message("hello"));
-  await until(async()=> (await f.service.run(accepted.runID)).state==='completed');
-  const before=await f.service.run(accepted.runID);
-  const input={messageID:randomUUID(),content:'delivered notification'};
-  await f.service.annotateRun(accepted.runID,input,true);
-  assert.equal((await f.service.run(accepted.runID)).events.length,before.events.length);
-  const first=await f.service.annotateRun(accepted.runID,input);
-  assert.equal(first.replayed,false);
-  assert.equal((await f.service.annotateRun(accepted.runID,input)).replayed,true);
-  await assert.rejects(f.service.annotateRun(accepted.runID,{...input,content:'changed'}),/message_conflict/);
+  const accepted = await f.service.submit("daily", message("hello"));
+  await until(
+    async () => (await f.service.run(accepted.runID)).state === "completed",
+  );
+  const before = await f.service.run(accepted.runID);
+  const input = { messageID: randomUUID(), content: "delivered notification" };
+  await f.service.annotateRun(accepted.runID, input, true);
+  assert.equal(
+    (await f.service.run(accepted.runID)).events.length,
+    before.events.length,
+  );
+  const first = await f.service.annotateRun(accepted.runID, input);
+  assert.equal(first.replayed, false);
+  assert.equal(
+    (await f.service.annotateRun(accepted.runID, input)).replayed,
+    true,
+  );
+  await assert.rejects(
+    f.service.annotateRun(accepted.runID, { ...input, content: "changed" }),
+    /message_conflict/,
+  );
   await f.restart();
-  const after=await f.service.run(accepted.runID);
-  assert.equal(after.state,'completed');assert.equal(calls,1);
-  assert.equal(after.messages.length,before.messages.length);
-  assert.equal(after.events.filter(e=>e.type==='notification').length,1);
+  const after = await f.service.run(accepted.runID);
+  assert.equal(after.state, "completed");
+  assert.equal(calls, 1);
+  assert.equal(after.messages.length, before.messages.length);
+  assert.equal(
+    after.events.filter((e?: any) => e.type === "notification").length,
+    1,
+  );
 });
 
-test("instant unload cancels and settles interactive work before closing, then allows the same run to continue", async t => {
-  let entered = false, stopped = false, block = true, closes = 0, resident = true;
-  const f = await setup(t, async (_input, signal) => {
+test("instant unload cancels and settles interactive work before closing, then allows the same run to continue", async (t) => {
+  let entered = false,
+    stopped = false,
+    block = true,
+    closes = 0,
+    resident = true;
+  const f = await setup(t, async (_input?: any, signal?: any) => {
     if (block) {
       entered = true;
-      await new Promise((resolve, reject) => signal.addEventListener("abort", () => setTimeout(() => { stopped = true; reject(Error("cancelled")); }, 20), {once:true}));
+      await new Promise<any>((resolve, reject) =>
+        signal.addEventListener(
+          "abort",
+          () =>
+            setTimeout(() => {
+              stopped = true;
+              reject(Error("cancelled"));
+            }, 20),
+          { once: true },
+        ),
+      );
     }
     return done;
   });
   f.state.away = false;
   const next = structuredClone(f.service.storage.store);
-  next.config.slots = executionSlots(next.config);
+  next.config.slots = executionSlots(runtimeConfig(next.config));
   await f.service.storage.exclusive(() => f.service.storage.saveConfig(next));
-  await f.agent("interactive", {enabled:false, contextMode:"fresh", slotID:next.config.slots.find(s=>s.instant).slotID});
-  f.service.runtime.status = () => [{modelID:"q",state:resident?"ready":"unloaded"}];
-  f.service.runtime.close = async () => { assert.equal(stopped,true); closes++; resident=false; };
-  const run = await f.service.submit("interactive",message("first"));
-  await until(()=>entered);
-  const preview = await manage(f.service,{command:"instant unload",request:{},dryRun:true});
-  assert.equal(preview.changed,false); assert.equal(closes,0);
-  const result = await manage(f.service,{command:"instant unload",request:{}});
-  assert.deepEqual(result.cancelledRunIDs,[run.runID]); assert.equal(closes,1);
-  assert.equal((await f.service.run(run.runID)).state,"cancelled");
-  assert.equal((await manage(f.service,{command:"instant unload",request:{}})).changed,false);
-  block=false;
-  const reply = await f.service.submit(run.runID,message("continue"),true);
-  assert.equal(reply.runID,run.runID);
-  await until(async()=>(await f.service.run(run.runID)).state === "completed");
+  await f.agent("interactive", {
+    enabled: false,
+    contextMode: "fresh",
+    slotID: next.config.slots.find((s?: any) => s.instant)!.slotID,
+  });
+  f.service.runtime.status = () => [
+    { modelID: "q", state: resident ? "ready" : "unloaded" },
+  ];
+  f.service.runtime.close = async () => {
+    assert.equal(stopped, true);
+    closes++;
+    resident = false;
+  };
+  const run = await f.service.submit("interactive", message("first"));
+  await until(() => entered);
+  const preview = await manage(f.service, {
+    command: "instant unload",
+    request: {},
+    dryRun: true,
+  });
+  assert.equal(preview.changed, false);
+  assert.equal(closes, 0);
+  const result = await manage(f.service, {
+    command: "instant unload",
+    request: {},
+  });
+  assert.deepEqual(result.cancelledRunIDs, [run.runID]);
+  assert.equal(closes, 1);
+  assert.equal((await f.service.run(run.runID)).state, "cancelled");
+  assert.equal(
+    (await manage(f.service, { command: "instant unload", request: {} }))
+      .changed,
+    false,
+  );
+  block = false;
+  const reply = await f.service.submit(run.runID, message("continue"), true);
+  assert.equal(reply.runID, run.runID);
+  await until(
+    async () => (await f.service.run(run.runID)).state === "completed",
+  );
 });
 
-test("instant unload refuses unrelated active background work", async t => {
-  let entered=false;
-  const f=await setup(t,async(_input,signal)=>{
-    entered=true;
-    await new Promise((resolve,reject)=>signal.addEventListener("abort",()=>reject(Error("abort")),{once:true}));
+test("instant unload refuses unrelated active background work", async (t) => {
+  let entered = false;
+  const f = await setup(t, async (_input?: any, signal?: any) => {
+    entered = true;
+    await new Promise<any>((resolve, reject) =>
+      signal.addEventListener("abort", () => reject(Error("abort")), {
+        once: true,
+      }),
+    );
     return done;
   });
   await f.agent("background");
-  const run=await f.service.submit("background",message("work"));
-  await until(()=>entered);
-  await assert.rejects(manage(f.service,{command:"instant unload",request:{}}),e=>e.code==="instant_model_busy_with_background_work");
-  assert.equal((await f.service.run(run.runID)).state,"running");
+  const run = await f.service.submit("background", message("work"));
+  await until(() => entered);
+  await assert.rejects(
+    manage(f.service, { command: "instant unload", request: {} }),
+    (e: any) => e.code === "instant_model_busy_with_background_work",
+  );
+  assert.equal((await f.service.run(run.runID)).state, "running");
 });
 
-test('explicit capability refresh preserves daily history, snapshots and stopped state',async t=>{
- const f=await setup(t,async()=>done);
- await f.agent('interactive',{mode:'agent-loop',contextMode:'fresh',enabled:false});
- const accepted=await f.service.submit('interactive',message('hello'));
- await until(async()=>(await f.service.run(accepted.runID)).state==='completed');
- const before=await f.service.run(accepted.runID);
- await manage(f.service,{command:'tools create',request:{tool:{toolID:'current_time',description:'clock',parameters:{type:'object',properties:{},additionalProperties:false},executablePath:process.execPath,argv:['-e','console.log("clock")'],timeoutMs:1000}}});
- const agent=f.service.agent('interactive');
- await f.service.patchAgent('interactive',agent.revision,{toolIDs:['current_time']});
- const command={command:'runs capabilities refresh',resourceID:accepted.runID,request:{expectedRevision:before.revision}};
- await manage(f.service,{...command,dryRun:true});
- assert.deepEqual((await f.service.run(accepted.runID)).agent.toolIDs,[]);
- const result=await manage(f.service,command);
- assert.equal(result.changed,true);
- const after=await f.service.run(accepted.runID);
- assert.deepEqual(after.messages,before.messages);
- assert.equal(after.state,before.state);
- assert.deepEqual(after.agent.toolIDs,['current_time']);
- assert.deepEqual(after.capabilityRefreshes[0].previousTools,before.toolSnapshots);
- assert.equal(after.capabilityRefreshes.length,1);
- await assert.rejects(manage(f.service,command),e=>e.code==='revision_conflict');
- await f.restart();
- assert.deepEqual((await f.service.run(accepted.runID)).agent.toolIDs,['current_time']);
- f.state.away=false;
- const next=await f.service.submit('interactive',message('queued'));
- const queued=await f.service.run(next.runID);
- await assert.rejects(manage(f.service,{command:'runs capabilities refresh',resourceID:next.runID,request:{expectedRevision:queued.revision}}),e=>e.code==='run_not_idle');
+test("explicit capability refresh preserves daily history, snapshots and stopped state", async (t) => {
+  const f = await setup(t, async () => done);
+  await f.agent("interactive", {
+    mode: "agent-loop",
+    contextMode: "fresh",
+    enabled: false,
+  });
+  const accepted = await f.service.submit("interactive", message("hello"));
+  await until(
+    async () => (await f.service.run(accepted.runID)).state === "completed",
+  );
+  const before = await f.service.run(accepted.runID);
+  await manage(f.service, {
+    command: "tools create",
+    request: {
+      tool: {
+        toolID: "current_time",
+        description: "clock",
+        parameters: {
+          type: "object",
+          properties: {},
+          additionalProperties: false,
+        },
+        executablePath: process.execPath,
+        argv: ["-e", 'console.log("clock")'],
+        timeoutMs: 1000,
+      },
+    },
+  });
+  const agent = f.service.agent("interactive");
+  await f.service.patchAgent("interactive", agent.revision, {
+    toolIDs: ["current_time"],
+  });
+  const command = {
+    command: "runs capabilities refresh",
+    resourceID: accepted.runID,
+    request: { expectedRevision: before.revision },
+  };
+  await manage(f.service, { ...command, dryRun: true });
+  assert.deepEqual((await f.service.run(accepted.runID)).agent.toolIDs, []);
+  const result = await manage(f.service, command);
+  assert.equal(result.changed, true);
+  const after = await f.service.run(accepted.runID);
+  assert.deepEqual(after.messages, before.messages);
+  assert.equal(after.state, before.state);
+  assert.deepEqual(after.agent.toolIDs, ["current_time"]);
+  assert.deepEqual(
+    after.capabilityRefreshes[0].previousTools,
+    before.toolSnapshots,
+  );
+  assert.equal(after.capabilityRefreshes.length, 1);
+  await assert.rejects(
+    manage(f.service, command),
+    (e: any) => e.code === "revision_conflict",
+  );
+  await f.restart();
+  assert.deepEqual((await f.service.run(accepted.runID)).agent.toolIDs, [
+    "current_time",
+  ]);
+  f.state.away = false;
+  const next = await f.service.submit("interactive", message("queued"));
+  const queued = await f.service.run(next.runID);
+  await assert.rejects(
+    manage(f.service, {
+      command: "runs capabilities refresh",
+      resourceID: next.runID,
+      request: { expectedRevision: queued.revision },
+    }),
+    (e: any) => e.code === "run_not_idle",
+  );
 });

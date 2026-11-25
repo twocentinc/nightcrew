@@ -1,3 +1,5 @@
+import { runtimeConfig } from "./fixtures.ts";
+import { settings, agentDraft, compactionFixture } from "./fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, readFile, writeFile, mkdir } from "node:fs/promises";
@@ -7,18 +9,20 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { Storage, initializeHome } from "../dist/storage.js";
 import { Service } from "../dist/service.js";
-import { manage } from "../dist/management.js";
+import { manage as rawmanage } from "../dist/management.js";
+const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
+  rawmanage;
 import {
   executeCompactionScript,
   contextMessages,
   validateSummaryEvidence,
 } from "../dist/compaction.js";
-const message = (content) => ({
+const message = (content: string) => ({
   messageID: randomUUID(),
   content,
   attachments: [],
 });
-async function until(fn) {
+async function until(fn?: any) {
   for (let i = 0; i < 400; i++) {
     const v = await fn();
     if (v) return v;
@@ -26,37 +30,53 @@ async function until(fn) {
   }
   throw Error("Timeout");
 }
-async function fixture(t, handler, summary = "Short summary", threshold = 400) {
+async function fixture(
+  t: import("node:test").TestContext,
+  handler?: any,
+  summary = "Short summary",
+  threshold = 400,
+) {
   const home = await mkdtemp(path.join(tmpdir(), "nc-compact-"));
-  await initializeHome(home, {
-    host: "127.0.0.1",
-    port: 6970,
-    interactionCooldownMs: 0,
-    scheduler: { contextTokens: threshold > 2048 ? 65536 : 2048 },
-    models: [
-      {
-        modelID: "q",
-        kind: "chat",
-        weightsPath: "/unused",
-        projectorPath: null,
-        idleUnloadMs: 300000,
-        compactionThresholdTokens: threshold,
-      },
-    ],
-    slots: [],
-    hooks: [],
-  });
-  const calls = [];
-  let service;
+  await initializeHome(
+    home,
+    settings.parse({
+      host: "127.0.0.1",
+      port: 6970,
+      interactionCooldownMs: 0,
+      scheduler: { contextTokens: threshold > 2048 ? 65536 : 2048 },
+      models: [
+        {
+          modelID: "q",
+          kind: "chat" as const,
+          weightsPath: "/unused",
+          projectorPath: null,
+          idleUnloadMs: 300000,
+          compactionThresholdTokens: threshold,
+        },
+      ],
+      slots: [],
+      hooks: [],
+    }),
+  );
+  const calls: any[] = [];
+  let service!: Service;
   const state = { away: true };
-  const runtime = {
+  const runtime: {
+    generate: (
+      input: any,
+      ...args: any[]
+    ) => Promise<import("../dist/service.js").Result>;
+    countTokens: (input: any, ...args: any[]) => Promise<number>;
+    close: () => Promise<void>;
+    status: () => [];
+  } = {
     status: () => [],
     close: async () => {},
-    countTokens: async (input) =>
+    countTokens: async (input?: any) =>
       Math.ceil(
-        JSON.stringify(input.messages.map((m) => m.content)).length / 4,
+        JSON.stringify(input.messages.map((m?: any) => m.content)).length / 4,
       ) + 10,
-    generate: async (input) => {
+    generate: async (input?: any) => {
       calls.push(input);
       return {
         text: input.messages[0].content.includes("Summarize the supplied")
@@ -82,22 +102,24 @@ async function fixture(t, handler, summary = "Short summary", threshold = 400) {
     await service.close();
     await rm(home, { recursive: true, force: true });
   });
-  const agent = async (id, extra = {}) =>
-    service.createAgent({
-      agentID: id,
-      name: id,
-      systemPrompt: "test",
-      modelID: "q",
-      slotID: "auto",
-      mode: "single-turn",
-      skillIDs: [],
-      toolIDs: [],
-      enabled: true,
-      timeoutMs: 30000,
-      maxOutputTokens: 64,
-      thinking: false,
-      ...extra,
-    });
+  const agent = async (id: string, extra = {}) =>
+    service.createAgent(
+      agentDraft.parse({
+        agentID: id,
+        name: id,
+        systemPrompt: "test",
+        modelID: "q",
+        slotID: "auto",
+        mode: "single-turn",
+        skillIDs: [],
+        toolIDs: [],
+        enabled: true,
+        timeoutMs: 30000,
+        maxOutputTokens: 64,
+        thinking: false,
+        ...extra,
+      }),
+    );
   await agent("summarizer");
   await agent("worker", {
     contextMode: "persistent",
@@ -125,8 +147,8 @@ async function fixture(t, handler, summary = "Short summary", threshold = 400) {
     },
   };
 }
-const script = (code) => ({
-  type: "script",
+const script = (code?: any) => ({
+  type: "script" as const,
   executablePath: process.execPath,
   arguments: ["-e", code],
   timeoutMs: 1000,
@@ -152,10 +174,12 @@ test("script compaction preserves transcript, checkpoints, exports and persisten
   );
   assert.equal(f.calls.at(-1).contextEpoch, 1);
   assert.ok(
-    !f.calls.at(-1).messages.some((m) => m.content === "a".repeat(1200)),
+    !f.calls.at(-1).messages.some((m?: any) => m.content === "a".repeat(1200)),
   );
   assert.ok(
-    f.calls.at(-1).messages.some((m) => m.content.includes("Short summary")),
+    f.calls
+      .at(-1)
+      .messages.some((m?: any) => m.content.includes("Short summary")),
   );
   await f.restart();
   assert.equal((await f.service.run(f.runID)).compactions.length, 1);
@@ -167,13 +191,14 @@ test("script compaction preserves transcript, checkpoints, exports and persisten
     request: { destination },
   });
   assert.equal(
-    JSON.parse(await readFile(path.join(destination, "run.json"), "utf8"))
-      .compactions[0].summary,
+    JSON.parse(
+      (await readFile(path.join(destination, "run.json"), "utf8")).toString(),
+    ).compactions[0].summary,
     "Short summary",
   );
 });
 test("agent compaction releases the background slot, links a separate run, then resumes its parent", async (t) => {
-  const f = await fixture(t, { type: "agent", agentID: "summarizer" });
+  const f = await fixture(t, { type: "agent" as const, agentID: "summarizer" });
   await f.service.submit("worker", message("b".repeat(600)));
   const done = await until(async () => {
     const r = await f.service.run(f.runID);
@@ -187,7 +212,7 @@ test("agent compaction releases the background slot, links a separate run, then 
   assert.equal(f.calls.length, 3);
   assert.equal(f.calls[0].slotID, f.calls[1].slotID);
   assert.equal(f.calls[1].slotID, f.calls[2].slotID);
-  assert.ok(done.events.some((e) => e.type === "compacted"));
+  assert.ok(done.events.some((e?: any) => e.type === "compacted"));
 });
 test("invalid summary pauses and runs resume retries using the current handler", async (t) => {
   const f = await fixture(
@@ -205,6 +230,7 @@ test("invalid summary pauses and runs resume retries using the current handler",
   assert.equal(paused.compactions.length, 0);
   await f.service.patchAgent("worker", f.service.agent("worker").revision, {
     compaction: {
+      maxRetries: 1,
       handler: script(
         "process.stdin.resume();process.stdin.on('end',()=>console.log(JSON.stringify({summary:'retry summary'})));",
       ),
@@ -220,7 +246,7 @@ test("invalid summary pauses and runs resume retries using the current handler",
 test("oversized summary is rejected without replacing context", async (t) => {
   const f = await fixture(
     t,
-    { type: "agent", agentID: "summarizer" },
+    { type: "agent" as const, agentID: "summarizer" },
     "x".repeat(3000),
   );
   await f.service.submit("worker", message("b".repeat(600)));
@@ -245,7 +271,8 @@ test("missing handler pauses instead of dropping history", async (t) => {
 });
 test("compaction scripts have bounded time, output and cancellation", async () => {
   const request = {
-    version: 1,
+    instructions: "",
+    version: 1 as const,
     runID: "r",
     requestID: randomUUID(),
     previousSummary: null,
@@ -281,7 +308,7 @@ test("compaction scripts have bounded time, output and cancellation", async () =
 });
 
 test("compactor input overflow pauses its parent without recursive compaction", async (t) => {
-  const f = await fixture(t, { type: "agent", agentID: "summarizer" });
+  const f = await fixture(t, { type: "agent" as const, agentID: "summarizer" });
   const original = f.runtime.countTokens;
   f.runtime.countTokens = async (input) =>
     input.messages[0].content.includes("Summarize the supplied")
@@ -296,13 +323,13 @@ test("compactor input overflow pauses its parent without recursive compaction", 
   assert.equal(f.calls.length, 1);
 });
 test("waiting parent and compactor survive restart without creating a second child", async (t) => {
-  const f = await fixture(t, { type: "agent", agentID: "summarizer" });
+  const f = await fixture(t, { type: "agent" as const, agentID: "summarizer" });
   const original = f.runtime.generate;
   let entered = false;
-  f.runtime.generate = async (input, signal) => {
+  f.runtime.generate = async (input?: any, signal?: any) => {
     if (input.messages[0].content.includes("Summarize the supplied")) {
       entered = true;
-      await new Promise((resolve, reject) => {
+      await new Promise<any>((resolve, reject) => {
         signal.addEventListener("abort", () => reject(Error("interrupted")), {
           once: true,
         });
@@ -312,7 +339,7 @@ test("waiting parent and compactor survive restart without creating a second chi
   };
   await f.service.submit("worker", message("b".repeat(600)));
   await until(() => entered);
-  const childID = (await f.service.run(f.runID)).compaction.childRunID;
+  const childID = (await f.service.run(f.runID)).compaction!.childRunID!;
   f.runtime.generate = original;
   await f.restart();
   const done = await until(async () => {
@@ -321,13 +348,13 @@ test("waiting parent and compactor survive restart without creating a second chi
   });
   assert.equal(done.compactions[0].childRunID, childID);
   assert.equal(
-    (await f.service.listRuns()).filter((r) => r.agentID === "summarizer")
+    (await f.service.listRuns()).filter((r?: any) => r.agentID === "summarizer")
       .length,
     1,
   );
 });
 test("compactor can switch models then restore the parent model", async (t) => {
-  const f = await fixture(t, { type: "agent", agentID: "summarizer" });
+  const f = await fixture(t, { type: "agent" as const, agentID: "summarizer" });
   const next = structuredClone(f.service.storage.store);
   next.config.models.push({
     ...next.config.models[0],
@@ -386,30 +413,34 @@ test("compaction normalizes JSON strings and fenced JSON without accepting arbit
 
 test("compaction projects evidence without thinking or base64 and preserves originals", async () => {
   const { compactionRequest } = await import("../dist/compaction.js");
-  const run = {
+  const run: any = {
     runID: "parent",
     compactions: [],
     compaction: { requestID: "request", coveredThrough: 2, targetTokens: 100 },
     messages: [
-      { role: "system", content: "policy" },
+      { role: "system" as const, content: "policy" },
       {
         messageID: "user",
-        role: "user",
+        role: "user" as const,
         content: "Review this",
         attachments: [
           {
             name: "notes.txt",
-            mediaType: "text/plain",
+            mediaType: "text/plain" as const,
             dataBase64: Buffer.from("exact evidence 123").toString("base64"),
           },
-          { name: "audio.wav", mediaType: "audio/wav", dataBase64: "AQID" },
+          {
+            name: "audio.wav",
+            mediaType: "audio/wav" as const,
+            dataBase64: "AQID",
+          },
         ],
         toolCalls: [],
         toolCallID: null,
       },
       {
         messageID: "answer",
-        role: "assistant",
+        role: "assistant" as const,
         content: "Unverified plan",
         reasoningContent: "invented date",
         attachments: [],
@@ -429,7 +460,7 @@ test("compaction projects evidence without thinking or base64 and preserves orig
 });
 
 test("summary budget reserves retained context and bounds the child output reservation", async (t) => {
-  const f = await fixture(t, { type: "agent", agentID: "summarizer" });
+  const f = await fixture(t, { type: "agent" as const, agentID: "summarizer" });
   await f.service.patchAgent(
     "summarizer",
     f.service.agent("summarizer").revision,
@@ -437,7 +468,7 @@ test("summary budget reserves retained context and bounds the child output reser
   );
   const original = f.runtime.countTokens;
   f.runtime.countTokens = async (input) =>
-    input.messages.some((m) =>
+    input.messages.some((m?: any) =>
       m.content.startsWith("Previous conversation summary"),
     )
       ? 340
@@ -454,7 +485,7 @@ test("summary budget reserves retained context and bounds the child output reser
 });
 
 test("thinking compactors retain their generation budget and enable reasoning", async (t) => {
-  const f = await fixture(t, { type: "agent", agentID: "summarizer" });
+  const f = await fixture(t, { type: "agent" as const, agentID: "summarizer" });
   await f.service.patchAgent(
     "summarizer",
     f.service.agent("summarizer").revision,
@@ -462,7 +493,7 @@ test("thinking compactors retain their generation budget and enable reasoning", 
   );
   const original = f.runtime.countTokens;
   f.runtime.countTokens = async (input) =>
-    input.messages.some((m) =>
+    input.messages.some((m?: any) =>
       m.content.startsWith("Previous conversation summary"),
     )
       ? 340
@@ -501,11 +532,11 @@ test("summary evidence discrepancies warn without holding or replacing source hi
   });
   assert.equal(done.compactions.length, 1);
   assert.match(
-    done.events.find((e) => e.type === "compacted").data.warnings[0],
+    done.events.find((e?: any) => e.type === "compacted").data.warnings[0],
     /unsupported numeric/,
   );
   assert.equal(
-    done.events.some((e) => e.type === "compactionRetry"),
+    done.events.some((e?: any) => e.type === "compactionRetry"),
     false,
   );
   assert.deepEqual(
@@ -517,7 +548,7 @@ test("summary evidence discrepancies warn without holding or replacing source hi
 test("unknown citation IDs are retained as warnings without blocking agent compaction", async (t) => {
   const f = await fixture(
     t,
-    { type: "agent", agentID: "summarizer" },
+    { type: "agent" as const, agentID: "summarizer" },
     "Source evidence-deadbeef",
   );
   await f.service.submit("worker", message("b".repeat(600)));
@@ -526,11 +557,11 @@ test("unknown citation IDs are retained as warnings without blocking agent compa
     return r.state === "completed" && r;
   });
   assert.match(
-    done.events.find((e) => e.type === "compacted").data.warnings[0],
+    done.events.find((e?: any) => e.type === "compacted").data.warnings[0],
     /unknown evidence ID/,
   );
   assert.equal(
-    done.events.some((e) => e.type === "compactionRetry"),
+    done.events.some((e?: any) => e.type === "compactionRetry"),
     false,
   );
 });
@@ -549,10 +580,10 @@ test("compaction retains per-turn output constraints when replacing context", as
       changes: {
         outputValidation: {
           validator: {
-            type: "json-schema",
+            type: "json-schema" as const,
             schema: {
-              type: "object",
-              properties: { answer: { type: "string" } },
+              type: "object" as const,
+              properties: { answer: { type: "string" as const } },
               required: ["answer"],
             },
           },
@@ -562,8 +593,10 @@ test("compaction retains per-turn output constraints when replacing context", as
     },
   });
   f.runtime.countTokens = async (input) =>
-    input.messages.some((m) => m.content === "a".repeat(1200)) ? 500 : 100;
-  const generated = [];
+    input.messages.some((m?: any) => m.content === "a".repeat(1200))
+      ? 500
+      : 100;
+  const generated: any[] = [];
   f.runtime.generate = async (input) => {
     generated.push(input);
     return {
@@ -579,7 +612,7 @@ test("compaction retains per-turn output constraints when replacing context", as
   });
   assert.equal(done.validations.at(-1).status, "passed");
   assert.ok(
-    generated[0].messages.some((m) =>
+    generated[0].messages.some((m?: any) =>
       m.content.includes("Final output must be JSON matching this schema"),
     ),
   );
@@ -612,10 +645,10 @@ test("template failures are held as runtime errors and retain the actual cause",
 });
 
 test("bad agent summary retries with the same target, preserves failed child and resumes", async (t) => {
-  const f = await fixture(t, { type: "agent", agentID: "summarizer" });
+  const f = await fixture(t, { type: "agent" as const, agentID: "summarizer" });
   const generate = f.runtime.generate;
   let summaries = 0;
-  const targets = [];
+  const targets: any[] = [];
   f.runtime.generate = async (input) => {
     if (input.messages[0].content.includes("Summarize the supplied")) {
       targets.push(JSON.parse(input.messages[1].content).targetTokens);
@@ -635,7 +668,7 @@ test("bad agent summary retries with the same target, preserves failed child and
   });
   assert.equal(summaries, 2);
   assert.equal(targets[1], targets[0]);
-  const retry = done.events.find((e) => e.type === "compactionRetry");
+  const retry = done.events.find((e?: any) => e.type === "compactionRetry");
   assert.match(retry.data.message, /valid summary/);
   const first = await f.service.run(retry.data.childRunID);
   assert.equal(first.result, '{"summary":""}');
@@ -647,7 +680,11 @@ test("bad agent summary retries with the same target, preserves failed child and
 });
 
 test("agent compaction retries are bounded and remain exhausted across restart", async (t) => {
-  const f = await fixture(t, { type: "agent", agentID: "summarizer" }, "");
+  const f = await fixture(
+    t,
+    { type: "agent" as const, agentID: "summarizer" },
+    "",
+  );
   await f.service.submit("worker", message("b".repeat(600)));
   const held = await until(async () => {
     const r = await f.service.run(f.runID);
@@ -656,25 +693,25 @@ test("agent compaction retries are bounded and remain exhausted across restart",
   assert.equal(held.compaction.retries, 1);
   assert.equal(held.compactions.length, 0);
   assert.equal(
-    held.events.filter((e) => e.type === "compactionRetry").length,
+    held.events.filter((e?: any) => e.type === "compactionRetry").length,
     1,
   );
   const children = (await f.service.listRuns()).filter(
-    (r) => r.agentID === "summarizer",
+    (r?: any) => r.agentID === "summarizer",
   );
   assert.equal(children.length, 2);
   await f.restart();
   await delay(100);
   assert.equal((await f.service.run(f.runID)).held, true);
   assert.equal(
-    (await f.service.listRuns()).filter((r) => r.agentID === "summarizer")
+    (await f.service.listRuns()).filter((r?: any) => r.agentID === "summarizer")
       .length,
     2,
   );
 });
 
 test("compactor runtime errors hold the parent without summary retry and resume together", async (t) => {
-  const f = await fixture(t, { type: "agent", agentID: "summarizer" });
+  const f = await fixture(t, { type: "agent" as const, agentID: "summarizer" });
   const count = f.runtime.countTokens;
   let broken = true;
   f.runtime.countTokens = async (input) => {
@@ -718,7 +755,7 @@ test("summary evidence ignores list ordinals but still rejects invented quantiti
   assert.doesNotThrow(() =>
     validateSummaryEvidence(
       "Facts: 1) Confirmed; 6) Budget $50/day; 8) Pending; 10) Follow up\n12. Check status",
-      request,
+      compactionFixture(request),
     ),
   );
   for (const summary of [
@@ -728,7 +765,7 @@ test("summary evidence ignores list ordinals but still rejects invented quantiti
     "6) 10 messages read",
   ])
     assert.throws(
-      () => validateSummaryEvidence(summary, request),
+      () => validateSummaryEvidence(summary, compactionFixture(request)),
       /unsupported numeric/,
     );
 });
@@ -739,10 +776,16 @@ test("summary timestamp formatting tolerates lower precision without whitelistin
     messages: [{ content: "2026-11-11T05:42:35.293Z" }],
   };
   assert.doesNotThrow(() =>
-    validateSummaryEvidence("Window: 2026-11-11 05:42:35Z", request),
+    validateSummaryEvidence(
+      "Window: 2026-11-11 05:42:35Z",
+      compactionFixture(request),
+    ),
   );
   assert.doesNotThrow(() =>
-    validateSummaryEvidence("2026-11-11T05:42:35.29Z", request),
+    validateSummaryEvidence(
+      "2026-11-11T05:42:35.29Z",
+      compactionFixture(request),
+    ),
   );
   for (const summary of [
     "Count: 35",
@@ -750,7 +793,7 @@ test("summary timestamp formatting tolerates lower precision without whitelistin
     "2026-11-11T05:42:35.294Z",
   ])
     assert.throws(
-      () => validateSummaryEvidence(summary, request),
+      () => validateSummaryEvidence(summary, compactionFixture(request)),
       /unsupported numeric/,
     );
 });
@@ -779,7 +822,10 @@ test("summary quantities accept formatting but not changed values or derived per
     "1\u202f665",
     "1\u00a0665",
   ])
-    assert.doesNotThrow(() => validateSummaryEvidence(value, request), value);
+    assert.doesNotThrow(
+      () => validateSummaryEvidence(value, compactionFixture(request)),
+      value,
+    );
   for (const value of [
     "1,666",
     "90%",
@@ -790,12 +836,15 @@ test("summary quantities accept formatting but not changed values or derived per
     "3/5",
   ])
     assert.throws(
-      () => validateSummaryEvidence(value, request),
+      () => validateSummaryEvidence(value, compactionFixture(request)),
       /unsupported numeric/,
       value,
     );
   assert.doesNotThrow(() =>
-    validateSummaryEvidence("1665", { previousSummary: "1,665", messages: [] }),
+    validateSummaryEvidence(
+      "1665",
+      compactionFixture({ previousSummary: "1,665", messages: [] }),
+    ),
   );
 });
 
@@ -817,10 +866,12 @@ test("summary decimal display rounding preserves sign and units without rounding
     "-1235",
     "100%",
   ])
-    assert.doesNotThrow(() => validateSummaryEvidence(value, request));
+    assert.doesNotThrow(() =>
+      validateSummaryEvidence(value, compactionFixture(request)),
+    );
   for (const value of ["3137", "2611", "1235", "9007199254740990", "90%"])
     assert.throws(
-      () => validateSummaryEvidence(value, request),
+      () => validateSummaryEvidence(value, compactionFixture(request)),
       /unsupported numeric/,
     );
 });
@@ -830,10 +881,12 @@ test("summary scanned/total notation accepts only existing component counts", ()
     previousSummary: null,
     messages: [{ content: "scanned 221 out of 79221 rows" }],
   };
-  assert.doesNotThrow(() => validateSummaryEvidence("221/79221 rows", request));
+  assert.doesNotThrow(() =>
+    validateSummaryEvidence("221/79221 rows", compactionFixture(request)),
+  );
   for (const value of ["222/79221", "221/79222", "0.28%"])
     assert.throws(
-      () => validateSummaryEvidence(value, request),
+      () => validateSummaryEvidence(value, compactionFixture(request)),
       /unsupported numeric/,
     );
 });
@@ -852,7 +905,7 @@ test("source references restore exact generic records, not model-written claim/I
   const messages = [
     {
       messageID: "message-a",
-      role: "tool",
+      role: "tool" as const,
       content: JSON.stringify({ records }),
     },
   ];
@@ -878,7 +931,7 @@ test("source references restore exact generic records, not model-written claim/I
       ...messages,
       {
         messageID: "new",
-        role: "assistant",
+        role: "assistant" as const,
         content: "Incorrect invented assertion",
       },
     ]).retained[0],
@@ -892,7 +945,7 @@ test("source evidence is bounded, omissions explicit, and unknown references can
   const messages = [
     {
       messageID: "m",
-      role: "user",
+      role: "user" as const,
       content: "Question, not an approval.\n\nLater clarification.",
     },
   ];
@@ -914,7 +967,11 @@ test("source evidence is bounded, omissions explicit, and unknown references can
   );
   assert.equal(
     sourceEvidence([
-      { messageID: "s", role: "system", content: "secret instruction" },
+      {
+        messageID: "s",
+        role: "system" as const,
+        content: "secret instruction",
+      },
     ]).sources.size,
     0,
   );
@@ -934,7 +991,7 @@ test("compaction request and resumed context use the same original source refere
     coveredThrough: 2,
     requestID: randomUUID(),
     targetTokens: 1024,
-  };
+  } as NonNullable<typeof run.compaction>;
   const request = compactionRequest(run);
   const body = JSON.parse(request.messages[0].content);
   const ref = body.records[0].sourceRef;
@@ -942,7 +999,7 @@ test("compaction request and resumed context use the same original source refere
     checkpointID: randomUUID(),
     coveredThrough: 2,
     summary: `Friday is a question ${ref}`,
-  };
+  } as NonNullable<Parameters<typeof contextMessages>[1]>;
   const context = contextMessages(run, checkpoint);
   const handoff = context.find((m) =>
     m.content.includes("Original source excerpts"),
@@ -962,14 +1019,14 @@ test("source reference limits apply per message so later compactions remain reso
     await import("../dist/compaction.js");
   const old = {
     messageID: "old",
-    role: "tool",
+    role: "tool" as const,
     content: JSON.stringify(
       Array.from({ length: 2050 }, (_, i) => ({ key: i, text: "old" })),
     ),
   };
   const next = {
     messageID: "new",
-    role: "tool",
+    role: "tool" as const,
     content: JSON.stringify({ key: "new", text: "Later evidence" }),
   };
   const ref = [...sourceEvidence([next]).sources.keys()][0];
@@ -988,8 +1045,10 @@ test("an output continuation survives compaction without losing or summarizing i
   );
   let workerCalls = 0;
   f.runtime.countTokens = async (input) => {
-    const hasPrefix = input.messages.some((m) => m.content === '{"answer":');
-    const compacted = input.messages.some((m) =>
+    const hasPrefix = input.messages.some(
+      (m?: any) => m.content === '{"answer":',
+    );
+    const compacted = input.messages.some((m?: any) =>
       m.content.includes("Previous conversation summary"),
     );
     return hasPrefix && !compacted ? 500 : 100;
@@ -1003,9 +1062,9 @@ test("an output continuation survives compaction without losing or summarizing i
         outputLimitReached: true,
         usage: { inputTokens: 100, outputTokens: 5 },
       };
-    assert(input.messages.some((m) => m.content === '{"answer":'));
+    assert(input.messages.some((m?: any) => m.content === '{"answer":'));
     assert(
-      input.messages.some((m) =>
+      input.messages.some((m?: any) =>
         m.content.includes("Previous conversation summary"),
       ),
     );
@@ -1031,7 +1090,7 @@ test("retained source leaves preserve exact ancestor schema, units and evidence 
   const messages = [
     {
       messageID: "source-units",
-      role: "tool",
+      role: "tool" as const,
       content: JSON.stringify({
         ok: true,
         result: {
@@ -1051,10 +1110,28 @@ test("retained source leaves preserve exact ancestor schema, units and evidence 
     "Unverified hypothesis. " + ref,
     messages,
   );
-  assert.equal(packet.retained[0].context["/result/table"], "meeting_recordings");
-  assert.equal(packet.retained[0].context["/result/completeTable"], false);
   assert.equal(
-    packet.retained[0].context["/result/evidenceID"],
+    (
+      packet.retained[0] as (typeof packet.retained)[0] & {
+        context: Record<string, unknown>;
+      }
+    ).context["/result/table"],
+    "meeting_recordings",
+  );
+  assert.equal(
+    (
+      packet.retained[0] as (typeof packet.retained)[0] & {
+        context: Record<string, unknown>;
+      }
+    ).context["/result/completeTable"],
+    false,
+  );
+  assert.equal(
+    (
+      packet.retained[0] as (typeof packet.retained)[0] & {
+        context: Record<string, unknown>;
+      }
+    ).context["/result/evidenceID"],
     "evidence-123456789abc",
   );
   assert.equal(JSON.parse(packet.retained[0].content).max, 8004708);
@@ -1062,14 +1139,14 @@ test("retained source leaves preserve exact ancestor schema, units and evidence 
 });
 
 test("oversized annotated requests compact complete prefixes without losing transcript messages", async (t) => {
-  const f = await fixture(t, { type: "agent", agentID: "summarizer" });
+  const f = await fixture(t, { type: "agent" as const, agentID: "summarizer" });
   // Make the child exceed capacity with more than one exchange, even though
   // the unannotated parent fits the model. This models JSON/source-ref overhead.
   const originalCount = f.runtime.countTokens;
   f.runtime.countTokens = async (input) => {
     if (input.messages[0].content.includes("Summarize the supplied")) {
       const request = JSON.parse(
-        input.messages.find((m) => m.role === "user").content,
+        input.messages.find((m?: any) => m.role === "user").content,
       );
       return request.messages.length > 2 ? 3000 : 500;
     }
@@ -1080,13 +1157,13 @@ test("oversized annotated requests compact complete prefixes without losing tran
     const r = await f.service.run(f.runID);
     r.messages.push({
       ...message("c".repeat(800)),
-      role: "user",
+      role: "user" as const,
       toolCalls: [],
       toolCallID: null,
     });
     r.messages.push({
       ...message("old answer"),
-      role: "assistant",
+      role: "assistant" as const,
       toolCalls: [],
       toolCallID: null,
     });
@@ -1101,26 +1178,26 @@ test("oversized annotated requests compact complete prefixes without losing tran
   assert.deepEqual(done.messages.slice(0, before.length), before);
   assert.ok(
     done.events.some(
-      (e) => e.type === "compactionRequested" && e.data.partitioned,
+      (e?: any) => e.type === "compactionRequested" && e.data.partitioned,
     ),
   );
   for (const input of f.calls.filter((i) =>
     i.messages[0].content.includes("Summarize the supplied"),
   )) {
     assert.ok(
-      JSON.parse(input.messages.find((m) => m.role === "user").content).messages
-        .length <= 2,
+      JSON.parse(input.messages.find((m?: any) => m.role === "user").content)
+        .messages.length <= 2,
     );
   }
 });
 
 test("interactive same-model compaction runs while the owner is present", async (t) => {
-  const f = await fixture(t, { type: "agent", agentID: "summarizer" });
+  const f = await fixture(t, { type: "agent" as const, agentID: "summarizer" });
   const { executionSlots } = await import("../dist/scheduler.js");
   const next = structuredClone(f.service.storage.store);
-  next.config.slots = executionSlots(next.config);
+  next.config.slots = executionSlots(runtimeConfig(next.config));
   await f.service.storage.exclusive(() => f.service.storage.saveConfig(next));
-  const slotID = next.config.slots.find((s) => s.instant).slotID;
+  const slotID = next.config.slots.find((s?: any) => s.instant)!.slotID;
   await f.service.patchAgent("worker", f.service.agent("worker").revision, {
     slotID,
   });
@@ -1137,21 +1214,21 @@ test("interactive same-model compaction runs while the owner is present", async 
 });
 
 test("run detail retains measured latest-inference tokens across replies and restart", async (t) => {
-  const f = await fixture(t, { type: "agent", agentID: "summarizer" });
+  const f = await fixture(t, { type: "agent" as const, agentID: "summarizer" });
   const before = f.service.detail(await f.service.run(f.runID)).contextUsage;
-  assert.equal(before.inputTokens, 10);
-  assert.equal(before.outputTokens, 10);
-  assert.equal(before.capacityTokens, 2048);
+  assert.equal(before!.inputTokens, 10);
+  assert.equal(before!.outputTokens, 10);
+  assert.equal(before!.capacityTokens, 2048);
   let measuredCompactedPrompt = false;
   const generate = f.runtime.generate;
   f.runtime.generate = async (input) => {
     if (input.messages[0].content === "test") {
       const saved = await f.service.run(f.runID);
       assert.equal(
-        saved.contextUsage.inputTokens,
+        saved.contextUsage!.inputTokens,
         await f.runtime.countTokens(input),
       );
-      assert.equal(saved.contextUsage.outputTokens, 0);
+      assert.equal(saved.contextUsage!.outputTokens, 0);
       assert.equal(saved.compactions.length, 1);
       measuredCompactedPrompt = true;
     }
@@ -1164,9 +1241,9 @@ test("run detail retains measured latest-inference tokens across replies and res
   });
   const after = f.service.detail(await f.service.run(f.runID)).contextUsage;
   assert.equal(measuredCompactedPrompt, true);
-  assert.equal(after.segment, 1);
-  assert.equal(after.inputTokens, 10);
-  assert.equal(after.outputTokens, 10); // Latest inference, not the sum of both turns.
+  assert.equal(after!.segment, 1);
+  assert.equal(after!.inputTokens, 10);
+  assert.equal(after!.outputTokens, 10); // Latest inference, not the sum of both turns.
   await f.restart();
   assert.deepEqual(
     f.service.detail(await f.service.run(f.runID)).contextUsage,
@@ -1177,7 +1254,7 @@ test("run detail retains measured latest-inference tokens across replies and res
 test("large-context compaction offers 4096 summary tokens without a word cap", async (t) => {
   const f = await fixture(
     t,
-    { type: "agent", agentID: "summarizer" },
+    { type: "agent" as const, agentID: "summarizer" },
     "Short summary",
     50000,
   );
@@ -1189,7 +1266,7 @@ test("large-context compaction offers 4096 summary tokens without a word cap", a
   f.runtime.countTokens = async (input) =>
     input.messages[0].content.includes("Summarize the supplied")
       ? 10
-      : input.messages.some((m) =>
+      : input.messages.some((m?: any) =>
             m.content.startsWith("Previous conversation summary"),
           )
         ? 100
@@ -1197,20 +1274,20 @@ test("large-context compaction offers 4096 summary tokens without a word cap", a
   const run = await f.service.run(f.runID);
   run.messages.push({
     ...message("next question"),
-    role: "user",
+    role: "user" as const,
     toolCalls: [],
     toolCallID: null,
   });
-  const ready = await f.service.prepareContext(
+  const ready = await f.service["prepareContext"](
     run,
     { messages: run.messages, maxOutputTokens: 2048 },
     65536,
     new AbortController().signal,
   );
   assert.equal(ready, false);
-  assert.equal(run.compaction.targetTokens, 4096);
-  await f.service.reconcileCompactions();
-  const child = await f.service.run(run.compaction.childRunID);
+  assert.equal(run.compaction!.targetTokens, 4096);
+  await f.service["reconcileCompactions"]();
+  const child = await f.service.run(run.compaction!.childRunID!);
   assert.match(child.messages[0].content, /within 4096 tokens/);
   assert.doesNotMatch(child.messages[0].content, /180|words/);
   assert.equal(child.agent.thinking, true);
@@ -1220,7 +1297,7 @@ test("large-context compaction offers 4096 summary tokens without a word cap", a
 test("structured finish compaction preserves provenance but injects only Markdown bullets", async (t) => {
   const { structuredSummaryJSONSchema, compactionRequest } =
     await import("../dist/compaction.js");
-  const f = await fixture(t, { type: "agent", agentID: "summarizer" });
+  const f = await fixture(t, { type: "agent" as const, agentID: "summarizer" });
   await f.service.patchAgent(
     "summarizer",
     f.service.agent("summarizer").revision,
@@ -1228,16 +1305,18 @@ test("structured finish compaction preserves provenance but injects only Markdow
   );
   const count = f.runtime.countTokens;
   f.runtime.countTokens = async (input) =>
-    input.tools?.some((t) => t.name === "finish") ? 100 : count(input);
+    input.tools?.some((t: { name: string }) => t.name === "finish")
+      ? 100
+      : count(input);
   let expected;
   f.runtime.generate = async (input) => {
     f.calls.push(input);
-    if (input.tools?.some((t) => t.name === "finish")) {
+    if (input.tools?.some((t: { name: string }) => t.name === "finish")) {
       const request = JSON.parse(
-        input.messages.find((m) => m.role === "user").content,
+        input.messages.find((m?: any) => m.role === "user").content,
       );
       const ref = request.messages
-        .map((m) => m.content)
+        .map((m?: any) => m.content)
         .join(" ")
         .match(/src:[a-f0-9]{16}/)[0];
       expected = {
@@ -1276,7 +1355,7 @@ test("structured finish compaction preserves provenance but injects only Markdow
   );
   const injected = contextMessages(done).find(
     (m) => m.messageID === done.compactions[0].checkpointID,
-  ).content;
+  )!.content;
   assert.doesNotMatch(injected, /src:[a-f0-9]{16}|a{100}|Retained original/);
   assert.deepEqual(
     done.messages.slice(0, f.original.messages.length),
@@ -1323,23 +1402,55 @@ test("structured summaries reject wrong sections, extra fields and embedded sour
   ]) {
     assert.equal(structuredSummarySchema.safeParse(invalid).success, false);
     assert.equal(
-      z.fromJSONSchema(structuredSummaryJSONSchema).safeParse(invalid).success,
+      z
+        .fromJSONSchema(
+          structuredSummaryJSONSchema as Parameters<typeof z.fromJSONSchema>[0],
+        )
+        .safeParse(invalid).success,
       false,
     );
   }
 });
 
-test("unknown structured provenance exhausts bounded retries without replacing context", async t => {
+test("unknown structured provenance exhausts bounded retries without replacing context", async (t) => {
   const { structuredSummaryJSONSchema } = await import("../dist/compaction.js");
-  const f = await fixture(t, { type: "agent", agentID: "summarizer" });
-  await f.service.patchAgent("summarizer", f.service.agent("summarizer").revision, { finishSchema: structuredSummaryJSONSchema });
+  const f = await fixture(t, { type: "agent" as const, agentID: "summarizer" });
+  await f.service.patchAgent(
+    "summarizer",
+    f.service.agent("summarizer").revision,
+    { finishSchema: structuredSummaryJSONSchema },
+  );
   const count = f.runtime.countTokens;
-  f.runtime.countTokens = async input => input.tools?.some(t => t.name === "finish") ? 100 : count(input);
-  f.runtime.generate = async input => ({ text: "", toolCalls: [{callID: randomUUID(), name: "finish", arguments: JSON.stringify({objective: [{text: "Goal", sources: ["src:0000000000000000"]}], decisions: [], findings: [], nextActions: []})}], usage: {inputTokens: 100, outputTokens: 50} });
+  f.runtime.countTokens = async (input) =>
+    input.tools?.some((t: { name: string }) => t.name === "finish")
+      ? 100
+      : count(input);
+  f.runtime.generate = async (input) => ({
+    text: "",
+    toolCalls: [
+      {
+        callID: randomUUID(),
+        name: "finish",
+        arguments: JSON.stringify({
+          objective: [{ text: "Goal", sources: ["src:0000000000000000"] }],
+          decisions: [],
+          findings: [],
+          nextActions: [],
+        }),
+      },
+    ],
+    usage: { inputTokens: 100, outputTokens: 50 },
+  });
   await f.service.submit("worker", message("b".repeat(600)));
-  const paused = await until(async () => { const r = await f.service.run(f.runID); return r.held && r; });
+  const paused = await until(async () => {
+    const r = await f.service.run(f.runID);
+    return r.held && r;
+  });
   assert.equal(paused.pauseReason, "context_full");
   assert.equal(paused.compactions.length, 0);
-  assert.deepEqual(paused.messages.slice(0, f.original.messages.length), f.original.messages);
+  assert.deepEqual(
+    paused.messages.slice(0, f.original.messages.length),
+    f.original.messages,
+  );
   assert.equal(paused.compaction.retries, 1);
 });

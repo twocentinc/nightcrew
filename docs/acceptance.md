@@ -1,6 +1,6 @@
 # Unattended acceptance checks
 
-From a source checkout, `test/live/acceptance.test.mjs` is opt-in and excluded from the default test suite.
+From a source checkout, `test/live/acceptance.test.ts` is opt-in and excluded from the default test suite.
 It uses actual model weights and the real desktop presence detector. Stop other
 Nightcrew daemons first; never run competing model servers. The desktop must
 already be away. Restore the normal daemon after the test, including on failure.
@@ -21,7 +21,7 @@ lifecycle as the installation's configurable cooldown without changing it.
 ```sh
 NIGHTCREW_ALLOW_INFERENCE=1 \
 NIGHTCREW_LIVE_CONFIG=/absolute/path/to/private-settings.json \
-node --test test/live/acceptance.test.mjs
+node --experimental-strip-types --test test/live/acceptance.test.ts
 ```
 
 Checks include a real interval trigger, instant preemption and post-response
@@ -65,7 +65,7 @@ is made about an overnight production soak or external Discord delivery.
 
 ## Abrupt process crashes
 
-`test/live/crash-recovery.test.mjs` is a separate opt-in SIGKILL test using a
+`test/live/crash-recovery.test.ts` is a separate opt-in SIGKILL test using a
 real chat model and an isolated runtime home. Provide `NIGHTCREW_LIVE_CONFIG`
 with a registered chat-model definition under `qwen`, stop the regular daemon,
 and run with `NIGHTCREW_ALLOW_INFERENCE=1`. Always restore the regular daemon

@@ -13,7 +13,7 @@
   "cases": [
     {
       "caseID": "budget-not-invented",
-      "description": "Derived from test/compaction.test.mjs",
+      "description": "Derived from test/compaction.test.ts",
       "context": {
         "messages": [
           {
@@ -57,7 +57,7 @@
     },
     {
       "caseID": "timestamp-not-a-count",
-      "description": "Derived from test/compaction.test.mjs",
+      "description": "Derived from test/compaction.test.ts",
       "context": {
         "messages": [
           {

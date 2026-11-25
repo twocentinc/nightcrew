@@ -10,13 +10,10 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-  inspect,
-  metrics as projectMetrics,
-} from "./inspect.mjs";
-import { report } from "./report.mjs";
+import { inspect, metrics as projectMetrics } from "./inspect.ts";
+import { report } from "./report.ts";
 import { runOutcome, reviewFingerprint } from "../../dist/supervision.js";
-const canonical = (r) =>
+const canonical = (r?: any) =>
   runOutcome({
     segment: 0,
     hookReceipts: [],
@@ -24,24 +21,24 @@ const canonical = (r) =>
     reviews: [],
     ...r,
   });
-const metrics = (r, parent) => projectMetrics(r, parent, canonical(r));
-const readOutcome = async (home, id) => {
+const metrics = (r?: any, parent?: any) =>
+  projectMetrics(r, parent, canonical(r));
+const readOutcome = async (home: string, id: string) => {
   const r = JSON.parse(
-    await readFile(path.join(home, "runs", id, "state.json")),
+    await readFile(path.join(home, "runs", id, "state.json"), "utf8"),
   );
   return { ...r, outcome: canonical(r) };
 };
-const readOutcomes = async (home) =>
+const readOutcomes = async (home: string) =>
   new Map(
     await Promise.all(
-      (await readdir(path.join(home, "runs"))).map(async (id) => [
-        id,
-        await readOutcome(home, id),
-      ]),
+      (await readdir(path.join(home, "runs"))).map(
+        async (id) => [id, await readOutcome(home, id)] as const,
+      ),
     ),
   );
 const now = Date.parse("2026-11-12T00:00:00Z");
-const run = (id, overrides = {}) => ({
+const run = (id: string, overrides = {}): any => ({
   runID: id,
   revision: 1,
   agent: { agentID: "worker", modelID: "local", thinking: false },
@@ -59,13 +56,13 @@ const run = (id, overrides = {}) => ({
   result: "ok",
   ...overrides,
 });
-async function fixture(t) {
+async function fixture(t: import("node:test").TestContext) {
   const home = await mkdtemp(path.join(tmpdir(), "supervisor-"));
   t.after(() => rm(home, { recursive: true, force: true }));
   await mkdir(path.join(home, "runs"));
   return {
     home,
-    put: async (r) => {
+    put: async (r?: any) => {
       const dir = path.join(home, "runs", r.runID);
       await mkdir(dir, { recursive: true });
       await writeFile(path.join(dir, "state.json"), JSON.stringify(r));
@@ -109,6 +106,7 @@ test("supervisor freezes metrics, excludes itself and old healthy work, checkpoi
   const checkpoint = JSON.parse(
     await readFile(
       path.join(home, "integrations/agent-supervisor/checkpoint.json"),
+      "utf8",
     ),
   );
   assert.equal(Object.keys(checkpoint.revisions).length, 5);
@@ -165,7 +163,7 @@ test("Markdown hook scopes agents, preserves exact result and rejects traversal"
     result: "# Open loops\nNone observed.",
   };
   const out = await report(e, home, ["loose-threads"]);
-  assert.equal(await readFile(out.file, "utf8"), e.result + "\n");
+  assert.equal(await readFile(out.file!, "utf8"), e.result + "\n");
   await report(e, home, ["loose-threads"]);
   await assert.rejects(
     report({ ...e, runID: "../escape" }, home, ["loose-threads"]),
@@ -203,7 +201,7 @@ test("supervisor exposes requested quality reviews without equating them with fa
   );
   assert.equal(result.state, "completed");
   assert.deepEqual(result.quality.flags, []); // A stale review is not current canonical status.
-  assert.equal(result.lastReview.note, "Unsupported recommendation");
+  assert.equal(result.lastReview!.note, "Unsupported recommendation");
 });
 
 test("terminal supervisor records are not reported as active holds", () => {
@@ -267,14 +265,14 @@ test("recovered delivery and validation supersede historical failures and dated 
   assert.equal(m.current.delivery.status, "succeeded");
   assert.deepEqual(m.outcome, canonical(r));
   assert.equal(m.historical.hookFailures, 3);
-  assert.equal(m.current.validation.status, "passed");
+  assert.equal(m.current.validation!.status, "passed");
   assert.equal(m.historical.validationFailures, 1);
   assert.equal(m.current.error, null);
-  assert.equal(m.lastReview.evidenceKind, "point_in_time_reviewer_note");
+  assert.equal(m.lastReview!.evidenceKind, "point_in_time_reviewer_note");
   assert.ok(!JSON.stringify(m).includes("/private/send"));
-  r.hookReceipts.at(-1).status = "unknown";
+  r.hookReceipts.at(-1)!.status = "unknown";
   assert.equal(metrics(r).current.delivery.status, "unknown");
-  r.hookReceipts.at(-1).status = "pending";
+  r.hookReceipts.at(-1)!.status = "pending";
   assert.equal(metrics(r).current.delivery.status, "pending");
 });
 
@@ -288,17 +286,17 @@ test("parent evidence distinguishes stale children from required and unverified 
   await put(child);
   await put(run("parent", { state: "completed", compaction: null }));
   const opts = { home, runID: "review", now, readOutcome, readOutcomes };
-  const detail = await inspect({ action: "run", runID: "child" }, opts);
+  const detail: any = await inspect({ action: "run", runID: "child" }, opts);
   assert.equal(detail.statusMeaning, "stale_compactor_child");
   assert.equal(detail.current.parent.awaitsThisChild, false);
   assert.equal(
     metrics(
       child,
       run("parent", { state: "paused", compaction: { childRunID: "child" } }),
-    ).current.parent.relationship,
+    ).current.parent!.relationship,
     "required",
   );
-  assert.equal(metrics(child).current.parent.relationship, "unverified");
+  assert.equal(metrics(child).current.parent!.relationship, "unverified");
 });
 
 test("coverage counts distinct pages and detailed runs, and detail refreshes snapshot status", async (t) => {
@@ -310,7 +308,7 @@ test("coverage counts distinct pages and detailed runs, and detail refreshes sna
   await inspect({ action: "page", page: 0 }, opts);
   await put(run("one", { revision: 2, state: "completed" }));
   await inspect({ action: "run", runID: "one" }, opts);
-  const detail = await inspect({ action: "run", runID: "one" }, opts);
+  const detail: any = await inspect({ action: "run", runID: "one" }, opts);
   assert.equal(detail.current.execution, "completed");
   assert.equal(detail.snapshotRevision, 1);
   assert.equal(detail.revision, 2);
@@ -326,8 +324,7 @@ test("coverage counts distinct pages and detailed runs, and detail refreshes sna
 });
 
 test("priority failures survive checkpoints and every page, and reports must address them", async (t) => {
-  const { validateReport } =
-    await import("./report.mjs");
+  const { validateReport } = await import("./report.ts");
   const { home, put } = await fixture(t);
   const failed = run("new-failure", {
     state: "completed",
@@ -422,6 +419,6 @@ test("priority failures survive checkpoints and every page, and reports must add
     { ...opts, runID: "third-review" },
   );
   assert.ok(
-    !third.coverage.priorityIssues.some((x) => x.runID === "old-failure"),
+    !third.coverage.priorityIssues.some((x?: any) => x.runID === "old-failure"),
   );
 });

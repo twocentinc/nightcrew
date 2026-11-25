@@ -50,25 +50,25 @@ test("skill folders round-trip text/binary resources, preserve unrelated files, 
   await writeFile(path.join(root, "review", "notes.txt"), "Preserve me");
   const loaded = (await loadRegistry(home)).skills.get("review");
   assert.deepEqual(
-    loaded.files.slice().sort((a, b) => a.path.localeCompare(b.path)),
+    loaded!.files.slice().sort((a, b) => a.path.localeCompare(b.path)),
     skill.files.slice().sort((a, b) => a.path.localeCompare(b.path)),
   );
-  const available = loadSkillContent([loaded], {});
+  const available = loadSkillContent([loaded!], {});
   assert.equal(available.available[0].skillID, "review");
   assert.deepEqual(available.skills, []);
-  const instructions = loadSkillContent([loaded], { skillIDs: ["review"] });
+  const instructions = loadSkillContent([loaded!], { skillIDs: ["review"] });
   assert.equal(instructions.skills[0].instructions, "Use the reference.");
   assert.ok(
     instructions.skills[0].files.every((f) => !Object.hasOwn(f, "content")),
   );
   assert.equal(
-    loadSkillContent([loaded], {
+    loadSkillContent([loaded!], {
       files: [{ skillID: "review", path: "assets/template.json" }],
     }).files[0].content,
     '{"status":null}',
   );
   assert.throws(
-    () => loadSkillContent([loaded], { skillIDs: ["other"] }),
+    () => loadSkillContent([loaded!], { skillIDs: ["other"] }),
     /not selected/,
   );
   for (const invalid of [
@@ -138,7 +138,11 @@ test("model tool boundary returns bounded errors without replaying failures or s
     executablePath: process.execPath,
     argv: ["-e", "process.exit(2)"],
     timeoutMs: 1000,
-    parameters: { type: "object", properties: {}, additionalProperties: false },
+    parameters: {
+      type: "object" as const,
+      properties: {},
+      additionalProperties: false,
+    },
   };
   const signal = new AbortController().signal;
   assert.equal(
@@ -157,8 +161,10 @@ test("model tool boundary returns bounded errors without replaying failures or s
     {
       ...definition,
       parameters: {
-        type: "object",
-        properties: { action: { type: "string", enum: ["tables", "schema"] } },
+        type: "object" as const,
+        properties: {
+          action: { type: "string" as const, enum: ["tables", "schema"] },
+        },
         required: ["action"],
       },
     },
@@ -177,7 +183,7 @@ test("model tool boundary returns bounded errors without replaying failures or s
       "tool_output_limit",
     ],
     [["-e", "setInterval(()=>{},1000)"], 100, "tool_timeout"],
-  ]) {
+  ] as Array<[string[], number, string]>) {
     const output = await executeModelTool(
       { ...definition, argv, timeoutMs },
       "{}",

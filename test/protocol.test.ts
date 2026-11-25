@@ -5,14 +5,13 @@ import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-import { snapshots } from "../scripts/contracts.mjs";
 import { commandDefinitions, help, exportSchemas } from "../dist/commands.js";
 import { parseCLI } from "../dist/cli.js";
 import { Execution, withoutExecution, checkpoint } from "../dist/execution.js";
 import { Storage } from "../dist/storage.js";
 const cli = new URL("../dist/cli.js", import.meta.url).pathname;
-const call = (args, { keepStdin = false } = {}) =>
-  new Promise((resolve, reject) => {
+const call = (args: string[], { keepStdin = false } = {}) =>
+  new Promise<any>((resolve, reject) => {
     const child = spawn(process.execPath, [cli, ...args], {
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -31,7 +30,6 @@ const call = (args, { keepStdin = false } = {}) =>
     if (!keepStdin) child.stdin.end();
   });
 test("versioned command catalog and schemas stay aligned with parser and help", async () => {
-  await snapshots();
   const schemas = exportSchemas();
   for (const definition of commandDefinitions) {
     assert.ok(help("", true).commands.includes(definition.name));
@@ -81,10 +79,10 @@ test("errors preserve correlation, classify retries and keep stdout machine read
 });
 test("expired queued writes cannot commit; detached work survives a request deadline", async () => {
   const storage = new Storage("/unused");
-  let release;
+  let release: any;
   let wrote = false;
   const first = storage.exclusive(
-    () => new Promise((resolve) => (release = resolve)),
+    () => new Promise<any>((resolve) => (release = resolve)),
   );
   const execution = new Execution(20, true);
   await assert.rejects(
@@ -93,7 +91,7 @@ test("expired queued writes cannot commit; detached work survives a request dead
         wrote = true;
       }),
     ),
-    (e) => e.code === "runtime.timeout" && e.retrySafety === "unsafe",
+    (e: any) => e.code === "runtime.timeout" && e.retrySafety === "unsafe",
   );
   release();
   await first;
@@ -119,7 +117,7 @@ test("diagnostics report missing configuration without creating a runtime home",
     assert.equal(result.envelope.result.serviceReady, null);
     assert.ok(
       result.envelope.result.checks.some(
-        (c) => c.id === "configuration" && c.status === "fail",
+        (c?: any) => c.id === "configuration" && c.status === "fail",
       ),
     );
     await assert.rejects(readFile(path.join(home, "config.json")), {
@@ -131,27 +129,56 @@ test("diagnostics report missing configuration without creating a runtime home",
 });
 
 test("eval CLI deadline accommodates suites while ordinary command limits remain bounded", async () => {
-  const { parseCLI } = await import('../dist/cli.js');
-  assert.equal(parseCLI(['evals','run']).timeoutMs, 7200000);
-  assert.equal(parseCLI(['evals','run','--timeout','120m']).timeoutMs, 7200000);
-  assert.equal(parseCLI(['agents','list']).timeoutMs, 90000);
-  assert.throws(() => parseCLI(['agents','list','--timeout','6m']), /Timeout/);
-  assert.throws(() => parseCLI(['evals','run','--timeout','121m']), /Timeout/);
+  const { parseCLI } = await import("../dist/cli.js");
+  assert.equal(parseCLI(["evals", "run"]).timeoutMs, 7200000);
+  assert.equal(
+    parseCLI(["evals", "run", "--timeout", "120m"]).timeoutMs,
+    7200000,
+  );
+  assert.equal(parseCLI(["agents", "list"]).timeoutMs, 90000);
+  assert.throws(
+    () => parseCLI(["agents", "list", "--timeout", "6m"]),
+    /Timeout/,
+  );
+  assert.throws(
+    () => parseCLI(["evals", "run", "--timeout", "121m"]),
+    /Timeout/,
+  );
 });
 
-test('simplified CLI removes obsolete names and hides advanced and internal operations', async () => {
-  const {parseCLI}=await import('../dist/cli.js');
-  const {help}=await import('../dist/commands.js');
-  for(const args of [['startup','status'],['inference','submit'],['queue','list'],['fleet','status'],['presence','status'],['scheduler','get'],['scheduler','update'],['scheduler','status'],['agents','enable','a'],['triggers','disable','t'],['evals','sample']]) assert.throws(()=>parseCLI(args),/Unknown command/);
-  assert.equal(parseCLI(['instant','submit']).command,'instant submit');
-  assert.equal(parseCLI(['runs','pause','a']).command,'runs pause');
-  assert.equal(help().commands.includes('runs hooks retry'),false);
-  assert.equal(help('',true).commands.includes('runs hooks retry'),true);
-  assert.equal(help('',true).commands.includes('evals sample'),false);
+test("simplified CLI removes obsolete names and hides advanced and internal operations", async () => {
+  const { parseCLI } = await import("../dist/cli.js");
+  const { help } = await import("../dist/commands.js");
+  for (const args of [
+    ["startup", "status"],
+    ["inference", "submit"],
+    ["queue", "list"],
+    ["fleet", "status"],
+    ["presence", "status"],
+    ["scheduler", "get"],
+    ["scheduler", "update"],
+    ["scheduler", "status"],
+    ["agents", "enable", "a"],
+    ["triggers", "disable", "t"],
+    ["evals", "sample"],
+  ])
+    assert.throws(() => parseCLI(args), /Unknown command/);
+  assert.equal(parseCLI(["instant", "submit"]).command, "instant submit");
+  assert.equal(parseCLI(["runs", "pause", "a"]).command, "runs pause");
+  assert.equal(help().commands.includes("runs hooks retry"), false);
+  assert.equal(help("", true).commands.includes("runs hooks retry"), true);
+  assert.equal(help("", true).commands.includes("evals sample"), false);
 });
 
-test('command names use words without hyphens and removed commands are rejected', async () => {
-  const {help}=await import('../dist/commands.js');
-  for(const name of help('',true).commands) assert.equal(name.includes('-'), false, name);
-  for(const args of [['agents','cache','a'],['agents','reset-cache','a'],['runs','retry-hook','r'],['auth','rotate']]) assert.throws(()=>parseCLI(args), /Unknown command/);
+test("command names use words without hyphens and removed commands are rejected", async () => {
+  const { help } = await import("../dist/commands.js");
+  for (const name of help("", true).commands)
+    assert.equal(name.includes("-"), false, name);
+  for (const args of [
+    ["agents", "cache", "a"],
+    ["agents", "reset-cache", "a"],
+    ["runs", "retry-hook", "r"],
+    ["auth", "rotate"],
+  ])
+    assert.throws(() => parseCLI(args), /Unknown command/);
 });

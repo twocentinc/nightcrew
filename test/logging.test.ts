@@ -13,7 +13,7 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 import { OperationalLog, loggingSchema } from "../dist/logging.js";
 import { requestSchemas } from "../dist/operationInputs.js";
-const fixture = async (t) => {
+const fixture = async (t: import("node:test").TestContext) => {
   const home = await mkdtemp(path.join(tmpdir(), "nightcrew-log-"));
   t.after(() => rm(home, { recursive: true, force: true }));
   return home;
@@ -29,6 +29,10 @@ test("logging filters levels, strips non-operational data and rate limits repeti
     prompt: "secret prompt",
     token: "secret token",
     stack: "secret stack",
+  } as Parameters<typeof logger.emit>[1] & {
+    prompt: string;
+    token: string;
+    stack: string;
   });
   logger.emit("slot.snapshotRestoreFailed", {
     slotID: "instant",
@@ -36,7 +40,10 @@ test("logging filters levels, strips non-operational data and rate limits repeti
   });
   await logger.flush();
   let content = await readFile(path.join(home, "logs/daemon.jsonl"), "utf8");
-  const entries = content.trim().split("\n").map(JSON.parse);
+  const entries = content
+    .trim()
+    .split("\n")
+    .map((text: string) => JSON.parse(text));
   assert.equal(entries.length, 1);
   assert.equal(entries[0].event, "slot.snapshotRestoreFailed");
   assert.doesNotMatch(content, /secret|daemon.ready/);
@@ -119,7 +126,7 @@ test("logger refuses symlink targets and emits only a sanitized failure", async 
   assert.equal(await readFile(target, "utf8"), "untouched");
 });
 test("unrelated config patches do not reset logging defaults", () => {
-  const request = requestSchemas["config update"].parse({
+  const request: any = requestSchemas["config update"].parse({
     expectedRevision: 1,
     changes: { interactionCooldownMs: 10 },
   });

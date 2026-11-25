@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S node --experimental-strip-types
 import {
   mkdir,
   writeFile,
@@ -10,9 +10,10 @@ import {
 import { homedir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 export async function validateReport(
-  input,
+  input?: any,
   home = process.env.NIGHTCREW_HOME ?? path.join(homedir(), ".nightcrew"),
 ) {
   if (
@@ -65,7 +66,7 @@ export async function validateReport(
         ([key, value]) =>
           !body
             .split(/\r?\n/)
-            .some((line) => line.trim() === `${key}: ${value}`),
+            .some((line?: any) => line.trim() === `${key}: ${value}`),
       ) ||
       !/^Assessment: .{20,}$/m.test(body) ||
       !/^Next action: .{10,}$/m.test(body)
@@ -87,7 +88,7 @@ export async function validateReport(
 }
 
 export async function report(
-  event,
+  event?: any,
   home = process.env.NIGHTCREW_HOME ?? path.join(homedir(), ".nightcrew"),
   agentIDs = ["agent-supervisor"],
 ) {
@@ -125,8 +126,11 @@ export async function report(
   try {
     try {
       await link(tmp, file);
-    } catch (e) {
-      if (e.code !== "EEXIST" || (await readFile(file, "utf8")) !== text)
+    } catch (e: unknown) {
+      if (
+        (e as NodeJS.ErrnoException).code !== "EEXIST" ||
+        (await readFile(file, "utf8")) !== text
+      )
         throw e;
     }
   } finally {
@@ -141,19 +145,27 @@ export async function report(
           "utf8",
         ),
       );
-    } catch (e) {
-      if (e.code !== "ENOENT") throw e;
+    } catch (e: unknown) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     }
     if (snapshot) {
       const checkpoint = path.join(dir, "checkpoint.json");
-      let old = { revisions: {} };
+      let old: {
+        revisions: Record<string, number>;
+        capturedAt?: string;
+        baselineAt?: string;
+        completedAt?: string;
+        report?: string;
+      } = { revisions: {} };
       try {
         old = JSON.parse(await readFile(checkpoint, "utf8"));
-      } catch (e) {
-        if (e.code !== "ENOENT") throw e;
+      } catch (e: unknown) {
+        if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
       }
       const revisions = { ...old.revisions };
-      for (const [id, revision] of Object.entries(snapshot.examined))
+      for (const [id, revision] of Object.entries(
+        snapshot.examined as Record<string, number>,
+      ))
         revisions[id] = Math.max(revisions[id] ?? 0, revision);
       const newer = !old.capturedAt || snapshot.capturedAt >= old.capturedAt;
       const next = {
@@ -174,7 +186,7 @@ export async function report(
 }
 if (
   process.argv[1] &&
-  import.meta.url === pathToFileURL(process.argv[1]).href
+  import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href
 ) {
   try {
     let s = "";

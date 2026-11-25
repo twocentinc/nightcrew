@@ -29,7 +29,8 @@
     },
     "executablePath": "/absolute/path/to/node",
     "argv": [
-      "/absolute/path/to/agent-supervisor/inspect.mjs"
+      "--experimental-strip-types",
+      "/absolute/path/to/agent-supervisor/inspect.ts"
     ],
     "timeoutMs": 60000
   }

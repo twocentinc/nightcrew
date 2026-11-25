@@ -1,3 +1,4 @@
+import { settings, agentDraft } from "./fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -13,12 +14,17 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { randomUUID } from "node:crypto";
-import { evalSuiteSchema, runEval } from "../dist/evals.js";
+import { evalSuiteSchema, runEval as rawRunEval } from "../dist/evals.js";
 import { Storage, initializeHome } from "../dist/storage.js";
 import { Service } from "../dist/service.js";
-import { callOperation } from "../dist/operations.js";
+import { callOperation as rawcallOperation } from "../dist/operations.js";
+const callOperation: (
+  ...args: Parameters<typeof rawcallOperation>
+) => Promise<any> = rawcallOperation;
 import { normalizeError } from "../dist/protocol.js";
-const suite = () => ({
+const runEval: (...args: Parameters<typeof rawRunEval>) => Promise<any> =
+  rawRunEval;
+const suite = (): any => ({
   format: "nightcrew.eval",
   version: 1,
   suiteID: "retry",
@@ -30,7 +36,7 @@ const suite = () => ({
       context: {
         messages: [
           {
-            role: "user",
+            role: "user" as const,
             content:
               "Read the record. Retry one transient error. Return its exact code.",
           },
@@ -42,17 +48,21 @@ const suite = () => ({
           tool: "inspect",
           arguments: { page: 0 },
           responses: [
-            { type: "error", message: "temporary" },
-            { type: "result", content: "code: AZ-41" },
+            { type: "error" as const, message: "temporary" },
+            { type: "result" as const, content: "code: AZ-41" },
           ],
         },
       ],
       expectations: {
         assertions: [
-          { assertionID: "answer", type: "finalContains", text: "AZ-41" },
+          {
+            assertionID: "answer",
+            type: "finalContains" as const,
+            text: "AZ-41",
+          },
           {
             assertionID: "twice",
-            type: "mockCallCount",
+            type: "mockCallCount" as const,
             mockID: "read",
             min: 2,
             max: 2,
@@ -69,8 +79,8 @@ const suite = () => ({
     },
   ],
 });
-const call = (home, args, request) =>
-  new Promise((resolve, reject) => {
+const call = (home: string, args: string[], request?: any) =>
+  new Promise<any>((resolve, reject) => {
     const p = spawn(
       process.execPath,
       [
@@ -97,34 +107,37 @@ const call = (home, args, request) =>
     });
     p.stdin.end(JSON.stringify(request));
   });
-async function fixture(t, override) {
+async function fixture(t: import("node:test").TestContext, override?: any) {
   const home = await mkdtemp(path.join(tmpdir(), "nc-eval-"));
-  const inputs = [];
-  await initializeHome(home, {
-    host: "127.0.0.1",
-    port: 6970,
-    interactionCooldownMs: 0,
-    scheduler: { instantModelID: "qwen", contextTokens: 2048 },
-    models: [
-      {
-        modelID: "qwen",
-        kind: "chat",
-        weightsPath: "/unused",
-        projectorPath: null,
-        idleUnloadMs: 1000,
-      },
-    ],
-    slots: [],
-    hooks: [],
-  });
+  const inputs: any[] = [];
+  await initializeHome(
+    home,
+    settings.parse({
+      host: "127.0.0.1",
+      port: 6970,
+      interactionCooldownMs: 0,
+      scheduler: { instantModelID: "qwen", contextTokens: 2048 },
+      models: [
+        {
+          modelID: "qwen",
+          kind: "chat" as const,
+          weightsPath: "/unused",
+          projectorPath: null,
+          idleUnloadMs: 1000,
+        },
+      ],
+      slots: [],
+      hooks: [],
+    }),
+  );
   const runtime = {
     status: () => [],
     close: async () => {},
     countTokens: async () => 20,
-    generate: async (input) => {
+    generate: async (input?: any) => {
       inputs.push(structuredClone(input));
       if (override) return override(input);
-      const results = input.messages.filter((m) => m.role === "tool");
+      const results = input.messages.filter((m?: any) => m.role === "tool");
       return {
         text: results.length < 2 ? "" : "AZ-41",
         toolCalls:
@@ -153,8 +166,8 @@ async function fixture(t, override) {
     toolID: "inspect",
     description: "Read a record",
     parameters: {
-      type: "object",
-      properties: { page: { type: "integer" } },
+      type: "object" as const,
+      properties: { page: { type: "integer" as const } },
       required: ["page"],
       additionalProperties: false,
     },
@@ -162,21 +175,27 @@ async function fixture(t, override) {
     argv: [],
     timeoutMs: 100,
   });
-  await service.createAgent({
-    agentID: "reviewer",
-    name: "reviewer",
-    systemPrompt: "Follow the user request.",
-    modelID: "qwen",
-    mode: "agent-loop",
-    skillIDs: [],
-    toolIDs: ["inspect"],
-    enabled: false,
-    thinking: false,
-    maxOutputTokens: 64,
-    timeoutMs: 5000,
-    sampling: { topP: 0.8 },
-  });
-  const transport = (command, request = {}, resourceID) =>
+  await service.createAgent(
+    agentDraft.parse({
+      agentID: "reviewer",
+      name: "reviewer",
+      systemPrompt: "Follow the user request.",
+      modelID: "qwen",
+      mode: "agent-loop",
+      skillIDs: [],
+      toolIDs: ["inspect"],
+      enabled: false,
+      thinking: false,
+      maxOutputTokens: 64,
+      timeoutMs: 5000,
+      sampling: { topP: 0.8 },
+    }),
+  );
+  const transport = (
+    command: string,
+    request: unknown = {},
+    resourceID: string | undefined = undefined,
+  ) =>
     callOperation(service, {
       command,
       request,
@@ -203,12 +222,12 @@ async function fixture(t, override) {
       }
     });
   });
-  await new Promise((resolve) =>
+  await new Promise<void>((resolve) =>
     server.listen(path.join(home, "control.sock"), resolve),
   );
   await chmod(path.join(home, "control.sock"), 0o600);
   t.after(async () => {
-    await new Promise((resolve) => server.close(resolve));
+    await new Promise<any>((resolve) => server.close(resolve));
     await service.close();
     await rm(home, { recursive: true, force: true });
   });
@@ -225,7 +244,7 @@ test("eval schema rejects ambiguous mocks, orphan history, extra keys and invali
   assert.equal(evalSuiteSchema.safeParse(duplicate).success, false);
   const orphan = structuredClone(s);
   orphan.cases[0].context.messages = [
-    { role: "tool", content: "fake", toolCallID: "absent" },
+    { role: "tool" as const, content: "fake", toolCallID: "absent" },
   ];
   assert.equal(evalSuiteSchema.safeParse(orphan).success, false);
   const invalid = structuredClone(s);
@@ -267,17 +286,19 @@ test("CLI runs agent loop, mocks retries, hides rubric, snapshots sampling and s
   assert.equal(out.ok, true, JSON.stringify(out));
   assert.equal(out.result.status, "needs_review");
   const saved = JSON.parse(
-    await readFile(path.join(destination, "result.json"), "utf8"),
+    (await readFile(path.join(destination, "result.json"), "utf8")).toString(),
   );
   assert.equal(saved.cases[0].counts.read, 2);
-  assert.ok(saved.cases[0].assertions.every((a) => a.passed));
+  assert.ok(saved.cases[0].assertions.every((a?: any) => a.passed));
   assert.equal(saved.cases[0].criteria[0].status, "unreviewed");
   assert.equal(f.inputs.length, 3);
   assert.equal(f.service.chats.size, 0);
   assert.ok(!JSON.stringify(f.inputs).includes("JUDGE_ONLY_SENTINEL"));
   assert.equal(f.inputs[0].sampling.topP, 0.8);
   assert.equal(
-    saved.snapshot.tools.some((t) => "executablePath" in t),
+    saved.snapshot.tools.some(
+      (t: import("node:test").TestContext) => "executablePath" in t,
+    ),
     false,
   );
   const again = await call(f.home, ["evals", "run"], {
@@ -302,7 +323,7 @@ test("unexpected arguments stop eval without tool execution and preserve attempt
   assert.equal(out.status, "failed");
   assert.match(out.cases[0].error, /fixture_mismatch/);
   assert.equal(f.inputs.length, 1);
-  const saved = JSON.parse(await readFile(out.resultFile, "utf8"));
+  const saved = JSON.parse((await readFile(out.resultFile, "utf8")).toString());
   assert.equal(
     saved.cases[0].messages.at(-1).toolCalls[0].arguments,
     '{"page":9}',
@@ -326,7 +347,7 @@ test("eval sample never executes reserved load_skills and checks context before 
       mockID: "skill",
       tool: "load_skills",
       arguments: { skillIDs: ["nonexistent"] },
-      responses: [{ type: "result", content: "fixture instructions" }],
+      responses: [{ type: "result" as const, content: "fixture instructions" }],
     },
   ];
   s.limits.maxToolCalls = 1;
@@ -378,10 +399,10 @@ test("fixtures never conflate absent and null arguments", async (t) => {
     ],
     usage: { inputTokens: 1, outputTokens: 1 },
   }));
-  f.service.tools.get("inspect").parameters = {
-    type: "object",
+  f.service.tools.get("inspect")!.parameters = {
+    type: "object" as const,
     properties: {
-      page: { type: "integer" },
+      page: { type: "integer" as const },
       optional: { type: ["string", "null"] },
     },
     required: ["page"],
@@ -402,7 +423,9 @@ test("mock exhaustion is explicit and cannot fall through to an executable", asy
     usage: { inputTokens: 1, outputTokens: 1 },
   }));
   const s = suite();
-  s.cases[0].mocks[0].responses = [{ type: "result", content: "once" }];
+  s.cases[0].mocks[0].responses = [
+    { type: "result" as const, content: "once" },
+  ];
   const out = await runEval(
     { suite: s, destination: path.join(f.home, "exhausted") },
     f.transport,
@@ -411,7 +434,11 @@ test("mock exhaustion is explicit and cannot fall through to an executable", asy
   assert.equal(f.inputs.length, 2);
 });
 
-async function graded(t, source, options = {}) {
+async function graded(
+  t: import("node:test").TestContext,
+  source?: any,
+  options: { generate?: any; timeoutMs?: number } = {},
+) {
   const f = await fixture(t, options.generate);
   const script = path.join(f.home, "grade.ts");
   await writeFile(script, source);
@@ -428,12 +455,15 @@ async function graded(t, source, options = {}) {
 }
 const passingGrade =
   'console.log(JSON.stringify({checks:[{checkID:"semantic",criterionID:"honest",status:"passed",reason:"Checked against the fixture."}]}));';
-async function evaluate(f, name = "graded") {
+async function evaluate(f?: any, name = "graded") {
   const out = await runEval(
     { suite: f.suite, destination: path.join(f.home, name) },
     f.transport,
   );
-  return { out, saved: JSON.parse(await readFile(out.resultFile, "utf8")) };
+  return {
+    out,
+    saved: JSON.parse((await readFile(out.resultFile, "utf8")).toString()),
+  };
 }
 test("TypeScript graders receive hidden expectations and complete trace without exposing them to the model", async (t) => {
   const f = await graded(
@@ -472,7 +502,7 @@ test("dry run never executes graders", async (t) => {
   );
   assert.equal(f.inputs.length, 0);
   await assert.rejects(access(path.join(f.home, "dry")));
-  assert.ok(result.snapshot.graders.length);
+  assert.ok(result.snapshot!.graders.length);
 });
 test("grader verdicts preserve deterministic failure and execution errors", async (t) => {
   for (const error of [false, true]) {
@@ -518,7 +548,7 @@ test("grader failures, malformed output, duplicate checks, unknown criteria and 
   }
 });
 test("a changed grader is rejected before execution", async (t) => {
-  let script;
+  let script: any;
   const f = await graded(t, passingGrade, {
     generate: async () => {
       await writeFile(script, 'throw Error("changed executable ran");');

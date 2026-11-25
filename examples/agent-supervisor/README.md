@@ -11,7 +11,8 @@ cannot change configuration, retry/cancel runs or send messages.
 Copy this directory to a durable local directory. Set `agent.json` modelID to a
 registered chat model and compaction.handler.agentID to an installed single-turn
 summarizer (or disable compaction). In `tool.json`, replace executablePath with
-your absolute Node executable and argv[0] with the copied inspect.mjs path.
+your absolute Node executable and argv[1] with the copied inspect.ts path; retain argv[0],
+`--experimental-strip-types`, for Node 22.
 Register tool, skill, agent, and manual trigger through the existing CLI:
 
 ```sh
@@ -28,9 +29,9 @@ current `expectedRevision` and `changes: {"enabled": true}`. The schedule remain
 there is no timer. Run with `nightcrew triggers fire agent-supervisor-manual`.
 No example-specific installation command is needed.
 
-Register report.mjs as a run.completed notification hook using revision-checked
-`config update`, preserving existing hooks. Make it executable with a Node shebang
-that works under the daemon PATH. Hook fields are event, purpose, executablePath,
+Register report.ts as a run.completed notification hook using revision-checked
+`config update`, preserving existing hooks. Make it executable; its shebang uses
+`node --experimental-strip-types` and requires Node on the daemon PATH. Hook fields are event, purpose, executablePath,
 and timeoutMs (10000 is sufficient). It ignores other agents and writes exact
 results to `~/.nightcrew/integrations/agent-supervisor/reports/<runID>.md`.
 For a nondefault home, use an executable wrapper importing `report` and passing
@@ -39,7 +40,7 @@ tool receives NIGHTCREW_HOME from the tool runner automatically.
 
 ## Review boundaries
 
-`inspect.mjs` accepts overview, page (five metrics per page), and run (bounded
+`inspect.ts` accepts overview, page (five metrics per page), and run (bounded
 failure detail for a run in this snapshot). It never reads config, credentials,
 arbitrary paths, prompts, thinking, tool arguments or raw tool results. Run error
 messages and failure event evidence may contain private operational details;
@@ -82,7 +83,7 @@ Changed revisions during snapshot collection are reported as unreadable, not
 classified from mismatched evidence.
 
 Configure the agent output-validation hook with your Node path and copied
-`report.mjs --validate` path. The inspector repeats recent priority incidents
+`report.ts --validate` path. The inspector repeats recent priority incidents
 in every response; reports need one `### RUN_ID` section for each with exact
 Execution, Output and Delivery status lines, an Assessment and a Next action.
 The validator checks coverage, not semantic accuracy. Recent unresolved incidents

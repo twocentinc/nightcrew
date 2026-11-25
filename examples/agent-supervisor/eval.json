@@ -13,7 +13,7 @@
   "cases": [
     {
       "caseID": "repeated-does-not-mean-bug",
-      "description": "Derived from examples/agent-supervisor/test.mjs: metrics distinguish retries, repeated calls and errors without revealing tool arguments.",
+      "description": "Derived from examples/agent-supervisor/inspect.test.ts: metrics distinguish retries, repeated calls and errors without revealing tool arguments.",
       "context": {
         "messages": [
           {

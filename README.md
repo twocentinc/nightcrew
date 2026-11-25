@@ -15,8 +15,8 @@ Requires Node 22.12+ and a compatible `llama-server` on PATH.
 ```sh
 npm ci
 npm run build
-./bin/nightcrew help
-./bin/nightcrew schema get models.create
+node dist/cli.js help
+node dist/cli.js schema get models.create
 npm run lint
 npm test
 ```
@@ -1018,3 +1018,16 @@ The separate `capabilities` command, `skills reload`, `--verbose`, `-v` and
 
 For an opt-in real-model verification of timer admission, priority/cooldown,
 restart recovery, compaction and model switching, see [the acceptance guide](docs/acceptance.md).
+
+
+## Repository checks
+
+All repository-owned scripts and tests use TypeScript. `npm test` runs the
+offline runtime and example tests, including contract snapshots and the ban on
+`.mjs` source files. `npm run lint` type-checks source, tests, examples, and scripts.
+
+`npm run test:package` separately packs and installs the package in a temporary
+directory to verify the installed CLI and examples. `npm run contracts:check`
+runs only the contract tests; `npm run contracts:update` explicitly regenerates
+snapshots after an approved schema change. Real-model tests remain opt-in under
+`npm run test:live`.

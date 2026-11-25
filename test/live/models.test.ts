@@ -18,11 +18,11 @@ test(
   },
   async (t) => {
     assert.ok(
-      process.env.NIGHTCREW_LIVE_CONFIG,
+      process.env.NIGHTCREW_LIVE_CONFIG!,
       "Provide NIGHTCREW_LIVE_CONFIG",
     );
     const settings = JSON.parse(
-      await readFile(process.env.NIGHTCREW_LIVE_CONFIG, "utf8"),
+      (await readFile(process.env.NIGHTCREW_LIVE_CONFIG!, "utf8")).toString(),
     );
     const qwen = modelSchema.parse(settings.qwen);
     const granite = settings.granite
@@ -55,7 +55,7 @@ test(
     await writeFile(path.join(home, "config.json"), JSON.stringify(store), {
       mode: 0o600,
     });
-    let app;
+    let app: any;
     const start = async () =>
       (app = await startServer({
         home,
@@ -72,10 +72,14 @@ test(
     t.after(async () => {
       await app.close();
     });
-    const rpc = async (name, request = {}, resourceID) => {
+    const rpc = async (
+      name: any,
+      request = {},
+      resourceID: string | undefined = undefined,
+    ) => {
       const response = await fetch(
         "http://127.0.0.1:" +
-          app.server.address().port +
+          (app.server.address() as import("node:net").AddressInfo).port +
           "/v1/operations/" +
           name.replaceAll(" ", "/"),
         {
@@ -91,7 +95,7 @@ test(
       assert.equal(response.status, 200, JSON.stringify(result));
       return result;
     };
-    const wait = async (runID) => {
+    const wait = async (runID: string) => {
       for (let i = 0; i < 1200; i++) {
         const run = await app.service.storage.read(runID);
         if (["failed", "timedOut", "cancelled"].includes(run.state) || run.held)
@@ -101,7 +105,7 @@ test(
       }
       assert.fail("Live run did not finish in ten minutes");
     };
-    const draft = (agentID, extra = {}) => ({
+    const draft = (agentID: string, extra = {}) => ({
       agentID,
       name: agentID,
       systemPrompt: "Follow the user request concisely.",
@@ -116,7 +120,7 @@ test(
       timeoutMs: 600000,
       ...extra,
     });
-    const message = (content, thinking) => ({
+    const message = (content: string, thinking?: any) => ({
       messageID: randomUUID(),
       content,
       attachments: [],
@@ -136,7 +140,9 @@ test(
       "live-persistent",
     );
     let run = await wait(accepted.runID);
-    let answer = run.messages.filter((m) => m.role === "assistant").at(-1);
+    let answer = run.messages
+      .filter((m?: any) => m.role === "assistant")
+      .at(-1);
     assert.equal(answer.thinking, true);
     assert.ok(
       answer.reasoningContent?.trim(),
@@ -152,7 +158,7 @@ test(
     );
     assert.equal(accepted.runID, originalID);
     run = await wait(originalID);
-    answer = run.messages.filter((m) => m.role === "assistant").at(-1);
+    answer = run.messages.filter((m?: any) => m.role === "assistant").at(-1);
     assert.equal(answer.thinking, false);
     assert.ok(!answer.reasoningContent);
     assert.match(answer.content, /lavender/i);
@@ -161,7 +167,7 @@ test(
     await rpc("config update", {
       expectedRevision: config.revision,
       changes: {
-        models: config.models.map((m) =>
+        models: config.models.map((m?: any) =>
           m.modelID === qwen.modelID
             ? { ...m, compactionThresholdTokens: 1200 }
             : m,
@@ -169,10 +175,12 @@ test(
       },
     });
     const summarizer = JSON.parse(
-      await readFile(
-        new URL("../../examples/summarizer/agent.json", import.meta.url),
-        "utf8",
-      ),
+      (
+        await readFile(
+          new URL("../../examples/summarizer/agent.json", import.meta.url),
+          "utf8",
+        )
+      ).toString(),
     ).agent;
     await rpc("agents create", {
       agent: {
@@ -186,7 +194,9 @@ test(
     await rpc("agents create", {
       agent: draft("live-compact", {
         contextMode: "persistent",
-        compaction: { handler: { type: "agent", agentID: "live-summary" } },
+        compaction: {
+          handler: { type: "agent" as const, agentID: "live-summary" },
+        },
       }),
     });
     let compactID;
@@ -229,7 +239,7 @@ test(
             attachments: [
               {
                 name: "sample.wav",
-                mediaType: "audio/wav",
+                mediaType: "audio/wav" as const,
                 dataBase64: (await readFile(settings.audioFile)).toString(
                   "base64",
                 ),

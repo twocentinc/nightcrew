@@ -1,3 +1,4 @@
+import { settings, agentDraft } from "./fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
@@ -7,45 +8,50 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { Storage, initializeHome } from "../dist/storage.js";
 import { Service } from "../dist/service.js";
-import { manage } from "../dist/management.js";
+import { manage as rawmanage } from "../dist/management.js";
+const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
+  rawmanage;
 import { nextFireAt, scheduleSchema } from "../dist/triggers.js";
 
-async function fixture(t) {
+async function fixture(t: import("node:test").TestContext) {
   const home = await mkdtemp(path.join(tmpdir(), "nc-trigger-"));
-  await initializeHome(home, {
-    host: "127.0.0.1",
-    port: 6970,
-    interactionCooldownMs: 0,
-    models: [
-      {
-        modelID: "qwen",
-        kind: "chat",
-        weightsPath: "/unused",
-        projectorPath: null,
-        idleUnloadMs: 0,
-      },
-    ],
-    slots: [
-      {
-        slotID: "instant",
-        modelID: "qwen",
-        index: 0,
-        contextTokens: 1024,
-        instant: true,
-      },
-      {
-        slotID: "background",
-        modelID: "qwen",
-        index: 1,
-        contextTokens: 1024,
-        instant: false,
-      },
-    ],
-    hooks: [],
-  });
-  const calls = [],
+  await initializeHome(
+    home,
+    settings.parse({
+      host: "127.0.0.1",
+      port: 6970,
+      interactionCooldownMs: 0,
+      models: [
+        {
+          modelID: "qwen",
+          kind: "chat" as const,
+          weightsPath: "/unused",
+          projectorPath: null,
+          idleUnloadMs: 0,
+        },
+      ],
+      slots: [
+        {
+          slotID: "instant",
+          modelID: "qwen",
+          index: 0,
+          contextTokens: 1024,
+          instant: true,
+        },
+        {
+          slotID: "background",
+          modelID: "qwen",
+          index: 1,
+          contextTokens: 1024,
+          instant: false,
+        },
+      ],
+      hooks: [],
+    }),
+  );
+  const calls: any[] = [],
     state = { away: false };
-  let service;
+  let service!: Service;
   const start = async () => {
     service = new Service(
       new Storage(home),
@@ -76,24 +82,30 @@ async function fixture(t) {
     await service.close();
     await rm(home, { recursive: true, force: true });
   });
-  await service.createAgent({
-    agentID: "reviewer",
-    name: "reviewer",
-    systemPrompt: "Review",
-    mode: "single-turn",
-    modelID: "qwen",
-    slotID: "background",
-    enabled: true,
-    toolIDs: [],
-    skillIDs: [],
-    timeoutMs: 30000,
-    thinking: false,
-    temperature: 0,
-    maxOutputTokens: 32,
-  });
-  const invoke = (command, resourceID, request = {}, extra = {}) =>
-    manage(service, { command, resourceID, request, ...extra });
-  const create = (triggerID, queuePolicy = "skip") =>
+  await service.createAgent(
+    agentDraft.parse({
+      agentID: "reviewer",
+      name: "reviewer",
+      systemPrompt: "Review",
+      mode: "single-turn",
+      modelID: "qwen",
+      slotID: "background",
+      enabled: true,
+      toolIDs: [],
+      skillIDs: [],
+      timeoutMs: 30000,
+      thinking: false,
+      temperature: 0,
+      maxOutputTokens: 32,
+    }),
+  );
+  const invoke = (
+    command: string,
+    resourceID: string | undefined = undefined,
+    request = {},
+    extra = {},
+  ) => manage(service, { command, resourceID, request, ...extra });
+  const create = (triggerID?: any, queuePolicy = "skip") =>
     invoke("triggers create", undefined, {
       trigger: {
         triggerID,
@@ -101,7 +113,7 @@ async function fixture(t) {
         agentID: "reviewer",
         enabled: true,
         queuePolicy,
-        schedule: { type: "interval", everyMs: 60000 },
+        schedule: { type: "interval" as const, everyMs: 60000 },
         message: { content: "check", attachments: [] },
       },
     });
@@ -120,7 +132,7 @@ async function fixture(t) {
     },
   };
 }
-async function until(fn) {
+async function until(fn?: any) {
   for (let i = 0; i < 100; i++) {
     if (await fn()) return;
     await delay(20);
@@ -132,15 +144,15 @@ test("fixed intervals and cron use explicit zones, skip missed ticks, and handle
   const anchor = "2026-01-01T00:00:00.000Z";
   assert.equal(
     nextFireAt(
-      { type: "interval", everyMs: 60000 },
+      { type: "interval" as const, everyMs: 60000 },
       anchor,
       Date.parse("2026-01-01T00:10:10Z"),
     ),
     "2026-01-01T00:11:00.000Z",
   );
-  assert.equal(nextFireAt({ type: "manual" }, anchor), null);
+  assert.equal(nextFireAt({ type: "manual" as const }, anchor), null);
   const cron = {
-    type: "cron",
+    type: "cron" as const,
     expression: "30 2 * * *",
     timezone: "America/New_York",
   };
@@ -158,7 +170,11 @@ test("fixed intervals and cron use explicit zones, skip missed ticks, and handle
   );
   assert.equal(
     nextFireAt(
-      { type: "cron", expression: "*/15 9-17 * * 1-5", timezone: "UTC" },
+      {
+        type: "cron" as const,
+        expression: "*/15 9-17 * * 1-5",
+        timezone: "UTC",
+      },
       anchor,
       Date.parse("2026-01-02T09:00:00Z"),
     ),
@@ -215,7 +231,10 @@ test("trigger CRUD keeps revisions and anchors, rejects dangling agents, and lea
     ),
     /trigger agent reference/,
   );
-  await f.invoke("triggers update", "timer", { expectedRevision: 2, changes:{enabled:false} });
+  await f.invoke("triggers update", "timer", {
+    expectedRevision: 2,
+    changes: { enabled: false },
+  });
   assert.equal((await f.invoke("triggers get", "timer")).item.nextFireAt, null);
   await assert.rejects(f.invoke("triggers fire", "timer"), /trigger_disabled/);
   await f.invoke(
@@ -226,7 +245,7 @@ test("trigger CRUD keeps revisions and anchors, rejects dangling agents, and lea
   );
   const run = await f.service.run(fired.runID);
   assert.equal(run.state, "queued");
-  assert.equal(run.triggerSource.definition.name, "renamed");
+  assert.equal(run.triggerSource!.definition.name, "renamed");
 });
 
 test("trigger admission deduplicates, skips, coalesces only pending input and persists holds across restart", async (t) => {
@@ -278,7 +297,7 @@ test("trigger admission deduplicates, skips, coalesces only pending input and pe
     "coalesced",
   );
   run = await f.service.run(a.runID);
-  assert.equal(run.messages.filter((m) => m.role === "user").length, 2);
+  assert.equal(run.messages.filter((m?: any) => m.role === "user").length, 2);
   const before = await readFile(
     path.join(f.home, "runs", a.runID, "state.json"),
   );
@@ -298,7 +317,9 @@ test("trigger admission deduplicates, skips, coalesces only pending input and pe
     "replayed",
   );
   // Hold all other work, then release only the coalesced run while away.
-  for (const item of (await f.invoke("runs list")).items.filter(r => ["queued","paused"].includes(r.state))) {
+  for (const item of (await f.invoke("runs list")).items.filter((r?: any) =>
+    ["queued", "paused"].includes(r.state),
+  )) {
     await f.invoke("runs pause", item.runID, {
       expectedRevision: item.revision,
     });
@@ -310,7 +331,9 @@ test("trigger admission deduplicates, skips, coalesces only pending input and pe
   await until(async () => (await f.service.run(a.runID)).state === "completed");
   assert.equal(f.calls.length, 1);
   assert.deepEqual(
-    f.calls[0].messages.filter((m) => m.role === "user").map((m) => m.content),
+    f.calls[0].messages
+      .filter((m?: any) => m.role === "user")
+      .map((m?: any) => m.content),
     ["latest"],
   );
   run = await f.service.run(a.runID);

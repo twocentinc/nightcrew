@@ -1,3 +1,4 @@
+import { runtimeConfig } from "./fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, writeFile, rm, readFile, readdir } from "node:fs/promises";
@@ -17,9 +18,9 @@ const chat = (m = message()) => ({
   conversationID: randomUUID(),
   modelID: "qwen",
   slotID: "instant",
-  messages: [{ ...m, role: "user", toolCalls: [], toolCallID: null }],
+  messages: [{ ...m, role: "user" as const, toolCalls: [], toolCallID: null }],
 });
-async function fixture(t, generate) {
+async function fixture(t: import("node:test").TestContext, generate?: any) {
   const home = await mkdtemp(path.join(tmpdir(), "nightcrew-test-"));
   const initial = {
     version: 2,
@@ -32,7 +33,7 @@ async function fixture(t, generate) {
       models: [
         {
           modelID: "qwen",
-          kind: "chat",
+          kind: "chat" as const,
           weightsPath: "/unused/test.gguf",
           projectorPath: null,
           idleUnloadMs: 1000,
@@ -74,7 +75,7 @@ async function fixture(t, generate) {
     close: async () => {},
   };
   const state = { away: false };
-  let app;
+  let app: any;
   const start = async () => {
     app = await startServer({
       home,
@@ -95,9 +96,9 @@ async function fixture(t, generate) {
     await app.close();
     await rm(home, { recursive: true, force: true });
   });
-  const request = async (method, url, body, auth = true) => {
+  const request = async (method?: any, url?: any, body?: any, auth = true) => {
     const response = await fetch(
-      `http://127.0.0.1:${app.server.address().port}${url}`,
+      `http://127.0.0.1:${(app.server.address() as import("node:net").AddressInfo).port}${url}`,
       {
         method,
         headers: {
@@ -134,7 +135,7 @@ async function fixture(t, generate) {
     },
   };
 }
-async function until(fn) {
+async function until(fn?: any) {
   for (let i = 0; i < 200; i++) {
     const value = await fn();
     if (value) return value;
@@ -211,10 +212,12 @@ test("durable UUID deduplication, dry runs, per-message attachments and restart 
     409,
   );
   const state = JSON.parse(
-    await readFile(
-      path.join(f.home, "runs", first.body.runID, "state.json"),
-      "utf8",
-    ),
+    (
+      await readFile(
+        path.join(f.home, "runs", first.body.runID, "state.json"),
+        "utf8",
+      )
+    ).toString(),
   );
   assert.equal(state.messages[1].messageID, m.messageID);
   assert.equal(state.input, undefined);
@@ -258,12 +261,12 @@ test("interactive requests are ephemeral, retryable by UUID and never execute cl
   assert.equal((await f.request("GET", `/v1/chat/requests/${id}`)).status, 404);
 });
 test("instant work waits for compute release before starting; managed work pauses", async (t) => {
-  const calls = [];
+  const calls: any[] = [];
   let released = false;
-  const f = await fixture(t, async (input, signal) => {
+  const f = await fixture(t, async (input?: any, signal?: any) => {
     calls.push(input.slotID);
     if (input.slotID === "background")
-      await new Promise((resolve) =>
+      await new Promise<void>((resolve) =>
         signal.addEventListener(
           "abort",
           () => {
@@ -337,7 +340,7 @@ test("completed replies preserve snapshots, attachments and stable transcript cu
     attachments: [
       {
         name: "notes.txt",
-        mediaType: "text/plain",
+        mediaType: "text/plain" as const,
         dataBase64: Buffer.from("searchable attachment").toString("base64"),
       },
     ],
@@ -380,19 +383,41 @@ test("completed replies preserve snapshots, attachments and stable transcript cu
       (await q("GET", `/v1/runs/${first.runID}`)).body.run.state ===
       "completed",
   );
-  const transcript = f.app.service.transcript(await f.app.service.run(first.runID));
-  const recent = await q("POST", "/v1/operations/runs/transcript", {resourceID:first.runID, request:{recent:true,limit:2}});
-  assert.equal(recent.status,200);
-  assert.deepEqual(recent.body.items.map(e=>e.sequence),transcript.slice(-2).map(e=>e.sequence));
-  const after = await q("POST", "/v1/operations/runs/transcript", {resourceID:first.runID, request:{afterSequence:transcript.at(-2).sequence,limit:2}});
-  assert.deepEqual(after.body.items.map(e=>e.sequence),[transcript.at(-1).sequence]);
-  assert.equal((await q("POST", "/v1/operations/runs/transcript", {resourceID:first.runID,request:{recent:true,cursor:page.nextCursor}})).status,400);
+  const transcript = f.app.service.transcript(
+    await f.app.service.run(first.runID),
+  );
+  const recent = await q("POST", "/v1/operations/runs/transcript", {
+    resourceID: first.runID,
+    request: { recent: true, limit: 2 },
+  });
+  assert.equal(recent.status, 200);
+  assert.deepEqual(
+    recent.body.items.map((e?: any) => e.sequence),
+    transcript.slice(-2).map((e?: any) => e.sequence),
+  );
+  const after = await q("POST", "/v1/operations/runs/transcript", {
+    resourceID: first.runID,
+    request: { afterSequence: transcript.at(-2).sequence, limit: 2 },
+  });
+  assert.deepEqual(
+    after.body.items.map((e?: any) => e.sequence),
+    [transcript.at(-1).sequence],
+  );
+  assert.equal(
+    (
+      await q("POST", "/v1/operations/runs/transcript", {
+        resourceID: first.runID,
+        request: { recent: true, cursor: page.nextCursor },
+      })
+    ).status,
+    400,
+  );
   const response = await fetch(
-    `http://127.0.0.1:${f.app.server.address().port}/v1/runs/${first.runID}/events`,
+    `http://127.0.0.1:${(f.app.server.address() as import("node:net").AddressInfo).port}/v1/runs/${first.runID}/events`,
     { headers: { Authorization: `Bearer ${token}` } },
   );
   assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type"), /text\/event-stream/);
+  assert.match(response.headers.get("content-type")!, /text\/event-stream/);
   assert.match(await response.text(), /completed/);
 });
 
@@ -430,33 +455,35 @@ test("managed llama router provisions from PATH and parses streamed completions"
   await chmod(binary, 0o700);
   const previous = process.env.PATH;
   process.env.PATH = directory + path.delimiter + previous;
-  const runtime = new LlamaRuntime(() => ({
-    models: [
-      {
-        modelID: "qwen",
-        kind: "chat",
-        weightsPath: weights,
-        projectorPath: null,
-        idleUnloadMs: 300000,
-      },
-    ],
-    slots: [
-      {
-        slotID: "background",
-        modelID: "qwen",
-        index: 0,
-        contextTokens: 1024,
-        instant: false,
-      },
-      {
-        slotID: "instant",
-        modelID: "qwen",
-        index: 1,
-        contextTokens: 1024,
-        instant: true,
-      },
-    ],
-  }));
+  const runtime = new LlamaRuntime(() =>
+    runtimeConfig({
+      models: [
+        {
+          modelID: "qwen",
+          kind: "chat" as const,
+          weightsPath: weights,
+          projectorPath: null,
+          idleUnloadMs: 300000,
+        },
+      ],
+      slots: [
+        {
+          slotID: "background",
+          modelID: "qwen",
+          index: 0,
+          contextTokens: 1024,
+          instant: false,
+        },
+        {
+          slotID: "instant",
+          modelID: "qwen",
+          index: 1,
+          contextTokens: 1024,
+          instant: true,
+        },
+      ],
+    }),
+  );
   t.after(async () => {
     process.env.PATH = previous;
     await runtime.close();
@@ -489,8 +516,8 @@ test("managed llama router provisions from PATH and parses streamed completions"
 });
 
 test("active timeout settles a run and hook delivery survives restart without replay", async (t) => {
-  const f = await fixture(t, async (_input, signal) => {
-    await new Promise((resolve) =>
+  const f = await fixture(t, async (_input?: any, signal?: any) => {
+    await new Promise<any>((resolve) =>
       signal.addEventListener("abort", resolve, { once: true }),
     );
     signal.throwIfAborted();
@@ -539,7 +566,7 @@ test("active timeout settles a run and hook delivery survives restart without re
 test("custom executable tools run with snapshotted definitions and appear in discovery", async (t) => {
   const { manage } = await import("../dist/management.js");
   let calls = 0;
-  const f = await fixture(t, async (input) => {
+  const f = await fixture(t, async (input?: any) => {
     calls++;
     if (calls === 1) {
       assert.equal(input.tools[0].name, "inspect");
@@ -571,8 +598,8 @@ test("custom executable tools run with snapshotted definitions and appear in dis
       'process.stdin.resume();process.stdin.on("end",()=>process.stdout.write(JSON.stringify({answer:"read-only"})));',
     ],
     parameters: {
-      type: "object",
-      properties: { query: { type: "string" } },
+      type: "object" as const,
+      properties: { query: { type: "string" as const } },
       required: ["query"],
       additionalProperties: false,
     },
@@ -593,7 +620,9 @@ test("custom executable tools run with snapshotted definitions and appear in dis
     })
   ).body;
   const original = JSON.parse(
-    await readFile(path.join(f.home, "runs", r.runID, "state.json"), "utf8"),
+    (
+      await readFile(path.join(f.home, "runs", r.runID, "state.json"), "utf8")
+    ).toString(),
   );
   assert.equal(original.version, 2);
   assert.equal(original.toolSnapshots[0].toolID, "inspect");
@@ -613,8 +642,8 @@ test("custom executable tools run with snapshotted definitions and appear in dis
 });
 
 test("agent generation settings are snapshotted and passed to inference", async (t) => {
-  let observed;
-  const f = await fixture(t, async (input) => {
+  let observed: any;
+  const f = await fixture(t, async (input?: any) => {
     observed = input;
     return {
       text: "Hello world!",
@@ -659,8 +688,8 @@ test("agent generation settings are snapshotted and passed to inference", async 
 });
 
 test("turn thinking overrides persist, deduplicate and reset to agent defaults on replies", async (t) => {
-  const seen = [];
-  const f = await fixture(t, async (input) => {
+  const seen: any[] = [];
+  const f = await fixture(t, async (input?: any) => {
     seen.push(input.thinking);
     return {
       text: "done",
@@ -738,14 +767,14 @@ test("turn thinking overrides persist, deduplicate and reset to agent defaults o
 });
 
 test("instant agents bypass presence and cooldown, extend cooldown, and preempt background safely", async (t) => {
-  const order = [];
-  let releaseBackground;
-  let backgroundSignal;
-  const f = await fixture(t, async (input, signal) => {
+  const order: any[] = [];
+  let releaseBackground: any;
+  let backgroundSignal: any;
+  const f = await fixture(t, async (input?: any, signal?: any) => {
     if (input.slotID === "background") {
       order.push("background-start");
       backgroundSignal = signal;
-      await new Promise((resolve) => {
+      await new Promise<any>((resolve) => {
         releaseBackground = resolve;
       });
       order.push("background-released");
@@ -873,26 +902,27 @@ test("audio adapter sends output settings and the WAV attachment to transcriptio
   const previous = process.env.PATH;
   process.env.PATH = home + path.delimiter + previous;
   const runtime = new LlamaRuntime(
-    () => ({
-      models: [
-        {
-          modelID: "audio",
-          kind: "audio",
-          weightsPath: weights,
-          projectorPath: null,
-          idleUnloadMs: 300000,
-        },
-      ],
-      slots: [
-        {
-          slotID: "audio",
-          modelID: "audio",
-          index: 0,
-          contextTokens: 8192,
-          instant: false,
-        },
-      ],
-    }),
+    () =>
+      runtimeConfig({
+        models: [
+          {
+            modelID: "audio",
+            kind: "audio" as const,
+            weightsPath: weights,
+            projectorPath: null,
+            idleUnloadMs: 300000,
+          },
+        ],
+        slots: [
+          {
+            slotID: "audio",
+            modelID: "audio",
+            index: 0,
+            contextTokens: 8192,
+            instant: false,
+          },
+        ],
+      }),
     home,
   );
   t.after(async () => {
@@ -907,13 +937,13 @@ test("audio adapter sends output settings and the WAV attachment to transcriptio
       messages: [
         {
           ...message("transcribe exactly"),
-          role: "user",
+          role: "user" as const,
           toolCalls: [],
           toolCallID: null,
           attachments: [
             {
               name: "test.wav",
-              mediaType: "audio/wav",
+              mediaType: "audio/wav" as const,
               dataBase64: Buffer.from("RIFFfixture").toString("base64"),
             },
           ],
@@ -930,8 +960,10 @@ test("audio adapter sends output settings and the WAV attachment to transcriptio
 
 test("stream parser separates thinking from answers and tool calls across byte chunks", async () => {
   const { LlamaRuntime } = await import("../dist/runtime.js");
-  const runtime = new LlamaRuntime(() => ({ models: [], slots: [] }));
-  const chunks = [
+  const runtime = new LlamaRuntime(() =>
+    runtimeConfig({ models: [], slots: [] }),
+  );
+  const chunks: any[] = [
     { reasoning_content: "Check " },
     { reasoning_content: "π first." },
     { content: "Answer" },
@@ -962,10 +994,10 @@ test("stream parser separates thinking from answers and tool calls across byte c
       }),
     );
   let streamed = "";
-  const result = await runtime.readStream(
+  const result = await runtime["readStream"](
     response(),
     new AbortController().signal,
-    (text) => (streamed += text),
+    (text: string) => (streamed += text),
     true,
   );
   assert.equal(result.reasoningContent, "Check π first.");
@@ -974,7 +1006,7 @@ test("stream parser separates thinking from answers and tool calls across byte c
   assert.equal(result.toolCalls[0].name, "inspect");
   assert.equal(
     (
-      await runtime.readStream(
+      await runtime["readStream"](
         response(),
         new AbortController().signal,
         undefined,
@@ -993,14 +1025,28 @@ test("management HTTP and CLI share every oRPC operation contract", async (t) =>
     const command = getCommand(op.name);
     if (["evals sample", "evals release"].includes(op.name)) {
       assert.equal(command, undefined);
-      assert.equal(Boolean(f.app.document.paths["/v1/operations/" + op.name.replaceAll(" ", "/")]), false);
+      assert.equal(
+        Boolean(
+          f.app.document.paths[
+            "/v1/operations/" + op.name.replaceAll(" ", "/")
+          ],
+        ),
+        false,
+      );
       continue;
     }
-    assert.equal(command.request, op.request, op.name);
+    assert.equal(command!.request, op.request, op.name);
     if (["agents run", "instant submit"].includes(op.name)) {
-      assert.ok(command.result.options.includes(op.result));
-      assert.ok(command.result.options.includes(getCommand(op.name === "agents run" ? "runs get" : "instant get").result));
-    } else assert.equal(command.result, op.result, op.name);
+      const options = Reflect.get(command!.result, "options");
+      assert.ok(Array.isArray(options));
+      assert.ok(options.includes(op.result));
+      assert.ok(
+        options.includes(
+          getCommand(op.name === "agents run" ? "runs get" : "instant get")!
+            .result,
+        ),
+      );
+    } else assert.equal(command!.result, op.result, op.name);
     const route = "/v1/operations/" + op.name.replaceAll(" ", "/");
     assert.equal(Boolean(f.app.document.paths[route]), !op.localOnly, route);
   }
@@ -1034,21 +1080,24 @@ test("management HTTP and CLI share every oRPC operation contract", async (t) =>
 });
 
 test("failed generation retains partial answer, thinking and tool fragments as visible attempt evidence", async (t) => {
-  const f = await fixture(t, async (input, signal, onDelta, onEvidence) => {
-    onDelta("partial answer");
-    onEvidence({
-      reasoningContent: "unfinished reasoning",
-      toolCalls: [
-        {
-          index: 0,
-          callID: "call",
-          name: "inspect",
-          arguments: '{"incomplete":',
-        },
-      ],
-    });
-    throw Error("stream disconnected");
-  });
+  const f = await fixture(
+    t,
+    async (input?: any, signal?: any, onDelta?: any, onEvidence?: any) => {
+      onDelta("partial answer");
+      onEvidence({
+        reasoningContent: "unfinished reasoning",
+        toolCalls: [
+          {
+            index: 0,
+            callID: "call",
+            name: "inspect",
+            arguments: '{"incomplete":',
+          },
+        ],
+      });
+      throw Error("stream disconnected");
+    },
+  );
   await f.request("PATCH", "/v1/agents/researcher", {
     expectedRevision: 1,
     changes: {
@@ -1079,17 +1128,17 @@ test("failed generation retains partial answer, thinking and tool fragments as v
     new AbortController().signal,
   );
   assert.equal(
-    visible.find((e) => e.attempt)?.attempt.reasoningContent,
+    visible.find((e?: any) => e.attempt)?.attempt.reasoningContent,
     "unfinished reasoning",
   );
   assert.equal(run.attempts[0].toolCalls[0].arguments, '{"incomplete":');
   assert.equal(
-    run.messages.some((m) => m.content === "partial answer"),
+    run.messages.some((m?: any) => m.content === "partial answer"),
     false,
   );
   const transcript = f.app.service.transcript(run);
   assert.equal(
-    transcript.find((e) => e.attempt)?.attempt.text,
+    transcript.find((e?: any) => e.attempt)?.attempt.text,
     "partial answer",
   );
   const { exportRun, verifyRun } = await import("../dist/runArtifacts.js");
@@ -1142,9 +1191,9 @@ test("storage limit holds a persistent run and delivers one bounded hook with us
   assert.equal(rejected.status, 409);
   await until(async () => {
     const r = await f.app.service.storage.read(runID);
-    return r.hookReceipts.some((h) => h.status === "succeeded");
+    return r.hookReceipts.some((h?: any) => h.status === "succeeded");
   });
-  const payload = JSON.parse(await readFile(output, "utf8"));
+  const payload = JSON.parse((await readFile(output, "utf8")).toString());
   assert.equal(payload.event, "run.storageLimit");
   assert.equal(payload.storage.limitMB, 1);
   assert.ok(payload.storage.bytes >= 1024 * 1024);
@@ -1153,7 +1202,10 @@ test("storage limit holds a persistent run and delivers one bounded hook with us
   });
   const held = await f.app.service.storage.read(runID);
   assert.equal(held.held, true);
-  assert.equal(held.events.filter((e) => e.type === "storageLimit").length, 1);
+  assert.equal(
+    held.events.filter((e?: any) => e.type === "storageLimit").length,
+    1,
+  );
   assert.equal(held.hookReceipts.length, 1);
   await f.restart();
   assert.equal(
@@ -1176,25 +1228,28 @@ test("storage limit holds a persistent run and delivers one bounded hook with us
   assert.equal(released.state, "completed");
   assert.equal(released.held, false);
   assert.equal(
-    released.messages.filter((m) => m.role === "assistant").length,
+    released.messages.filter((m?: any) => m.role === "assistant").length,
     1,
   );
 });
 
 test("cancelled attempts keep partial answers but omit disabled thinking", async (t) => {
   let started = false;
-  const f = await fixture(t, async (input, signal, delta, evidence) => {
-    delta("interrupted answer");
-    evidence({
-      reasoningContent: "must not retain disabled thinking",
-      toolCalls: [],
-    });
-    started = true;
-    await new Promise((resolve) =>
-      signal.addEventListener("abort", resolve, { once: true }),
-    );
-    signal.throwIfAborted();
-  });
+  const f = await fixture(
+    t,
+    async (input?: any, signal?: any, delta?: any, evidence?: any) => {
+      delta("interrupted answer");
+      evidence({
+        reasoningContent: "must not retain disabled thinking",
+        toolCalls: [],
+      });
+      started = true;
+      await new Promise<any>((resolve) =>
+        signal.addEventListener("abort", resolve, { once: true }),
+      );
+      signal.throwIfAborted();
+    },
+  );
   const changed = await f.request("PATCH", "/v1/agents/researcher", {
     expectedRevision: 1,
     changes: { thinking: false },
@@ -1215,16 +1270,16 @@ test("cancelled attempts keep partial answers but omit disabled thinking", async
   assert.equal(run.attempts[0].text, "interrupted answer");
   assert.equal(run.attempts[0].reasoningContent, "");
   assert.equal(
-    run.messages.some((m) => m.role === "assistant"),
+    run.messages.some((m?: any) => m.role === "assistant"),
     false,
   );
 });
 
 test("agent loops automatically discover and load snapshotted skill files on demand", async (t) => {
   let turn = 0,
-    f;
-  f = await fixture(t, async (input) => {
-    assert.ok(input.tools.some((tool) => tool.name === "load_skills"));
+    f: any;
+  f = await fixture(t, async (input?: any) => {
+    assert.ok(input.tools.some((tool?: any) => tool.name === "load_skills"));
     if (turn++ === 0) {
       assert.ok(input.messages[0].content.includes("Selected review workflow"));
       assert.ok(!input.messages[0].content.includes("PRIVATE INSTRUCTIONS"));
@@ -1299,7 +1354,7 @@ test("agent loops automatically discover and load snapshotted skill files on dem
     resourceID: "review",
     request: {},
   });
-  assert.equal(created.item.hash, fetched.item.hash);
+  assert.equal(created.item!.hash, fetched.item.hash);
   const updated = await api["skills update"]({
     resourceID: "review",
     request: {
@@ -1307,7 +1362,7 @@ test("agent loops automatically discover and load snapshotted skill files on dem
       skill: { ...skill, files: undefined },
     },
   });
-  assert.equal(updated.item.files.length, 1);
+  assert.equal(updated.item!.files.length, 1);
 
   const changed = await f.request("PATCH", "/v1/agents/researcher", {
     expectedRevision: 1,
@@ -1325,7 +1380,11 @@ test("agent loops automatically discover and load snapshotted skill files on dem
   });
   assert.equal(run.state, "completed", JSON.stringify(run.error));
   assert.equal(turn, 3);
-  assert.ok(run.toolSnapshots.some((t) => t.toolID === "load_skills"));
+  assert.ok(
+    run.toolSnapshots.some(
+      (t: { toolID: string }) => t.toolID === "load_skills",
+    ),
+  );
   assert.deepEqual(run.agent.toolIDs, []);
   assert.equal(run.skills[0].files[0].content, "REFERENCE CONTENT");
   const { verifyRun } = await import("../dist/runArtifacts.js");
@@ -1334,8 +1393,12 @@ test("agent loops automatically discover and load snapshotted skill files on dem
 
 test("instant chats execute selected skills automatically and return client-owned calls", async (t) => {
   let step = 0;
-  const f = await fixture(t, async (input) => {
-    assert.ok(input.tools.some((t) => t.name === "load_skills"));
+  const f = await fixture(t, async (input?: any) => {
+    assert.ok(
+      input.tools.some(
+        (t: import("node:test").TestContext) => t.name === "load_skills",
+      ),
+    );
     assert.ok(input.messages[0].content.includes("Instant selected skill"));
     assert.ok(!input.messages[0].content.includes("INSTANT INSTRUCTIONS"));
     if (step === 2) {
@@ -1405,7 +1468,7 @@ test("instant chats execute selected skills automatically and return client-owne
       {
         name: "client_action",
         description: "Client owned",
-        parameters: { type: "object" },
+        parameters: { type: "object" as const },
       },
     ],
   };
@@ -1418,7 +1481,7 @@ test("instant chats execute selected skills automatically and return client-owne
   assert.equal(c.state, "completed", JSON.stringify(c.error));
   assert.equal(step, 2);
   assert.deepEqual(
-    c.result.toolCalls.map((t) => t.name),
+    c.result.toolCalls.map((t: import("node:test").TestContext) => t.name),
     ["client_action"],
   );
   assert.equal(c.result.usage.inputTokens, 3);
@@ -1427,7 +1490,10 @@ test("instant chats execute selected skills automatically and return client-owne
 
   const detail = (await f.request("GET", "/v1/chat/requests/" + c.requestID))
     .body.request;
-  assert.equal(detail.messages.filter((m) => m.role === "tool").length, 2);
+  assert.equal(
+    detail.messages.filter((m?: any) => m.role === "tool").length,
+    2,
+  );
   assert.equal(
     JSON.parse(detail.messages.at(-1).content).files[0].content,
     "TEMPLATE",
@@ -1439,7 +1505,7 @@ test("instant chats execute selected skills automatically and return client-owne
       ...detail.messages,
       {
         messageID: randomUUID(),
-        role: "tool",
+        role: "tool" as const,
         content: '{"ok":true}',
         attachments: [],
         toolCalls: [],
@@ -1479,7 +1545,7 @@ test("instant chats execute selected skills automatically and return client-owne
 for (const instant of [false, true]) {
   test(`${instant ? "instant" : "background"} skill errors are paired results and the model can correct them`, async (t) => {
     let turn = 0;
-    const f = await fixture(t, async (input) => {
+    const f = await fixture(t, async (input?: any) => {
       const previous = input.messages.at(-1);
       if (turn > 0 && turn < 3) {
         assert.equal(previous.role, "tool");
@@ -1516,6 +1582,7 @@ for (const instant of [false, true]) {
     });
     const { managementClient } = await import("../dist/operations.js");
     await managementClient(f.app.service)["skills create"]({
+      resourceID: undefined,
       request: {
         skill: {
           skillID: "review",
@@ -1526,7 +1593,7 @@ for (const instant of [false, true]) {
         },
       },
     });
-    let completed;
+    let completed: any;
     if (instant) {
       const submitted = await f.request("POST", "/v1/chat/requests", {
         ...chat(),
@@ -1558,7 +1625,10 @@ for (const instant of [false, true]) {
     }
     assert.equal(completed.state, "completed", JSON.stringify(completed.error));
     assert.equal(turn, 4);
-    assert.equal(completed.messages.filter((m) => m.role === "tool").length, 3);
+    assert.equal(
+      completed.messages.filter((m?: any) => m.role === "tool").length,
+      3,
+    );
   });
 }
 
@@ -1615,7 +1685,9 @@ test("worker history bounds long evidence while administrator transcripts remain
   assert(JSON.stringify(output).includes("truncated"));
   assert.equal(run.result, long);
   assert(
-    f.app.service.transcript(run).some((e) => e.message?.content === long),
+    f.app.service
+      .transcript(run)
+      .some((e?: any) => e.message?.content === long),
   );
   // One large entry must advance the cursor instead of returning the same
   // unpageable entry forever. The full administrator evidence stays intact.
@@ -1627,7 +1699,9 @@ test("worker history bounds long evidence while administrator transcripts remain
   await f.app.service.storage.write(run);
   const offset = f.app.service
     .transcript(run)
-    .findIndex((e) => e.message?.messageID === run.messages.at(-1).messageID);
+    .findIndex(
+      (e?: any) => e.message?.messageID === run.messages.at(-1).messageID,
+    );
   assert(offset >= 0);
   const oversized = await f.app.service.invokeTool(
     run,
@@ -1642,7 +1716,7 @@ test("worker history bounds long evidence while administrator transcripts remain
 
 test("agent sampling settings are validated, snapshotted and forwarded to inference", async (t) => {
   let sampled;
-  const f = await fixture(t, async (input) => {
+  const f = await fixture(t, async (input?: any) => {
     sampled = input.sampling;
     return {
       text: "done",
@@ -1685,7 +1759,7 @@ test("agent sampling settings are validated, snapshotted and forwarded to infere
 
 test("tool budget rejects excess batch calls and requests a tool-free final answer", async (t) => {
   let turns = 0;
-  const f = await fixture(t, async (input) => {
+  const f = await fixture(t, async (input?: any) => {
     if (++turns === 1)
       return {
         text: "",
@@ -1710,7 +1784,7 @@ test("tool budget rejects excess batch calls and requests a tool-free final answ
   });
   let invoked = 0;
   const invoke = f.app.service.invokeTool.bind(f.app.service);
-  f.app.service.invokeTool = (...args) => {
+  f.app.service.invokeTool = (...args: any[]) => {
     invoked++;
     return invoke(...args);
   };
@@ -1725,7 +1799,7 @@ test("tool budget rejects excess batch calls and requests a tool-free final answ
   });
   assert.equal(invoked, 1);
   assert.equal(turns, 2);
-  const results = run.messages.filter((m) => m.role === "tool");
+  const results = run.messages.filter((m?: any) => m.role === "tool");
   assert.equal(results.length, 2);
   assert.equal(
     JSON.parse(results[1].content).error.code,
@@ -1737,7 +1811,7 @@ test("tool budget rejects excess batch calls and requests a tool-free final answ
 for (const emptyAgain of [false, true])
   test(`empty agent answers get one tool-free retry (${emptyAgain ? "failure" : "recovery"})`, async (t) => {
     let turns = 0;
-    const f = await fixture(t, async (input) => {
+    const f = await fixture(t, async (input?: any) => {
       turns++;
       if (turns === 1)
         return {
@@ -1773,7 +1847,7 @@ for (const emptyAgain of [false, true])
     assert.equal(run.result, emptyAgain ? null : "Verified visible answer");
     assert(
       run.messages.some(
-        (m) => m.reasoningContent === "Unverified private draft",
+        (m?: any) => m.reasoningContent === "Unverified private draft",
       ),
     );
   });
@@ -1795,54 +1869,129 @@ test("fleet overview HTTP uses the same authenticated outcome contract as the CL
 });
 
 test("length finish reasons are recoverable only for managed continuations; broken streams still fail", async () => {
-  const { LlamaRuntime } = await import('../dist/runtime.js');
-  const runtime = new LlamaRuntime(() => ({}));
-  const response = (done = true, finish = 'length') => new Response(
-    'data: ' + JSON.stringify({ choices: [{ index: 0, delta: { content: 'prefix', tool_calls: [{ index: 0, function: { name: 'inspect', arguments: '{' } }] }, finish_reason: finish }] }) + '\n\n' + (done ? 'data: [DONE]\n\n' : '')
-  );
+  const { LlamaRuntime } = await import("../dist/runtime.js");
+  const runtime = new LlamaRuntime(() => runtimeConfig({}));
+  const response = (done = true, finish = "length") =>
+    new Response(
+      "data: " +
+        JSON.stringify({
+          choices: [
+            {
+              index: 0,
+              delta: {
+                content: "prefix",
+                tool_calls: [
+                  { index: 0, function: { name: "inspect", arguments: "{" } },
+                ],
+              },
+              finish_reason: finish,
+            },
+          ],
+        }) +
+        "\n\n" +
+        (done ? "data: [DONE]\n\n" : ""),
+    );
   let fragments;
-  const r = await runtime.readStream(response(), new AbortController().signal, undefined, true, v => fragments = v, true);
+  const r = await runtime["readStream"](
+    response(),
+    new AbortController().signal,
+    undefined,
+    true,
+    (v?: any) => (fragments = v),
+    true,
+  );
   assert.equal(r.outputLimitReached, true);
-  assert.equal(r.text, 'prefix');
+  assert.equal(r.text, "prefix");
   assert.deepEqual(r.toolCalls, []);
-  assert.equal(fragments.toolCalls[0].arguments, '{');
-  await assert.rejects(runtime.readStream(response(), new AbortController().signal), /Incomplete generation/);
-  await assert.rejects(runtime.readStream(response(false), new AbortController().signal, undefined, true, undefined, true), /Incomplete generation/);
-  await assert.rejects(runtime.readStream(response(true, 'content_filter'), new AbortController().signal, undefined, true, undefined, true), /Incomplete generation/);
+  assert.equal(fragments!.toolCalls[0].arguments, "{");
+  await assert.rejects(
+    runtime["readStream"](response(), new AbortController().signal),
+    /Incomplete generation/,
+  );
+  await assert.rejects(
+    runtime["readStream"](
+      response(false),
+      new AbortController().signal,
+      undefined,
+      true,
+      undefined,
+      true,
+    ),
+    /Incomplete generation/,
+  );
+  await assert.rejects(
+    runtime["readStream"](
+      response(true, "content_filter"),
+      new AbortController().signal,
+      undefined,
+      true,
+      undefined,
+      true,
+    ),
+    /Incomplete generation/,
+  );
 });
 
-test("instant completion is published only after its cooldown is durable", async t => {
-  let release;
-  const f=await fixture(t,async()=>{await new Promise(resolve=>release=resolve);return {text:"hello",toolCalls:[],usage:{inputTokens:1,outputTokens:1}};});
-  const next=structuredClone(f.app.service.storage.store);next.config.interactionCooldownMs=5000;
-  await f.app.service.storage.exclusive(()=>f.app.service.storage.saveConfig(next));
-  const accepted=await f.request("POST","/v1/chat/requests",chat());
-  assert.equal(accepted.status,202);
-  await until(()=>release);
-  const original=f.app.service.storage.saveConfig.bind(f.app.service.storage);
-  let persist;
-  f.app.service.storage.saveConfig=async value=>{await new Promise(resolve=>persist=resolve);return original(value);};
-  release();await until(()=>persist);
-  assert.equal(f.app.service.chat(accepted.body.requestID).state,"running");
-  persist();await until(()=>f.app.service.chat(accepted.body.requestID).state==="completed");
-  assert.ok(Date.parse(f.app.service.storage.store.cooldownUntil)>Date.now());
+test("instant completion is published only after its cooldown is durable", async (t) => {
+  let release: any;
+  const f = await fixture(t, async () => {
+    await new Promise<any>((resolve) => (release = resolve));
+    return {
+      text: "hello",
+      toolCalls: [],
+      usage: { inputTokens: 1, outputTokens: 1 },
+    };
+  });
+  const next = structuredClone(f.app.service.storage.store);
+  next.config.interactionCooldownMs = 5000;
+  await f.app.service.storage.exclusive(() =>
+    f.app.service.storage.saveConfig(next),
+  );
+  const accepted = await f.request("POST", "/v1/chat/requests", chat());
+  assert.equal(accepted.status, 202);
+  await until(() => release);
+  const original = f.app.service.storage.saveConfig.bind(f.app.service.storage);
+  let persist: any;
+  f.app.service.storage.saveConfig = async (value?: any) => {
+    await new Promise<any>((resolve) => (persist = resolve));
+    return original(value);
+  };
+  release();
+  await until(() => persist);
+  assert.equal(f.app.service.chat(accepted.body.requestID).state, "running");
+  persist();
+  await until(
+    () => f.app.service.chat(accepted.body.requestID).state === "completed",
+  );
+  assert.ok(Date.parse(f.app.service.storage.store.cooldownUntil) > Date.now());
 });
 
-test('runtime reports loading and unloading until their operations settle', async () => {
-  const { LlamaRuntime } = await import('../dist/runtime.js');
-  const runtime = new LlamaRuntime(() => ({ models: [{modelID:'q',kind:'chat'}], slots: [] }));
-  let releaseLoad;
-  runtime.start = () => new Promise(resolve => { releaseLoad = resolve; });
-  const preparing = runtime.prepare('q', new AbortController().signal);
-  assert.equal(runtime.status()[0].state, 'loading');
+test("runtime reports loading and unloading until their operations settle", async () => {
+  const { LlamaRuntime } = await import("../dist/runtime.js");
+  const runtime = new LlamaRuntime(() =>
+    runtimeConfig({ models: [{ modelID: "q", kind: "chat" }], slots: [] }),
+  );
+  let releaseLoad: any;
+  runtime["start"] = () =>
+    new Promise<any>((resolve) => {
+      releaseLoad = resolve;
+    });
+  const preparing = runtime["prepare"]("q", new AbortController().signal);
+  assert.equal(runtime.status()[0].state, "loading");
   releaseLoad();
   await preparing;
-  assert.equal(runtime.status()[0].state, 'ready');
-  let releaseStop;
-  runtime.stop = () => new Promise(resolve => { releaseStop = () => { runtime.loadedModel=undefined; resolve(); }; });
+  assert.equal(runtime.status()[0].state, "ready");
+  let releaseStop: any;
+  runtime["stop"] = () =>
+    new Promise<void>((resolve) => {
+      releaseStop = () => {
+        runtime["loadedModel"] = undefined;
+        resolve();
+      };
+    });
   const closing = runtime.close();
-  assert.equal(runtime.status()[0].state, 'unloading');
+  assert.equal(runtime.status()[0].state, "unloading");
   releaseStop();
   await closing;
-  assert.equal(runtime.status()[0].state, 'unloaded');
+  assert.equal(runtime.status()[0].state, "unloaded");
 });

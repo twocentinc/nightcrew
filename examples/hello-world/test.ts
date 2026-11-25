@@ -19,7 +19,10 @@ test("bundled examples use ordinary validated commands and remain opt-in", async
 
 test("hello world grader requires the exact greeting", async () => {
   const { grade } = await import("./grade.ts");
-  assert.equal(grade({result:{answer:"Hello world!"}}).checks[0]?.status,"passed");
+  assert.equal(
+    grade({ result: { answer: "Hello world!" } }).checks[0]?.status,
+    "passed",
+  );
   for (const answer of ["", "Hello world! Extra explanation.", " Hello world!"])
-    assert.equal(grade({result:{answer}}).checks[0]?.status,"failed");
+    assert.equal(grade({ result: { answer } }).checks[0]?.status, "failed");
 });
