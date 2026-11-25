@@ -1038,7 +1038,7 @@ test("management HTTP and CLI share every oRPC operation contract", async (t) =>
       continue;
     }
     assert.equal(command!.request, op.request, op.name);
-    if (["agents run", "instant submit"].includes(op.name)) {
+    if (["agents run", "instant create"].includes(op.name)) {
       const options = Reflect.get(command!.result, "options");
       assert.ok(Array.isArray(options));
       assert.ok(options.includes(op.result));
@@ -1332,7 +1332,8 @@ test("agent loops automatically discover and load snapshotted skill files on dem
       usage: { inputTokens: 1, outputTokens: 1 },
     };
   });
-  const { managementClient } = await import("../dist/utils/commands/operations.js");
+  const { managementClient } =
+    await import("../dist/utils/commands/operations.js");
   const api = managementClient(f.app.service);
   const skill = {
     skillID: "review",
@@ -1443,7 +1444,8 @@ test("instant chats execute selected skills automatically and return client-owne
       usage: { inputTokens: 2, outputTokens: 1 },
     };
   });
-  const { managementClient } = await import("../dist/utils/commands/operations.js");
+  const { managementClient } =
+    await import("../dist/utils/commands/operations.js");
   await managementClient(f.app.service)["skills create"]({
     resourceID: undefined,
     request: {
@@ -1582,7 +1584,8 @@ for (const instant of [false, true]) {
         usage: { inputTokens: 1, outputTokens: 1 },
       };
     });
-    const { managementClient } = await import("../dist/utils/commands/operations.js");
+    const { managementClient } =
+      await import("../dist/utils/commands/operations.js");
     await managementClient(f.app.service)["skills create"]({
       resourceID: undefined,
       request: {
@@ -1872,7 +1875,7 @@ test("fleet overview HTTP uses the same authenticated outcome contract as the CL
   assert.equal(result.status, 200);
   assert.equal(result.body.agents[0].agentID, "researcher");
   assert.equal(result.body.agents[0].latestRun, null);
-  assert.deepEqual(result.body.review, []);
+  assert.deepEqual(result.body.issues, []);
   const schema = await f.request("GET", "/openapi.json");
   assert.ok(schema.body.paths[route]);
 });
@@ -2024,4 +2027,18 @@ test("SSE library handles comments, multiline data, CR framing and ignores post-
     readStream(new Response("data: [DONE]"), new AbortController().signal),
     /Incomplete generation/,
   );
+});
+
+test("instant HTTP delete discards a result and removed operations stay absent", async (t) => {
+  const f = await fixture(t);
+  const created = await f.request("POST", "/v1/operations/instant/create", {request: chat()});
+  assert.equal(created.status, 200);
+  const id = created.body.requestID;
+  const deleted = await f.request("DELETE", `/v1/chat/requests/${id}`);
+  assert.equal(deleted.status, 200);
+  assert.equal(deleted.body.status, "deleted");
+  assert.equal((await f.request("GET", `/v1/chat/requests/${id}`)).status, 404);
+  const schema = (await f.request("GET", "/openapi.json")).body;
+  for (const route of ["/v1/operations/runs/review", "/v1/operations/runs/annotate", "/v1/operations/runs/hooks/retry", "/v1/operations/instant/submit", "/v1/chat/requests/{requestID}/cancel"])
+    assert.equal(schema.paths[route], undefined);
 });

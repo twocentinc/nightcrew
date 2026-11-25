@@ -2,7 +2,6 @@ import { now, terminal } from "../../schemas/common.js";
 import { type Run } from "../../schemas/run.js";
 import { canonical } from "../../utils/json.js";
 import { fail } from "../protocol.js";
-import { reviewFingerprint } from "../supervision.js";
 import type {
   Dependencies as ParentDependencies,
   Runs,
@@ -96,42 +95,6 @@ export class RunControls {
         changed: changed && !dryRun,
         toolIDs: candidate.toolIDs,
         skillIDs: candidate.skillIDs,
-      };
-    });
-  }
-  async reviewRun(
-    runID: string,
-    input: {
-      expectedRevision: number;
-      status: "open" | "acknowledged" | "resolved";
-      note: string;
-    },
-    dryRun: boolean,
-  ) {
-    return this.ports.dependencies.storage.exclusive(async () => {
-      const run = await this.ports.dependencies.records.run(runID);
-      if (run.revision !== input.expectedRevision)
-        fail("revision_conflict", 409);
-      if (this.ports.dependencies.dispatch.hasActivity(runID))
-        fail("run_active", 409);
-      if (run.reviews.length >= 1000) fail("review_capacity", 409);
-      if (!dryRun) {
-        run.reviews.push({
-          segment: run.segment,
-          status: input.status,
-          note: input.note,
-          at: now(),
-          fingerprint: reviewFingerprint(run),
-        });
-        this.ports.dependencies.records.event(run, "reviewed", {
-          status: input.status,
-          note: input.note,
-        });
-        await this.ports.dependencies.records.save(run);
-      }
-      return {
-        run: this.ports.dependencies.records.detail(run),
-        changed: !dryRun,
       };
     });
   }
@@ -300,43 +263,6 @@ export class RunControls {
       );
     if (result.changed) this.ports.dependencies.dispatch.wake();
     return result;
-  }
-  async annotateRun(
-    runID: string,
-    input: { messageID: string; content: string },
-    dryRun = false,
-  ) {
-    return this.ports.dependencies.storage.exclusive(async () => {
-      const run =
-        this.ports.dependencies.runner.liveRun(runID) ??
-        (await this.ports.dependencies.records.run(runID));
-      const existing = run.events.find(
-        (e) =>
-          e.type === "notification" &&
-          (e.data as { messageID?: string }).messageID === input.messageID,
-      );
-      if (existing) {
-        if ((existing.data as { content?: string }).content !== input.content)
-          fail("message_conflict", 409);
-        return {
-          messageID: input.messageID,
-          revision: run.revision,
-          replayed: true,
-        };
-      }
-      if (this.ports.dependencies.context.atStorageLimit(run))
-        fail("run_storage_limit", 409);
-      if (!dryRun) {
-        // An event, never a model message or scheduler input. No hooks or wake.
-        this.ports.dependencies.records.event(run, "notification", input);
-        await this.ports.dependencies.records.save(run);
-      }
-      return {
-        messageID: input.messageID,
-        revision: run.revision,
-        replayed: false,
-      };
-    });
   }
   async cancelRun(runID: string, dryRun = false) {
     const r = await this.ports.dependencies.records.run(runID);

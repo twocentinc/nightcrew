@@ -1,3 +1,4 @@
+import { doctor, doctorSchema } from "../server/diagnostics.js";
 import { z } from "zod";
 import { schedulerStatusSchema } from "../engine/scheduling/policy.js";
 import type { Service } from "../engine/service.js";
@@ -10,7 +11,10 @@ import { type ManagementInput } from "../utils/commands/resources.js";
 import { handle as triggerHandler } from "./triggers.js";
 
 export const operationInputs = {
-  status: z.strictObject({ details: z.boolean().default(false) }),
+  status: z.strictObject({
+    details: z.boolean().default(false),
+    doctor: z.boolean().default(false),
+  }),
 };
 const triggerInfo = triggerSchema.extend({
   nextFireAt: z.string().nullable(),
@@ -25,12 +29,17 @@ export async function handle(
   const [] = command.split(" ");
   const raw = input.request ?? {};
   if (command === "status") {
+    if (operationInputs.status.parse(raw).doctor)
+      return doctor(service.storage.home, true, async () => ({
+        pid: process.pid,
+        ...service.status(),
+      }));
     const runs = [...service.storage.summaries.values()].sort(
       (a, b) =>
         b.updatedAt.localeCompare(a.updatedAt) ||
         a.runID.localeCompare(b.runID),
     );
-    const review = runs.filter((r) => r.outcome.needsReview);
+    const issues = runs.filter((r) => r.outcome.needsAttention);
     const triggerInfo = (await triggerHandler(service, {
       command: "triggers list",
     })) as {
@@ -49,7 +58,7 @@ export async function handle(
       runtime: service.status(),
       totals: {
         runs: runs.length,
-        needsReview: review.length,
+        needsAttention: issues.length,
         activeMs: runs.reduce((n, r) => n + r.activeMs, 0),
       },
       agents: service.storage.store.agents.map((agent) => {
@@ -61,15 +70,15 @@ export async function handle(
           modelID: agent.modelID,
           latestRun: own[0] ?? null,
           activeRuns: own.filter((r) => !terminal(r.state)).length,
-          needsReview: own.filter((r) => r.outcome.needsReview).length,
+          needsAttention: own.filter((r) => r.outcome.needsAttention).length,
           activeMs: own.reduce((n, r) => n + r.activeMs, 0),
           triggers: triggerInfo.items.filter(
             (t) => t.agentID === agent.agentID,
           ),
         };
       }),
-      review: review.slice(0, 100),
-      reviewTruncated: review.length > 100,
+      issues: issues.slice(0, 100),
+      issuesTruncated: issues.length > 100,
     };
   }
   return fail("unknown_command");
@@ -78,37 +87,40 @@ const defineOperation = createOperations(operationInputs, handle);
 export const operations = {
   status: defineOperation(
     "status",
-    "Inspect agents, schedules, recent outcomes and runs needing review",
-    z.object({
-      observedAt: z.string(),
-      pid: z.number(),
-      scheduler: schedulerStatusSchema.optional(),
-      runtime: statusSchema,
-      totals: z.object({
-        runs: z.number(),
-        needsReview: z.number(),
-        activeMs: z.number(),
-      }),
-      agents: z.array(
-        z.object({
-          agentID: z.string(),
-          name: z.string(),
-          enabled: z.boolean(),
-          modelID: z.string(),
-          latestRun: runSummarySchema.nullable(),
-          activeRuns: z.number(),
-          needsReview: z.number(),
+    "Inspect agents, schedules, recent outcomes and runs needing attention",
+    z.union([
+      doctorSchema,
+      z.object({
+        observedAt: z.string(),
+        pid: z.number(),
+        scheduler: schedulerStatusSchema.optional(),
+        runtime: statusSchema,
+        totals: z.object({
+          runs: z.number(),
+          needsAttention: z.number(),
           activeMs: z.number(),
-          triggers: z.array(triggerInfo),
         }),
-      ),
-      review: z.array(runSummarySchema),
-      reviewTruncated: z.boolean(),
-    }),
+        agents: z.array(
+          z.object({
+            agentID: z.string(),
+            name: z.string(),
+            enabled: z.boolean(),
+            modelID: z.string(),
+            latestRun: runSummarySchema.nullable(),
+            activeRuns: z.number(),
+            needsAttention: z.number(),
+            activeMs: z.number(),
+            triggers: z.array(triggerInfo),
+          }),
+        ),
+        issues: z.array(runSummarySchema),
+        issuesTruncated: z.boolean(),
+      }),
+    ]),
     false,
     "none",
     false,
     "daemon",
-    ["details"],
+    ["details", "doctor"],
   ),
 };

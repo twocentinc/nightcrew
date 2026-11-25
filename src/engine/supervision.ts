@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { Message } from "../schemas/common.js";
 import type { Run } from "../schemas/run.js";
@@ -47,13 +46,6 @@ export const recoverySchema = z.strictObject({
   reason: z.string().max(2000),
   finalizing: z.boolean().default(false),
 });
-export const reviewRecordSchema = z.strictObject({
-  segment: z.number().int().nonnegative(),
-  status: z.enum(["open", "acknowledged", "resolved"]),
-  note: z.string().min(1).max(2000),
-  at: z.iso.datetime(),
-  fingerprint: z.string(),
-});
 export function effectiveReceipts(run: Run) {
   const latest = new Map<string, Run["hookReceipts"][number]>();
   for (const receipt of run.hookReceipts) {
@@ -71,35 +63,6 @@ export function effectiveReceipts(run: Run) {
   }
   return [...latest.values()];
 }
-export function reviewFingerprint(run: Run) {
-  return createHash("sha256")
-    .update(
-      JSON.stringify({
-        segment: run.segment,
-        state: run.state,
-        error: run.error,
-        held: run.held,
-        pauseReason: run.pauseReason,
-        validation:
-          run.validations.filter((v) => v.segment === run.segment).at(-1) ??
-          null,
-        recovery: run.recovery?.segment === run.segment ? run.recovery : null,
-        hooks: effectiveReceipts(run)
-          .filter(
-            (h) =>
-              run.events.find((e) => e.sequence === h.eventSequence)
-                ?.segment === run.segment,
-          )
-          .map((h) => [
-            h.eventSequence,
-            h.executablePath,
-            h.status,
-            h.diagnostic,
-          ]),
-      }),
-    )
-    .digest("hex");
-}
 export const outcomeSchema = z.strictObject({
   execution: z.enum([
     "queued",
@@ -111,14 +74,7 @@ export const outcomeSchema = z.strictObject({
     "timedOut",
   ]),
   output: z.enum(["pending", "notConfigured", "passed", "failed", "error"]),
-  task: z.enum([
-    "pending",
-    "unverified",
-    "validated",
-    "needsReview",
-    "reviewed",
-  ]),
-  review: z.enum(["none", "open", "acknowledged", "resolved"]),
+  task: z.enum(["pending", "unverified", "validated", "needsAttention"]),
   delivery: z.enum([
     "notConfigured",
     "pending",
@@ -127,7 +83,7 @@ export const outcomeSchema = z.strictObject({
     "unknown",
   ]),
   hooks: z.enum(["none", "pending", "succeeded", "failed", "unknown"]),
-  needsReview: z.boolean(),
+  needsAttention: z.boolean(),
   reasons: z.array(z.string()),
   nextAction: z.string().nullable(),
 });
@@ -176,37 +132,22 @@ export function runOutcome(run: Run): z.infer<typeof outcomeSchema> {
     reasons.push(
       `Lifecycle hooks ${hooks}; inspect receipts before retrying side effects`,
     );
-  const previousReview = run.reviews
-    .filter((r) => r.segment === run.segment)
-    .at(-1);
-  const review =
-    previousReview?.fingerprint === reviewFingerprint(run)
-      ? previousReview.status
-      : reasons.length
-        ? "open"
-        : "none";
-  if (!reasons.length && ["open", "acknowledged"].includes(review))
-    reasons.push("Supervisor requested review: " + previousReview!.note);
-  const needsReview = reasons.length > 0 && review !== "resolved";
+  const needsAttention = reasons.length > 0;
   return {
     execution: run.state,
-    review,
     output,
-    task:
-      review === "resolved" && reasons.length
-        ? "reviewed"
-        : needsReview
-          ? "needsReview"
-          : !terminal
-            ? "pending"
-            : output === "passed"
-              ? "validated"
-              : "unverified",
+    task: needsAttention
+      ? "needsAttention"
+      : !terminal
+        ? "pending"
+        : output === "passed"
+          ? "validated"
+          : "unverified",
     delivery,
     hooks,
-    needsReview,
+    needsAttention,
     reasons,
-    nextAction: needsReview
+    nextAction: needsAttention
       ? "Inspect runs get and runs transcript; correct the reported issue before submitting a new turn. Do not blindly retry delivery."
       : null,
   };

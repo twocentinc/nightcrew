@@ -19,7 +19,7 @@
   npm run build
   node dist/cli.js help
   node dist/cli.js init
-  node dist/cli.js doctor
+  node dist/cli.js status --doctor
   ```
 
 - Install or link the package to use the `nightcrew` executable; otherwise substitute `node dist/cli.js` in the examples below.
@@ -101,7 +101,7 @@
 - `nightcrew runs transcript RUN_ID --tail` — follow committed transcript events.
 - `nightcrew runs search "search phrase" --agent AGENT_ID` — search recorded text.
 - `nightcrew runs reply RUN_ID --request turn.json` — add another turn.
-- Add `--wait` to `agents run` or `instant submit` to observe completion after submitting once.
+- Add `--wait` to `agents run` or `instant create` to observe completion after submitting once.
 - A wait timeout, Ctrl+C or closed CLI **does not cancel accepted work**. Inspect the returned `acceptedID`; do not resubmit blindly.
 - Run pagination defaults to 50 items, maximum 100. Reuse the same filters and limit with a returned cursor; daemon snapshot cursors expire after five minutes or a restart.
 
@@ -124,8 +124,8 @@
 - On macOS, a locked session, switched-out user or ten minutes without input counts as away.
 - `nightcrew presence sample` reads the local desktop without requiring a daemon; `status` shows the daemon's latest sample.
 - Unhealthy presence blocks background work. Other platforms do not have equivalent validated unattended support.
-- `nightcrew instant submit --request chat.json --wait` requests an interactive response.
-- `nightcrew instant get REQUEST_ID` and `instant cancel REQUEST_ID` inspect or cancel it.
+- `nightcrew instant create --request chat.json --wait` requests an interactive response.
+- `nightcrew instant get REQUEST_ID` and `instant delete REQUEST_ID` inspect or cancel it.
 - Instant work pauses background generation and waits for compute to release before starting.
 - Completion refreshes the interaction cooldown; its default is five minutes and is configurable.
 - Only one model is resident at a time. Compatible background agents can run concurrently on separate slots when `maxConcurrent` permits it.
@@ -145,7 +145,7 @@
 - Output-limit continuations retain evidence; incomplete tool calls are never executed.
 - Enable model `slotSnapshots` to save caches before model switches, idle unloads and clean shutdowns.
 - Snapshot storage defaults to `<home>/slots/<modelID>`; model configuration can choose another absolute base directory.
-- `nightcrew agents get AGENT_ID` includes cache information; `agents cache clear AGENT_ID --yes` clears KV state without deleting its transcript.
+- `nightcrew agents get AGENT_ID` includes cache information; `agents cache delete AGENT_ID --yes` clears KV state without deleting its transcript.
 - Caches are disposable acceleration. Missing or incompatible caches rebuild from the authoritative transcript.
 
 ## Compaction and storage limits
@@ -191,12 +191,10 @@
 
 - Inspect `status`, `runs get` and `runs transcript` before taking recovery action.
 - A completed run can still have invalid output or failed delivery. Inspect its `outcome`; successful validation is not proof of factual correctness.
-- `runs review RUN_ID` records an `open`, `acknowledged` or `resolved` review without erasing failure evidence.
 - `runs pause RUN_ID` holds work; `runs resume RUN_ID` releases a hold or resumes paused work.
 - `runs cancel RUN_ID` stops work; `runs retry RUN_ID --yes` repeats the latest input as a new segment and may repeat tool side effects.
-- `runs hooks retry RUN_ID --yes` explicitly retries a selected failed hook; inspect its receipt and destination first.
-- Recovery commands use revision-checked JSON requests. Discover fields with `schema get runs.resume`, `runs.retry` or `runs.hooks.retry`.
-- Unknown hook outcomes additionally require `acceptUnknown: true`. Restart never automatically replays uncertain delivery.
+- Recovery commands use revision-checked JSON requests. Discover fields with `schema get runs.resume`, `runs.retry`.
+- Restart never automatically replays uncertain delivery. Investigate the destination before repeating any side effect.
 - Recover compactor children through their parent run.
 - Optional output validators and bounded repair attempts can gate delivery. Hooks marked `purpose: "delivery"` contribute to the delivery outcome.
 - See [review and recovery](docs/spec.md#supervisor-review-and-recovery) and [hooks](docs/spec.md#hooks).
@@ -231,7 +229,7 @@
 - Ordinary finite commands default to 90 seconds, maximum five minutes. Durations accept `ms`, `s`, or `m`.
 - Waits default to 120 minutes and allow up to 1440 minutes; tails run until interrupted unless given a timeout.
 - `evals run` has a separate 120-minute overall maximum; individual cases retain their own execution limits.
-- `doctor` checks configuration, references and dependencies without loading models. `doctor --live` also checks the existing daemon.
+- `status --doctor` checks configuration, references, dependencies and daemon readiness without loading models. It also works when the daemon is stopped.
 - Diagnostic success does not imply health: inspect the returned checks and `healthy` fields.
 - Exit codes: `0` success; `1` internal/result failure; `2` invalid input; `3` configuration/storage; `4` platform; `5` dependency; `6` deadline; `7` unavailable resource; `8` confirmation; `9` conflict.
 

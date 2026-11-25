@@ -8,9 +8,12 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { startServer } from "../../dist/server/http.js";
-import { LlamaRuntime, samplePresence } from "../../dist/engine/models/runtime.js";
-import {storeSchema} from "../../dist/schemas/config.js";
-import {validateAttachments} from "../../dist/schemas/common.js";
+import {
+  LlamaRuntime,
+  samplePresence,
+} from "../../dist/engine/models/runtime.js";
+import { storeSchema } from "../../dist/schemas/config.js";
+import { validateAttachments } from "../../dist/schemas/common.js";
 import { tokenHash } from "../../dist/storage/config.js";
 
 test(
@@ -142,7 +145,9 @@ test(
         home,
       );
       const original = runtime["cache"]["slotAction"].bind(runtime["cache"]);
-      runtime["cache"]["slotAction"] = async (...args: Parameters<typeof original>) => {
+      runtime["cache"]["slotAction"] = async (
+        ...args: Parameters<typeof original>
+      ) => {
         const out = await original(...args);
         evidence.snapshots.push({
           slotID: args[0],
@@ -292,7 +297,7 @@ test(
         runID: active.runID,
         triggerSource: active.triggerSource,
       });
-      const instant = await rpc("instant submit", {
+      const instant = await rpc("instant create", {
         conversationID: randomUUID(),
         messages: [
           {

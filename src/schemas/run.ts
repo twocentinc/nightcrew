@@ -6,7 +6,6 @@ import {
 import {
   outcomeSchema,
   recoverySchema,
-  reviewRecordSchema,
   validationRecordSchema,
 } from "../engine/supervision.js";
 import { agentSchema, skillSchema, triggerSourceSchema } from "./agent.js";
@@ -30,7 +29,6 @@ export const eventSchema = z.strictObject({
     "resumed",
     "message",
     "toolResult",
-    "notification",
     "completed",
     "failed",
     "cancelled",
@@ -48,7 +46,6 @@ export const eventSchema = z.strictObject({
     "compactionFailed",
     "outputValidation",
     "loopRecovery",
-    "reviewed",
     "retried",
     "compactionRetry",
   ]),
@@ -117,7 +114,6 @@ export const runSchema = z.strictObject({
     .max(100)
     .default([]),
   contextUsage: contextUsageSchema.nullable().default(null),
-  reviews: z.array(reviewRecordSchema).max(1000).default([]),
   deliveryExpected: z.boolean().default(false),
   validations: z.array(validationRecordSchema).max(10000).default([]),
   recovery: recoverySchema.nullable().default(null),
@@ -215,7 +211,6 @@ export const runSummarySchema = runSchema
 export const runDetailSchema = runSummarySchema.extend({
   capabilityRefreshes: runSchema.shape.capabilityRefreshes,
   contextUsage: runSchema.shape.contextUsage,
-  reviews: runSchema.shape.reviews,
   validations: runSchema.shape.validations,
   recovery: runSchema.shape.recovery,
   compactions: runSchema.shape.compactions,

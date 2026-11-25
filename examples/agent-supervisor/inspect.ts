@@ -143,11 +143,6 @@ export function metrics(r?: any, parent?: any, outcome?: any) {
       }
     }).length;
   const qualityFlags = [];
-  const lastReview = (r.reviews ?? [])
-    .filter((review?: any) => review.segment === (r.segment ?? 0))
-    .at(-1);
-  if (["open", "acknowledged"].includes(outcome.review))
-    qualityFlags.push("review_requested");
   if (r.state === "completed") {
     if (!r.result?.trim()) qualityFlags.push("empty_output");
     try {
@@ -209,14 +204,6 @@ export function metrics(r?: any, parent?: any, outcome?: any) {
       retainedError: r.error ?? null,
       note: "Past evidence, not current failure status. Later successful retries or terminal parent states supersede earlier status claims.",
     },
-    lastReview: lastReview
-      ? {
-          status: lastReview.status,
-          note: lastReview.note,
-          at: lastReview.at,
-          evidenceKind: "point_in_time_reviewer_note",
-        }
-      : null,
     statusMeaning: ["completed", "failed", "timedOut", "cancelled"].includes(
       r.state,
     )
@@ -436,14 +423,6 @@ export async function inspect(
     coverage: coverage(snapshot),
     snapshotRevision: snapshot.items.find((x?: any) => x.runID === input.runID)
       .revision,
-    reviews: (r.reviews ?? [])
-      .slice(-2)
-      .map(({ status, note, at, segment }: any) => ({
-        status,
-        note,
-        at,
-        segment,
-      })),
     reportExcerpt:
       typeof r.result === "string" ? r.result.slice(0, 4000) : null,
     reportTruncated: (r.result?.length ?? 0) > 4000,

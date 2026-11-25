@@ -41,7 +41,6 @@ export class RunRecords {
       ...summarize(r),
       contextUsage: r.contextUsage,
       capabilityRefreshes: r.capabilityRefreshes,
-      reviews: r.reviews,
       validations: r.validations,
       recovery: r.recovery,
       compactions: r.compactions,

@@ -85,7 +85,12 @@ export function resourceRoutes(
       .route({ method: "GET", path: "/v1/status" })
       .input(z.strictObject({}))
       .output(statusSchema)
-      .handler(async () => (await api["status"](noResource)).runtime),
+      .handler(async () => {
+        const result = await api["status"](noResource);
+        if (!("runtime" in result))
+          throw Error("Unexpected diagnostic response");
+        return result.runtime;
+      }),
     configGet: protectedRoute
       .route({ method: "GET", path: "/v1/config" })
       .input(z.strictObject({}))
@@ -349,7 +354,7 @@ export function resourceRoutes(
       .handler(async ({ input }) =>
         reply(
           chatAcceptanceSchema.parse(
-            await api["instant submit"]({
+            await api["instant create"]({
               resourceID: undefined,
               request: input,
             }),
@@ -374,14 +379,14 @@ export function resourceRoutes(
       .handler(({ input, context }) =>
         events("chat", input.requestID, input.afterEventID, context.request),
       ),
-    chatCancel: protectedRoute
-      .route({ method: "POST", path: "/v1/chat/requests/{requestID}/cancel" })
+    chatDelete: protectedRoute
+      .route({ method: "DELETE", path: "/v1/chat/requests/{requestID}" })
       .input(z.strictObject({ requestID: id, dryRun }))
       .output(
         z.object({ requestID: id, status: z.string(), changed: z.boolean() }),
       )
       .handler(({ input }) =>
-        api["instant cancel"]({
+        api["instant delete"]({
           resourceID: input.requestID,
           request: {},
           dryRun: input.dryRun,

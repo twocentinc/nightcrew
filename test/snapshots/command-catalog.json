@@ -4,15 +4,15 @@
       "confirmation": true,
       "description": "Discard saved agent KV cache without deleting conversation history",
       "mutates": true,
-      "name": "agents cache clear",
+      "name": "agents cache delete",
       "operand": "required",
       "options": [
         "request",
         "dry-run",
         "yes"
       ],
-      "requestSchema": "agents.cache.clear.request",
-      "resultSchema": "agents.cache.clear.result",
+      "requestSchema": "agents.cache.delete.request",
+      "resultSchema": "agents.cache.delete.result",
       "scope": "daemon"
     },
     {
@@ -263,19 +263,6 @@
     },
     {
       "confirmation": false,
-      "description": "Check configuration, executables, presence and optional live daemon readiness",
-      "mutates": false,
-      "name": "doctor",
-      "operand": "none",
-      "options": [
-        "live"
-      ],
-      "requestSchema": "doctor.request",
-      "resultSchema": "doctor.result",
-      "scope": "local"
-    },
-    {
-      "confirmation": false,
       "description": "Run a suite with mocked tools and save a create-only result bundle",
       "mutates": true,
       "name": "evals run",
@@ -328,16 +315,31 @@
     },
     {
       "confirmation": false,
-      "description": "Cancel instant inference",
+      "description": "Submit instant inference; execute selected skill reads and return client tool calls",
       "mutates": true,
-      "name": "instant cancel",
+      "name": "instant create",
+      "operand": "none",
+      "options": [
+        "request",
+        "dry-run",
+        "wait"
+      ],
+      "requestSchema": "instant.create.request",
+      "resultSchema": "instant.create.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "Cancel and discard an instant request and its transient result",
+      "mutates": true,
+      "name": "instant delete",
       "operand": "required",
       "options": [
         "request",
         "dry-run"
       ],
-      "requestSchema": "instant.cancel.request",
-      "resultSchema": "instant.cancel.result",
+      "requestSchema": "instant.delete.request",
+      "resultSchema": "instant.delete.result",
       "scope": "daemon"
     },
     {
@@ -351,35 +353,6 @@
       ],
       "requestSchema": "instant.get.request",
       "resultSchema": "instant.get.result",
-      "scope": "daemon"
-    },
-    {
-      "confirmation": false,
-      "description": "Submit instant inference; execute selected skill reads and return client tool calls",
-      "mutates": true,
-      "name": "instant submit",
-      "operand": "none",
-      "options": [
-        "request",
-        "dry-run",
-        "wait"
-      ],
-      "requestSchema": "instant.submit.request",
-      "resultSchema": "instant.submit.result",
-      "scope": "daemon"
-    },
-    {
-      "confirmation": false,
-      "description": "Stop instant work and unload its model, ignoring keep-warm; refuse unrelated model work",
-      "mutates": true,
-      "name": "instant unload",
-      "operand": "none",
-      "options": [
-        "request",
-        "dry-run"
-      ],
-      "requestSchema": "instant.unload.request",
-      "resultSchema": "instant.unload.result",
       "scope": "daemon"
     },
     {
@@ -439,6 +412,20 @@
     },
     {
       "confirmation": false,
+      "description": "Stop instant work and unload its model, ignoring keep-warm; refuse unrelated model work",
+      "mutates": true,
+      "name": "models unload",
+      "operand": "none",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "models.unload.request",
+      "resultSchema": "models.unload.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
       "description": "update models",
       "mutates": true,
       "name": "models update",
@@ -464,20 +451,6 @@
     },
     {
       "confirmation": false,
-      "description": "Append a passive notification without invoking the agent",
-      "mutates": true,
-      "name": "runs annotate",
-      "operand": "required",
-      "options": [
-        "request",
-        "dry-run"
-      ],
-      "requestSchema": "runs.annotate.request",
-      "resultSchema": "runs.annotate.result",
-      "scope": "daemon"
-    },
-    {
-      "confirmation": false,
       "description": "Cancel managed work",
       "mutates": true,
       "name": "runs cancel",
@@ -488,20 +461,6 @@
       ],
       "requestSchema": "runs.cancel.request",
       "resultSchema": "runs.cancel.result",
-      "scope": "daemon"
-    },
-    {
-      "confirmation": false,
-      "description": "Explicitly refresh tools and skills of a terminal run without inference or history loss",
-      "mutates": true,
-      "name": "runs capabilities refresh",
-      "operand": "required",
-      "options": [
-        "request",
-        "dry-run"
-      ],
-      "requestSchema": "runs.capabilities.refresh.request",
-      "resultSchema": "runs.capabilities.refresh.result",
       "scope": "daemon"
     },
     {
@@ -532,21 +491,6 @@
       "scope": "management"
     },
     {
-      "confirmation": true,
-      "description": "Explicitly retry a failed hook with a durable attempt and request UUID",
-      "mutates": true,
-      "name": "runs hooks retry",
-      "operand": "required",
-      "options": [
-        "request",
-        "dry-run",
-        "yes"
-      ],
-      "requestSchema": "runs.hooks.retry.request",
-      "resultSchema": "runs.hooks.retry.result",
-      "scope": "daemon"
-    },
-    {
       "confirmation": false,
       "description": "List durable run summaries",
       "mutates": false,
@@ -575,6 +519,20 @@
       ],
       "requestSchema": "runs.pause.request",
       "resultSchema": "runs.pause.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "Explicitly refresh tools and skills of a terminal run without inference or history loss",
+      "mutates": true,
+      "name": "runs refresh",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "runs.refresh.request",
+      "resultSchema": "runs.refresh.result",
       "scope": "daemon"
     },
     {
@@ -618,20 +576,6 @@
       ],
       "requestSchema": "runs.retry.request",
       "resultSchema": "runs.retry.result",
-      "scope": "daemon"
-    },
-    {
-      "confirmation": false,
-      "description": "Acknowledge, resolve or reopen a run review with a durable note",
-      "mutates": true,
-      "name": "runs review",
-      "operand": "required",
-      "options": [
-        "request",
-        "dry-run"
-      ],
-      "requestSchema": "runs.review.request",
-      "resultSchema": "runs.review.result",
       "scope": "daemon"
     },
     {
@@ -788,13 +732,14 @@
     },
     {
       "confirmation": false,
-      "description": "Inspect agents, schedules, recent outcomes and runs needing review",
+      "description": "Inspect agents, schedules, recent outcomes and runs needing attention",
       "mutates": false,
       "name": "status",
       "operand": "none",
       "options": [
         "request",
-        "details"
+        "details",
+        "doctor"
       ],
       "requestSchema": "status.request",
       "resultSchema": "status.result",
@@ -988,5 +933,5 @@
     "version": false
   },
   "protocolVersion": 1,
-  "schemaVersion": 41
+  "schemaVersion": 42
 }

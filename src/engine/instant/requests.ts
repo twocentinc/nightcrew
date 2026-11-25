@@ -329,6 +329,13 @@ export class Instant {
     }
     return { requestID, status: c.state, changed: true };
   }
+  async deleteChat(requestID: string, dryRun = false) {
+    const c = this.chat(requestID);
+    if (dryRun) return { requestID, status: c.state, changed: false };
+    await this.cancelChat(requestID);
+    this.chats.delete(requestID);
+    return { requestID, status: "deleted", changed: true };
+  }
   expireDeadlines() {
     for (const c of this.chats.values())
       if (!terminal(c.state) && c.deadline <= Date.now()) {

@@ -7,8 +7,7 @@ import { createOperations } from "../utils/commands/definition.js";
 import { type ManagementInput } from "../utils/commands/resources.js";
 
 export const operationInputs = {
-  "instant submit": chatInputSchema,
-  "instant unload": z.strictObject({}),
+  "instant create": chatInputSchema,
 };
 const requestSchemas: Record<string, z.ZodType> = operationInputs;
 export async function handle(
@@ -20,8 +19,7 @@ export async function handle(
   const name = resourceID === undefined ? undefined : id.parse(resourceID);
   const raw = input.request ?? {};
   if (resource === "instant") {
-    if (action === "unload") return service.unloadInstant(dryRun);
-    if (action === "submit") {
+    if (action === "create") {
       if (dryRun)
         return { changed: false, request: requestSchemas[command]!.parse(raw) };
       return service.submitChat(
@@ -33,15 +31,15 @@ export async function handle(
     if (action === "get") {
       return service.chatDetail(service.chat(name ?? fail("missing_id")));
     }
-    if (action === "cancel")
-      return service.cancelChat(name ?? fail("missing_id"), dryRun);
+    if (action === "delete")
+      return service.deleteChat(name ?? fail("missing_id"), dryRun);
   }
   return fail("unknown_command");
 }
 const defineOperation = createOperations(operationInputs, handle);
 export const operations = {
-  "instant submit": defineOperation(
-    "instant submit",
+  "instant create": defineOperation(
+    "instant create",
     "Submit instant inference; execute selected skill reads and return client tool calls",
     z.union([
       chatAcceptanceSchema,
@@ -61,23 +59,9 @@ export const operations = {
     false,
     "daemon",
   ),
-  "instant unload": defineOperation(
-    "instant unload",
-    "Stop instant work and unload its model, ignoring keep-warm; refuse unrelated model work",
-    z.object({
-      modelID: z.string(),
-      changed: z.boolean(),
-      cancelledRunIDs: z.array(z.string()),
-      cancelledRequestIDs: z.array(z.string()),
-    }),
-    true,
-    "none",
-    false,
-    "daemon",
-  ),
-  "instant cancel": defineOperation(
-    "instant cancel",
-    "Cancel instant inference",
+  "instant delete": defineOperation(
+    "instant delete",
+    "Cancel and discard an instant request and its transient result",
     z.object({
       requestID: z.string(),
       status: z.string(),

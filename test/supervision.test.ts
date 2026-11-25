@@ -20,8 +20,8 @@ const callOperation: (
   ...args: Parameters<typeof rawcallOperation>
 ) => Promise<any> = rawcallOperation;
 import { runOutcome, loopProblem } from "../dist/engine/supervision.js";
-import {validateSummaryEvidence} from "../dist/engine/compaction/evidence.js";
-import {compactionInstructions} from "../dist/engine/compaction/format.js";
+import { validateSummaryEvidence } from "../dist/engine/compaction/evidence.js";
+import { compactionInstructions } from "../dist/engine/compaction/format.js";
 const input = () => ({
   messageID: randomUUID(),
   content: "perform the task",
@@ -216,13 +216,13 @@ test("bounded failed repairs complete execution but mark output for review and s
   });
   const o = f.service.detail(settled).outcome;
   assert.equal(o.output, "failed");
-  assert.equal(o.task, "needsReview");
+  assert.equal(o.task, "needsAttention");
   assert.equal(o.delivery, "failed");
   assert.match(settled.hookReceipts[0].diagnostic, /not dispatched/);
   const fleet = await callOperation(f.service, { command: "status" });
-  assert.equal(fleet.totals.needsReview, 1);
+  assert.equal(fleet.totals.needsAttention, 1);
   assert.equal(fleet.agents[0].latestRun.runID, r.runID);
-  assert.equal(fleet.review[0].outcome.output, "failed");
+  assert.equal(fleet.issues[0].outcome.output, "failed");
   operations["status"].result.parse(fleet);
 });
 test("unconfigured output is unverified and ordinary hooks are not deliveries", async (t) => {
@@ -242,7 +242,7 @@ test("unconfigured output is unverified and ordinary hooks are not deliveries", 
   assert.equal(o.output, "notConfigured");
   assert.equal(o.delivery, "notConfigured");
   assert.equal(o.hooks, "failed");
-  assert.equal(o.task, "needsReview");
+  assert.equal(o.task, "needsAttention");
 });
 test("validator hook verdicts use bounded repair; hook process failures do not retry", async (t) => {
   const f = await fixture(t, async () => ({ text: "answer" }));
@@ -321,7 +321,7 @@ test("loop errors get one recovery opportunity then tool-free finalization with 
   assert.equal(f.calls.length, 4);
   assert.match(f.calls[2].messages.at(-1).content, /recovery opportunity/);
   assert.deepEqual(f.calls[3].tools, []);
-  assert.equal(runOutcome(r).needsReview, true);
+  assert.equal(runOutcome(r).needsAttention, true);
   assert.equal(r.messages.filter((m?: any) => m.role === "tool").length, 3);
 });
 test("persistent follow-up gets its own repair budget and retains old evidence", async (t) => {
@@ -392,199 +392,6 @@ test("unchanged successful calls stop after the single recovery opportunity", as
   assert.equal(f.calls.length, 5);
   assert.equal(r.recovery.finalizing, true);
   assert.equal(r.messages.filter((m?: any) => m.role === "tool").length, 4);
-});
-
-test("review notes resolve attention without changing evidence and reopen on new failures", async (t) => {
-  const f = await fixture(t, async () => ({ text: "bad" }), {
-    outputValidation: validation,
-  });
-  const r = await f.submit();
-  const request = {
-    expectedRevision: r.revision,
-    status: "resolved",
-    note: "Inspected the failed output; no action required.",
-  };
-  const dry = await callOperation(f.service, {
-    command: "runs review",
-    resourceID: r.runID,
-    request,
-    dryRun: true,
-  });
-  assert.equal(dry.changed, false);
-  assert.equal((await f.service.run(r.runID)).reviews.length, 0);
-  const reviewed = await callOperation(f.service, {
-    command: "runs review",
-    resourceID: r.runID,
-    request,
-  });
-  assert.equal(reviewed.run.outcome.needsReview, false);
-  assert.equal(reviewed.run.outcome.output, "failed");
-  assert.equal(reviewed.run.outcome.task, "reviewed");
-  await assert.rejects(
-    callOperation(f.service, {
-      command: "runs review",
-      resourceID: r.runID,
-      request,
-    }),
-    /revision_conflict/,
-  );
-  await f.restart();
-  assert.equal(runOutcome(await f.service.run(r.runID)).review, "resolved");
-  const current = await f.service.run(r.runID);
-  const retry = {
-    expectedRevision: current.revision,
-    messageID: randomUUID(),
-    note: "Try the input again.",
-  };
-  await assert.rejects(
-    callOperation(f.service, {
-      command: "runs retry",
-      resourceID: r.runID,
-      request: retry,
-    }),
-    /confirmation/i,
-  );
-  const accepted = await callOperation(f.service, {
-    command: "runs retry",
-    resourceID: r.runID,
-    request: retry,
-    yes: true,
-  });
-  assert.equal(accepted.runID, r.runID);
-  const next = await until(async () => {
-    const x = await f.service.run(r.runID);
-    return x.state === "completed" && x.segment === r.segment + 1 && x;
-  });
-  assert.equal(next.reviews.length, 1);
-  assert.equal(runOutcome(next).review, "open");
-  assert.deepEqual(next.messages.slice(0, r.messages.length), r.messages);
-  const replay = await callOperation(f.service, {
-    command: "runs retry",
-    resourceID: r.runID,
-    request: retry,
-    yes: true,
-  });
-  assert.equal(replay.replayed, true);
-  assert.equal((await f.service.run(r.runID)).segment, next.segment);
-});
-
-test("hook recovery preserves attempts, deduplicates UUIDs and reconciles outcome", async (t) => {
-  const f = await fixture(t, async () => ({ text: "done" }), {}, [
-    {
-      event: "run.completed",
-      executablePath: "/missing-nightcrew-hook",
-      timeoutMs: 100,
-    },
-  ]);
-  const r = await f.submit();
-  const failed = await until(async () => {
-    const x = await f.service.run(r.runID);
-    return x.hookReceipts[0]?.status === "failed" && x;
-  });
-  const executable = path.join(f.home, "recovered-hook");
-  const count = path.join(f.home, "hook-count");
-  await writeFile(
-    executable,
-    `#!/bin/sh\ncat >/dev/null\necho called >> '${count}'\n`,
-    { mode: 0o700 },
-  );
-  // Correct the registration, leaving the failed receipt immutable.
-  f.service.storage.store.config.hooks[0].executablePath = executable;
-  f.service.storage.store.config.hooks[0].timeoutMs = 2000;
-  await f.service.storage.saveConfig(f.service.storage.store);
-  const request = {
-    expectedRevision: failed.revision,
-    receiptIndex: 0,
-    requestID: randomUUID(),
-    note: "Corrected missing executable.",
-    hookPath: executable,
-  };
-  const dry = await callOperation(f.service, {
-    command: "runs hooks retry",
-    resourceID: r.runID,
-    request,
-    dryRun: true,
-  });
-  assert.equal(dry.changed, false);
-  const retried = await callOperation(f.service, {
-    command: "runs hooks retry",
-    resourceID: r.runID,
-    request,
-    yes: true,
-  });
-  assert.equal(
-    retried.run.outcome.hooks,
-    "succeeded",
-    JSON.stringify(retried.run.hookReceipts),
-  );
-  assert.equal(retried.run.outcome.needsReview, false);
-  const stored = await f.service.run(r.runID);
-  assert.equal(stored.hookReceipts.length, 2);
-  assert.deepEqual(stored.hookReceipts[0], failed.hookReceipts[0]);
-  assert.equal(stored.hookReceipts[1].retryOf, 0);
-  await callOperation(f.service, {
-    command: "runs hooks retry",
-    resourceID: r.runID,
-    request,
-    yes: true,
-  });
-  assert.equal((await readFile(count, "utf8")).trim(), "called");
-  await assert.rejects(
-    callOperation(f.service, {
-      command: "runs hooks retry",
-      resourceID: r.runID,
-      request: {
-        ...request,
-        requestID: randomUUID(),
-        expectedRevision: stored.revision,
-      },
-      yes: true,
-    }),
-    /hook_already_retried/,
-  );
-});
-
-test("unknown hooks require explicit acceptance and pending attempts become unknown on restart", async (t) => {
-  const f = await fixture(t, async () => ({ text: "done" }), {}, [
-    {
-      event: "run.completed",
-      executablePath: "/missing-nightcrew-hook",
-      timeoutMs: 100,
-    },
-  ]);
-  const r = await f.submit();
-  const failed = await until(async () => {
-    const x = await f.service.run(r.runID);
-    return x.hookReceipts[0]?.status === "failed" && x;
-  });
-  failed.hookReceipts[0].status = "pending";
-  await f.service.storage.exclusive(() => f.service.storage.write(failed));
-  await f.restart();
-  const unknown = await f.service.run(r.runID);
-  assert.equal(unknown.hookReceipts[0].status, "unknown");
-  const request = {
-    expectedRevision: unknown.revision,
-    receiptIndex: 0,
-    requestID: randomUUID(),
-    note: "Checked external destination.",
-  };
-  await assert.rejects(
-    callOperation(f.service, {
-      command: "runs hooks retry",
-      resourceID: r.runID,
-      request,
-      yes: true,
-    }),
-    /hook_outcome_unknown/,
-  );
-  const retried = await callOperation(f.service, {
-    command: "runs hooks retry",
-    resourceID: r.runID,
-    request: { ...request, acceptUnknown: true },
-    yes: true,
-  });
-  assert.equal(retried.run.hookReceipts.length, 2);
-  assert.equal(retried.run.outcome.hooks, "failed");
 });
 
 test("failed runs retry in place with a new segment and preserved failure evidence", async (t) => {

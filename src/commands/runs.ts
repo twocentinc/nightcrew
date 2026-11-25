@@ -22,29 +22,12 @@ import { createOperations } from "../utils/commands/definition.js";
 import { type ManagementInput } from "../utils/commands/resources.js";
 
 export const operationInputs = {
-  "runs review": z.strictObject({
-    expectedRevision: revision,
-    status: z.enum(["open", "acknowledged", "resolved"]),
-    note: z.string().trim().min(1).max(2000),
-  }),
-  "runs capabilities refresh": z.strictObject({ expectedRevision: revision }),
+  "runs refresh": z.strictObject({ expectedRevision: revision }),
   "runs resume": z.strictObject({ expectedRevision: revision }),
   "runs retry": z.strictObject({
     expectedRevision: revision,
     messageID: uuid,
     note: z.string().trim().min(1).max(2000),
-  }),
-  "runs hooks retry": z.strictObject({
-    expectedRevision: revision,
-    receiptIndex: z.number().int().nonnegative(),
-    requestID: uuid,
-    note: z.string().trim().min(1).max(2000),
-    acceptUnknown: z.boolean().default(false),
-    hookPath: z.string().max(4096).optional(),
-  }),
-  "runs annotate": z.strictObject({
-    messageID: uuid,
-    content: z.string().trim().min(1).max(4000),
   }),
   "runs reply": z.strictObject({ message: userMessageSchema }),
   "runs pause": z.strictObject({ expectedRevision: revision }),
@@ -84,32 +67,14 @@ export async function handle(
       ? undefined
       : id.parse(resourceID);
   const raw = input.request ?? {};
-  if (command === "runs capabilities refresh")
+  if (command === "runs refresh")
     return service.refreshRunCapabilities(
       name ?? fail("missing_id"),
       operationInputs[command].parse(raw).expectedRevision,
       dryRun,
     );
-  if (command === "runs review")
-    return service.reviewRun(
-      name ?? fail("missing_id"),
-      operationInputs[command].parse(raw),
-      dryRun,
-    );
   if (command === "runs retry")
     return service.retryRun(
-      name ?? fail("missing_id"),
-      operationInputs[command].parse(raw),
-      dryRun,
-    );
-  if (command === "runs hooks retry")
-    return service.retryHook(
-      name ?? fail("missing_id"),
-      operationInputs[command].parse(raw),
-      dryRun,
-    );
-  if (command === "runs annotate")
-    return service.annotateRun(
       name ?? fail("missing_id"),
       operationInputs[command].parse(raw),
       dryRun,
@@ -214,8 +179,8 @@ export async function handle(
 }
 const defineOperation = createOperations(operationInputs, handle);
 export const operations = {
-  "runs capabilities refresh": defineOperation(
-    "runs capabilities refresh",
+  "runs refresh": defineOperation(
+    "runs refresh",
     "Explicitly refresh tools and skills of a terminal run without inference or history loss",
     z.object({
       runID: z.string(),
@@ -224,15 +189,6 @@ export const operations = {
       toolIDs: z.array(z.string()),
       skillIDs: z.array(z.string()),
     }),
-    true,
-    "required",
-    false,
-    "daemon",
-  ),
-  "runs review": defineOperation(
-    "runs review",
-    "Acknowledge, resolve or reopen a run review with a durable note",
-    z.object({ run: runDetailSchema, changed: z.boolean() }),
     true,
     "required",
     false,
@@ -251,15 +207,6 @@ export const operations = {
     "runs retry",
     "Retry the last input in the same transcript with a new message UUID",
     acceptanceSchema,
-    true,
-    "required",
-    true,
-    "daemon",
-  ),
-  "runs hooks retry": defineOperation(
-    "runs hooks retry",
-    "Explicitly retry a failed hook with a durable attempt and request UUID",
-    z.object({ run: runDetailSchema, changed: z.boolean() }),
     true,
     "required",
     true,
@@ -352,19 +299,6 @@ export const operations = {
     "required",
     false,
     "management",
-  ),
-  "runs annotate": defineOperation(
-    "runs annotate",
-    "Append a passive notification without invoking the agent",
-    z.object({
-      messageID: z.string(),
-      revision: z.number(),
-      replayed: z.boolean(),
-    }),
-    true,
-    "required",
-    false,
-    "daemon",
   ),
   "runs reply": defineOperation(
     "runs reply",

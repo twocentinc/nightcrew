@@ -226,7 +226,6 @@ export class Runs {
     const r: Run = previous ?? {
       contextUsage: null,
       capabilityRefreshes: [],
-      reviews: [],
       deliveryExpected: false,
       validations: [],
       recovery: null,
@@ -403,17 +402,6 @@ export class Runs {
       dryRun,
     );
   }
-  reviewRun(
-    runID: string,
-    input: {
-      expectedRevision: number;
-      status: "open" | "acknowledged" | "resolved";
-      note: string;
-    },
-    dryRun: boolean,
-  ) {
-    return this.controls.reviewRun(runID, input, dryRun);
-  }
   retryRun(
     runID: string,
     input: { expectedRevision: number; messageID: string; note: string },
@@ -431,13 +419,6 @@ export class Runs {
     dryRun: boolean,
   ) {
     return this.controls.queueControl(runID, action, expectedRevision, dryRun);
-  }
-  annotateRun(
-    runID: string,
-    input: { messageID: string; content: string },
-    dryRun = false,
-  ) {
-    return this.controls.annotateRun(runID, input, dryRun);
   }
   cancelRun(runID: string, dryRun = false) {
     return this.controls.cancelRun(runID, dryRun);

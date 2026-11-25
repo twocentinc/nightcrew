@@ -12,13 +12,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { inspect, metrics as projectMetrics } from "./inspect.ts";
 import { report } from "./report.ts";
-import { runOutcome, reviewFingerprint } from "../../dist/engine/supervision.js";
+import { runOutcome } from "../../dist/engine/supervision.js";
 const canonical = (r?: any) =>
   runOutcome({
     segment: 0,
     hookReceipts: [],
     validations: [],
-    reviews: [],
+
     ...r,
   });
 const metrics = (r?: any, parent?: any) =>
@@ -50,7 +50,7 @@ const run = (id: string, overrides = {}): any => ({
   segment: 0,
   hookReceipts: [],
   validations: [],
-  reviews: [],
+
   messages: [],
   events: [],
   result: "ok",
@@ -185,25 +185,6 @@ test("supervisor separates compaction waiting and empty useful output from execu
   assert.equal(empty.state, "completed");
 });
 
-test("supervisor exposes requested quality reviews without equating them with failed execution", () => {
-  const result = metrics(
-    run("reviewed", {
-      segment: 0,
-      reviews: [
-        {
-          segment: 0,
-          status: "open",
-          note: "Unsupported recommendation",
-          at: "2026-11-13T00:00:00Z",
-        },
-      ],
-    }),
-  );
-  assert.equal(result.state, "completed");
-  assert.deepEqual(result.quality.flags, []); // A stale review is not current canonical status.
-  assert.equal(result.lastReview!.note, "Unsupported recommendation");
-});
-
 test("terminal supervisor records are not reported as active holds", () => {
   for (const state of ["completed", "cancelled", "failed", "timedOut"])
     assert.equal(
@@ -212,7 +193,7 @@ test("terminal supervisor records are not reported as active holds", () => {
     );
 });
 
-test("recovered delivery and validation supersede historical failures and dated reviews", () => {
+test("recovered delivery and validation supersede historical failures ", () => {
   const r = run("recovered", {
     segment: 1,
     deliveryExpected: true,
@@ -257,9 +238,6 @@ test("recovered delivery and validation supersede historical failures and dated 
       { segment: 1, status: "passed" },
     ],
     error: { code: "old_failure" },
-    reviews: [
-      { segment: 1, status: "open", note: "Delivery failed before retry" },
-    ],
   });
   const m = metrics(r);
   assert.equal(m.current.delivery.status, "succeeded");
@@ -268,7 +246,6 @@ test("recovered delivery and validation supersede historical failures and dated 
   assert.equal(m.current.validation!.status, "passed");
   assert.equal(m.historical.validationFailures, 1);
   assert.equal(m.current.error, null);
-  assert.equal(m.lastReview!.evidenceKind, "point_in_time_reviewer_note");
   assert.ok(!JSON.stringify(m).includes("/private/send"));
   r.hookReceipts.at(-1)!.status = "unknown";
   assert.equal(metrics(r).current.delivery.status, "unknown");

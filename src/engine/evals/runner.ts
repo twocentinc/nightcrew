@@ -289,7 +289,7 @@ export async function runEval(
       if (activeRequest) {
         try {
           await withoutExecution(() =>
-            transport("instant cancel", {}, activeRequest),
+            transport("instant delete", {}, activeRequest),
           );
         } catch {
           record.cancellation = "unconfirmed; inspect request ID";

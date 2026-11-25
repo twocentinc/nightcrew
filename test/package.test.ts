@@ -216,7 +216,7 @@ test(
       assert.equal((await call(["init"])).ok, true);
       assert.deepEqual((await call(["agents", "list"])).result.items, []);
       assert.equal(
-        (await call(["doctor"])).result.capabilities.models.length,
+        (await call(["status", "--doctor"])).result.capabilities.models.length,
         0,
       );
       console.log(

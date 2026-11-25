@@ -15,6 +15,7 @@ import {
 } from "../utils/commands/resources.js";
 
 export const operationInputs = {
+  "models unload": z.strictObject({}),
   "models create": z.strictObject({
     model: modelSchema,
     slots: z.array(slotSchema).max(32).default([]),
@@ -36,10 +37,26 @@ export async function handle(
   service: Service,
   input: ManagementInput,
 ): Promise<unknown> {
+  if (input.command === "models unload")
+    return service.unloadInstant(input.dryRun);
   return resourceCommand(service, input, requestSchemas, resourceActions);
 }
 const defineOperation = createOperations(operationInputs, handle);
 export const operations = {
+  "models unload": defineOperation(
+    "models unload",
+    "Stop instant work and unload its model, ignoring keep-warm; refuse unrelated model work",
+    z.object({
+      modelID: z.string(),
+      changed: z.boolean(),
+      cancelledRunIDs: z.array(z.string()),
+      cancelledRequestIDs: z.array(z.string()),
+    }),
+    true,
+    "none",
+    false,
+    "daemon",
+  ),
   "models list": defineOperation(
     "models list",
     "List models",

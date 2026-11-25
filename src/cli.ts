@@ -43,7 +43,7 @@ const optionTypes: Record<string, string | false> = {
   cursor: "cursor",
   agent: "agentID",
   state: "state",
-  live: false,
+  doctor: false,
   details: false,
   wait: false,
   tail: false,
@@ -257,7 +257,10 @@ export async function main(argv = process.argv.slice(2)) {
           }
         }
       }
-      if (command === "status" && args.values.details) raw.details = true;
+      if (command === "status") {
+        if (args.values.details) raw.details = true;
+        if (args.values.doctor) raw.doctor = true;
+      }
       context.request = args.definition.request.parse(raw);
       execution.check();
       if (args.definition.confirmation && !context.yes && !context.dryRun)

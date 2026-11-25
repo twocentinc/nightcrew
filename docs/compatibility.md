@@ -48,7 +48,7 @@ validated migration. Preserve unknown external-side-effect outcomes; migration
 must never replay work or send messages. Do not silently discard data. Downgrades
 and arbitrary cross-version mixing of daemon and CLI are not guaranteed: use the
 same installed package, stop the daemon before upgrading, retain a backup of the
-runtime home, then verify with doctor and read-only run inspection. There is no
+runtime home, then verify with `status --doctor` and read-only run inspection. There is no
 general automatic migration or downgrade command promised by this policy.
 
 ## Outside the freeze
@@ -115,7 +115,7 @@ graders and checks are colocated under their example directories. See
 
 ## Owner-approved parser adoption (November 24, 2026)
 
-Version 0.40.0 / schema 41 adopts Commander, cron-parser and eventsource-parser
+Version 0.40.0 / schema 42 adopts Commander, cron-parser and eventsource-parser
 with their native behavior, as explicitly requested by the owner. This reopens
 only parser semantics; command paths, JSON envelopes and run/delivery policies
 remain unchanged. Older version archives remain immutable.
@@ -129,3 +129,16 @@ forward iteration suppresses repeated hours. There is no catch-up scheduling.
 SSE responses must use complete event framing; a trailing unterminated data line
 is no longer treated as a complete event. Model completion and output limits
 remain enforced independently of framing.
+
+## Approved simplification (0.41.0 / schema 42)
+
+The owner explicitly reopened the contract for these changes. There are no aliases.
+
+- Diagnostics are `status --doctor` (oRPC `status` request `{ "doctor": true }`); plain status remains fast. Diagnostics also work locally with the daemon stopped.
+- Instant requests use `instant create/get/delete`; delete cancels active execution and discards the transient result.
+- `models unload` unloads the configured instant model, refusing unrelated active background work. It takes no model ID.
+- Agent KV removal is `agents cache delete`; run capability adoption is `runs refresh`.
+- Manual run annotations, review decisions and public hook retries are removed.
+- Outcome attention is derived from execution, validation, recovery and delivery evidence (`needsAttention`); status exposes `issues` and `issuesTruncated`. No manual resolution can hide failures.
+- Stored review records and annotation/review events are removed in the installation migration. Renumber retained events and remap hook receipt eventSequence references together; never change message or attempt evidence. Stop the daemon during migration and validate all runs before restarting.
+- Previous contract archives remain immutable historical release evidence.

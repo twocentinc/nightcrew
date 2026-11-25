@@ -130,7 +130,6 @@ export class CompactionRecovery {
               revision: 1,
               createdAt: now(),
               updatedAt: now(),
-              reviews: [],
               attempts: [],
               deliveryExpected: false,
               validations: [],

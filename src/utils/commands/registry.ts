@@ -19,7 +19,6 @@ import { control } from "../../server/daemon.js";
 import { readJSON } from "../../storage/files.js";
 import { Storage } from "../../storage/store.js";
 import { registerLocal as registerdaemon } from "../../commands/daemon.js";
-import { registerLocal as registerdoctor } from "../../commands/doctor.js";
 import { registerLocal as registerevals } from "../../commands/evals.js";
 import { registerLocal as registerhelp } from "../../commands/help.js";
 import { registerLocal as registerinit } from "../../commands/init.js";
@@ -103,6 +102,17 @@ async function management(
   name: string,
   scope: Definition["scope"],
 ) {
+  if (name === "status" && (context.request as { doctor?: boolean }).doctor) {
+    const { doctor } = await import("../../server/diagnostics.js");
+    return doctor(context.home, true, async (timeout) => {
+      const r = (await control(
+        context.home,
+        { command: "status" },
+        timeout,
+      )) as { pid: number; runtime: object };
+      return { pid: r.pid, ...r.runtime };
+    });
+  }
   const input: ManagementInput = {
     command: name,
     ...(context.resourceID ? { resourceID: context.resourceID } : {}),
@@ -158,7 +168,6 @@ registerhelp(define);
 registerversion(define);
 registerschema(define);
 registerinit(define);
-registerdoctor(define);
 registerpresence(define);
 registerdaemon(define);
 for (const operation of operationDefinitions) {
@@ -180,7 +189,7 @@ for (const operation of operationDefinitions) {
     scope,
     operand,
     mutates,
-    ["agents run", "instant submit"].includes(name)
+    ["agents run", "instant create"].includes(name)
       ? z.union([
           result,
           operationDefinitions.find(
@@ -194,7 +203,7 @@ for (const operation of operationDefinitions) {
       confirmation,
       options: [
         ...options,
-        ...(["agents run", "instant submit"].includes(name)
+        ...(["agents run", "instant create"].includes(name)
           ? ["wait"]
           : name === "runs transcript"
             ? ["tail"]
@@ -216,9 +225,8 @@ export const commandCatalog = () =>
     }))
     .sort((a, b) => a.name.localeCompare(b.name));
 export const advancedCommands = new Set([
-  "agents cache clear",
+  "agents cache delete",
   "runs verify",
-  "runs hooks retry",
   "schema get",
   "config token rotate",
   "presence sample",

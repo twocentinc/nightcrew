@@ -287,17 +287,6 @@ export class Service {
   ) {
     return this.runs.refreshRunCapabilities(runID, expectedRevision, dryRun);
   }
-  reviewRun(
-    runID: string,
-    input: {
-      expectedRevision: number;
-      status: "open" | "acknowledged" | "resolved";
-      note: string;
-    },
-    dryRun: boolean,
-  ) {
-    return this.runs.reviewRun(runID, input, dryRun);
-  }
   retryRun(
     runID: string,
     input: { expectedRevision: number; messageID: string; note: string },
@@ -330,15 +319,11 @@ export class Service {
   ) {
     return this.runs.queueControl(runID, action, expectedRevision, dryRun);
   }
-  annotateRun(
-    runID: string,
-    input: { messageID: string; content: string },
-    dryRun = false,
-  ) {
-    return this.runs.annotateRun(runID, input, dryRun);
-  }
   cancelRun(runID: string, dryRun = false) {
     return this.runs.cancelRun(runID, dryRun);
+  }
+  deleteChat(requestID: string, dryRun = false) {
+    return this.instant.deleteChat(requestID, dryRun);
   }
   chat(requestID: string) {
     return this.instant.chat(requestID);

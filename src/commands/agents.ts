@@ -49,7 +49,7 @@ export async function handle(
   const [] = command.split(" ");
   const name = resourceID === undefined ? undefined : id.parse(resourceID);
   const raw = input.request ?? {};
-  if (command === "agents cache clear") {
+  if (command === "agents cache delete") {
     service.agent(name ?? fail("missing_id"));
     if (!service.runtime.contextCache)
       fail("cache_management_unavailable", 503);
@@ -145,8 +145,8 @@ export const operations = {
     false,
     "daemon",
   ),
-  "agents cache clear": defineOperation(
-    "agents cache clear",
+  "agents cache delete": defineOperation(
+    "agents cache delete",
     "Discard saved agent KV cache without deleting conversation history",
     z.object({
       contextID: z.string(),

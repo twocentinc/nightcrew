@@ -69,7 +69,7 @@ never validate/deliver partial answers or execute truncated tool calls.
 Runs carry holds, pending inputs, compaction checkpoints, configuration and trigger
 occurrence snapshots.
 `src/engine/supervision.ts` owns output-validation configuration/execution, loop detection
-and derived run outcomes, review fingerprints and effective hook retry chains. Keep validation evidence durable and never equate schema
+and derived run outcomes, effective hook receipt chains. Keep validation evidence durable and never equate schema
 validation or hook execution with factual correctness or confirmed external delivery.
 `src/engine/evals/runner.ts` owns suite execution and create-only result bundles;
 `format.ts` owns versioned schemas, `tools.ts` exact mock argument dispatch, and
@@ -138,7 +138,7 @@ behavior without an actual model-specific check.
 Real-model tests live under `test/live/`, outside the default suite. Do not run
 them without explicit authorization for inference.
 
-The public contract is frozen at schema 41; follow `docs/compatibility.md`.
+The public contract is frozen at schema 42; follow `docs/compatibility.md`.
 Do not remove or rename public commands, tighten accepted inputs, or change
 execution semantics without explicitly reopening the freeze. Schema increments
 alone do not authorize breaking changes. Keep
@@ -166,7 +166,6 @@ work when a client disconnects, times out or receives a signal. Finite commands
 emit one envelope; tails emit JSONL batches. Preserve accepted IDs on observation
 errors. Transcript tails advance by committed event sequence; log tails follow
 byte offsets and inodes without deduplicating identical lines by their text.
-
 
 Repository-owned executable source, scripts, tests, and example helpers must use
 TypeScript (`.ts`), never `.mjs`. Run standalone TypeScript with Node's

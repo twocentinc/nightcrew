@@ -20,7 +20,7 @@ node -e 'const fs=require("node:fs"),{randomUUID}=require("node:crypto");const r
 
 Use the returned run ID with `nightcrew runs get <runID>` or `nightcrew runs
 transcript <runID>`. This background agent waits for desktop-away and cooldown
-expiry. For interactive requests use `nightcrew instant submit`; its model
+expiry. For interactive requests use `nightcrew instant create`; its model
 defaults to `scheduler.instantModelID` and its slot is managed automatically.
 
 `turn.json` omits thinking and inherits the agent's false default.

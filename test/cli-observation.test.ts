@@ -110,7 +110,7 @@ for (const mode of ["complete", "timeout", "interrupt", "failed"])
     let polls = 0;
     const requestID = randomUUID();
     const f = await fake(t, (input?: any) =>
-      input.command === "instant submit"
+      input.command === "instant create"
         ? { requestID, status: "queued", eventsURL: "/unused", replayed: false }
         : {
             requestID,
@@ -132,7 +132,7 @@ for (const mode of ["complete", "timeout", "interrupt", "failed"])
       f.home,
       [
         "instant",
-        "submit",
+        "create",
         "--wait",
         "--timeout",
         mode === "timeout" ? "250ms" : "5s",
@@ -159,12 +159,12 @@ for (const mode of ["complete", "timeout", "interrupt", "failed"])
       assert.equal(result.events[0].error.details.cancelled, false);
     }
     assert.equal(
-      f.commands.filter((c) => c.command === "instant submit").length,
+      f.commands.filter((c) => c.command === "instant create").length,
       1,
     );
     assert.ok(
       f.commands.every((c) =>
-        ["instant submit", "instant get"].includes(c.command),
+        ["instant create", "instant get"].includes(c.command),
       ),
     );
   });

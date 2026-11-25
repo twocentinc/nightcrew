@@ -119,10 +119,10 @@ test("diagnostics report missing configuration without creating a runtime home",
   const temp = await mkdtemp(path.join(tmpdir(), "nightcrew-diagnostics-"));
   try {
     const home = path.join(temp, "absent");
-    const result = await call(["doctor", "--home", home]);
+    const result = await call(["status", "--doctor", "--home", home]);
     assert.equal(result.envelope.ok, true);
     assert.equal(result.envelope.result.healthy, false);
-    assert.equal(result.envelope.result.serviceReady, null);
+    assert.equal(result.envelope.result.serviceReady, false);
     assert.ok(
       result.envelope.result.checks.some(
         (c?: any) => c.id === "configuration" && c.status === "fail",
@@ -152,30 +152,6 @@ test("eval CLI deadline accommodates suites while ordinary command limits remain
     () => parseCLI(["evals", "run", "--timeout", "121m"]),
     /Timeout/,
   );
-});
-
-test("simplified CLI removes obsolete names and hides advanced and internal operations", async () => {
-  const { parseCLI } = await import("../dist/cli.js");
-  const { help } = await import("../dist/utils/commands/registry.js");
-  for (const args of [
-    ["startup", "status"],
-    ["inference", "submit"],
-    ["queue", "list"],
-    ["fleet", "status"],
-    ["presence", "status"],
-    ["scheduler", "get"],
-    ["scheduler", "update"],
-    ["scheduler", "status"],
-    ["agents", "enable", "a"],
-    ["triggers", "disable", "t"],
-    ["evals", "sample"],
-  ])
-    assert.throws(() => parseCLI(args), /Unknown command/);
-  assert.equal(parseCLI(["instant", "submit"]).command, "instant submit");
-  assert.equal(parseCLI(["runs", "pause", "a"]).command, "runs pause");
-  assert.equal(help().commands.includes("runs hooks retry"), false);
-  assert.equal(help("", true).commands.includes("runs hooks retry"), true);
-  assert.equal(help("", true).commands.includes("evals sample"), false);
 });
 
 test("command names use words without hyphens and removed commands are rejected", async () => {
@@ -208,4 +184,30 @@ test("Commander handles repeated options, aliases and literal operands", () => {
     () => parseCLI(["version", "--request-id"]),
     /argument missing/i,
   );
+});
+
+test("schema 42 exposes only the simplified command names", () => {
+  for (const args of [
+    ["doctor"],
+    ["instant", "submit"],
+    ["instant", "cancel", "x"],
+    ["instant", "unload"],
+    ["agents", "cache", "clear", "x"],
+    ["runs", "capabilities", "refresh", "x"],
+    ["runs", "annotate", "x"],
+    ["runs", "review", "x"],
+    ["runs", "hooks", "retry", "x"],
+    ["queue", "list"],
+    ["evals", "sample"],
+  ])
+    assert.throws(() => parseCLI(args), /Unknown command|Unexpected/);
+  assert.equal(parseCLI(["status", "--doctor"]).values.doctor, true);
+  for (const [args, command] of [
+    [["instant", "create", "--wait"], "instant create"],
+    [["instant", "delete", "x"], "instant delete"],
+    [["models", "unload"], "models unload"],
+    [["agents", "cache", "delete", "x"], "agents cache delete"],
+    [["runs", "refresh", "x"], "runs refresh"],
+  ] as const)
+    assert.equal(parseCLI([...args]).command, command);
 });

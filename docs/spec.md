@@ -1,6 +1,6 @@
 # Nightcrew specification
 
-Status: protocol 1, schema 41; parser behavior revision approved for 0.40.0.
+Status: protocol 1, schema 42; parser behavior revision approved for 0.40.0.
 See [compatibility.md](compatibility.md) for stable surfaces and change policy.
 Runtime schemas and registered procedures are authoritative; this document
 explains behavior rather than maintaining another endpoint inventory.
@@ -32,35 +32,35 @@ schemas directly from their owners rather than through re-export barrels.
 `engine/service.ts` composes the components and retains the service-facing API.
 Components declare narrow dependencies and keep their state with its owner.
 
-| Folder/module | Ownership |
-| --- | --- |
-| `engine/runs/submissions.ts` | Submission, replies and persistent segments |
-| `engine/runs/controls.ts` | Pause, resume, cancellation, retries, reviews and capability refresh |
-| `engine/runs/triggers.ts` | Trigger admission, deduplication and pending-input activation |
-| `engine/execution/` | Runner, context, request, inference, response, tools, completion and bounded process execution |
-| `engine/instant/` | Request lifecycle and a separate interactive generation runner |
-| `engine/scheduling/` | Dispatch, policy, schedule definitions and timer tracking |
-| `engine/models/runtime.ts` | Model admission, switching and residency |
-| `engine/models/server.ts` | llama.cpp process startup, health and shutdown |
-| `engine/models/client.ts` | Generation and tokenization requests |
-| `engine/models/stream.ts` | Stream decoding, reasoning and tool-call assembly |
-| `engine/models/cache.ts` | Slot ownership, snapshots, compatibility checks and pruning |
-| `engine/models/types.ts` | Runtime adapter contracts |
-| `engine/compaction/` | Coordinator, recovery, format and source evidence |
-| `engine/capabilities/` | Tool registry, skill resources and bundled executable commands |
-| `engine/evals/` | Suite runner, schemas, mock tools and grading/results |
-| `schemas/` | Common primitives, agents, models, runs and configuration |
-| `storage/store.ts` | Home lock, lifecycle and the shared transaction queue |
-| `storage/config.ts` | Configuration initialization, validation and persistence |
-| `storage/transcript.ts` | Run validation, transcript persistence and post-write index commits |
-| `storage/files.ts` | Atomic writes, file permissions and bounded reads |
-| `utils/json.ts` | Canonical JSON serialization and compatible content fingerprints |
-| `storage/runIndex.ts` | Run discovery, reconciliation, message ownership and derived indexes |
-| `storage/records.ts` | Run projections, pagination, search and startup recovery |
-| `storage/artifacts.ts` | Export bundles and integrity verification |
-| `server/http.ts` | HTTP/oRPC hosting, authentication and router mounting |
-| `server/resources.ts` | Legacy HTTP resource adapters |
-| `server/streams.ts` | Event-stream lifecycle and limits |
+| Folder/module                | Ownership                                                                                      |
+| ---------------------------- | ---------------------------------------------------------------------------------------------- |
+| `engine/runs/submissions.ts` | Submission, replies and persistent segments                                                    |
+| `engine/runs/controls.ts`    | Pause, resume, cancellation, retries and capability refresh                                    |
+| `engine/runs/triggers.ts`    | Trigger admission, deduplication and pending-input activation                                  |
+| `engine/execution/`          | Runner, context, request, inference, response, tools, completion and bounded process execution |
+| `engine/instant/`            | Request lifecycle and a separate interactive generation runner                                 |
+| `engine/scheduling/`         | Dispatch, policy, schedule definitions and timer tracking                                      |
+| `engine/models/runtime.ts`   | Model admission, switching and residency                                                       |
+| `engine/models/server.ts`    | llama.cpp process startup, health and shutdown                                                 |
+| `engine/models/client.ts`    | Generation and tokenization requests                                                           |
+| `engine/models/stream.ts`    | Stream decoding, reasoning and tool-call assembly                                              |
+| `engine/models/cache.ts`     | Slot ownership, snapshots, compatibility checks and pruning                                    |
+| `engine/models/types.ts`     | Runtime adapter contracts                                                                      |
+| `engine/compaction/`         | Coordinator, recovery, format and source evidence                                              |
+| `engine/capabilities/`       | Tool registry, skill resources and bundled executable commands                                 |
+| `engine/evals/`              | Suite runner, schemas, mock tools and grading/results                                          |
+| `schemas/`                   | Common primitives, agents, models, runs and configuration                                      |
+| `storage/store.ts`           | Home lock, lifecycle and the shared transaction queue                                          |
+| `storage/config.ts`          | Configuration initialization, validation and persistence                                       |
+| `storage/transcript.ts`      | Run validation, transcript persistence and post-write index commits                            |
+| `storage/files.ts`           | Atomic writes, file permissions and bounded reads                                              |
+| `utils/json.ts`              | Canonical JSON serialization and compatible content fingerprints                               |
+| `storage/runIndex.ts`        | Run discovery, reconciliation, message ownership and derived indexes                           |
+| `storage/records.ts`         | Run projections, pagination, search and startup recovery                                       |
+| `storage/artifacts.ts`       | Export bundles and integrity verification                                                      |
+| `server/http.ts`             | HTTP/oRPC hosting, authentication and router mounting                                          |
+| `server/resources.ts`        | Legacy HTTP resource adapters                                                                  |
+| `server/streams.ts`          | Event-stream lifecycle and limits                                                              |
 
 Smaller engine concerns remain in `configuration.ts`, `supervision.ts`,
 `hooks.ts` and `protocol.ts`. Server control-socket, startup, diagnostics and
@@ -210,11 +210,6 @@ runs_transcript tool can inspect their own failed attempts. Unfinished text is
 not automatically inserted as a completed assistant message; partial tool calls
 are never executed. A successful attempt references its committed message instead
 of duplicating the payload.
-
-`runs annotate` appends a bounded, UUID-deduplicated passive notification to an
-existing run's event history. It neither adds model messages nor changes run
-state, wakes inference, creates runs, or fires hooks. Reusing an annotation UUID
-with different content fails. Annotations count toward durable storage limits.
 
 ## Transcript storage limits
 
@@ -421,7 +416,7 @@ promoted into the final answer. Single-turn/audio behavior is unchanged.
 ## Supervision and outcome reporting
 
 `runs get` and run summaries expose `outcome`: execution state, output validation,
-task review status, delivery and lifecycle-hook status, reasons and a next action.
+derived task status, delivery and lifecycle-hook status, reasons and a next action.
 Execution `completed` means generation ended; it does not mean the answer is
 correct or delivered. Without a validator the task is `unverified`. `validated`
 means only the configured validator passed. Failed execution, invalid output,
@@ -437,7 +432,7 @@ Agents may configure `outputValidation` (null by default):
     "type": "json-schema",
     "schema": {
       "type": "object",
-      "properties": {"answer": {"type": "string"}},
+      "properties": { "answer": { "type": "string" } },
       "required": ["answer"],
       "additionalProperties": false
     }
@@ -471,7 +466,7 @@ zero. Repeated unchanged requests, consecutive errors and exhausted tool budgets
 trigger a recorded recovery opportunity. A further tool failure or repeated loop
 ends tool use and requests a constrained final answer. The global tool limit
 also forces finalization. No hidden retry re-executes a failed external action.
-Exhausted recovery remains visible as needsReview even if final formatting passes.
+Exhausted recovery remains visible as needsAttention even if final formatting passes.
 
 Compaction receives explicit instructions to separate facts, hypotheses, failed
 attempts and remaining work. A deterministic source check warns about unsupported
@@ -492,9 +487,9 @@ of relying on the summarizer's arithmetic. Existing checkpoints are not rewritte
 
 `status` uses the same oRPC operation for CLI and HTTP and requires the
 daemon for current runtime state. It shows each configured agent, its schedules,
-latest run activity/outcome, active run count, review count and recorded active
+latest run activity/outcome, active run count, attention count and recorded active
 milliseconds, plus current presence/cooldown, model/slot status and the newest
-100 runs needing review. Totals cover all retained run summaries; active time
+100 runs needing attention. Totals cover all retained run summaries; active time
 for persistent runs is the current segment's stored counter, not lifetime CPU
 usage. No new index, queue database, or inferred memory/token telemetry is stored.
 
@@ -506,31 +501,13 @@ clears the hold after the underlying cause is corrected. Output-schema guidance
 is merged into the leading system prompt, including when compaction rebuilds the
 context; model templates need not support later system messages.
 
-
 ## Supervisor review and recovery
-
-`runs review` takes expectedRevision, status (open/acknowledged/resolved) and a
-required note. Reviews are append-only, segment-scoped and fingerprint the issue
-state. Resolution removes fleet attention while preserving failure evidence and
-separate execution/output/delivery outcomes. New failures invalidate resolution.
 
 `runs resume` shares runs resume semantics. `runs retry` takes expectedRevision,
 a new client messageID UUID and note; it requires a terminal non-compactor run
 without pending inputs and repeats the last user input, attachments and thinking
 override in a new segment of the same transcript. It uses ordinary reply snapshot
-rules. Previous messages and attempts remain visible. Both retries below require
-explicit confirmation (`--yes` in CLI), and all commands support dry-run.
-
-`runs hooks retry` takes expectedRevision, zero-based receiptIndex, a new requestID
-UUID and note. The selected failed/unknown receipt must be from the current
-segment of a terminal run and have no successor retry. Unknown results require
-acceptUnknown. The handler must still be registered for the same event/purpose;
-optional hookPath selects a corrected registration. Symlink resolution supports
-relocated handlers. The new receipt is durably reserved before execution and
-records retryOf; pending/started work becomes unknown after restart. Successful
-retry supersedes earlier failure in derived outcomes, but every receipt remains.
-Replaying either retry UUID does not execute work again. Delivery output validation
-still applies. No automatic recovery sends messages or retries external effects.
+rules. Previous messages and attempts remain visible. Retry requires explicit confirmation (`--yes` in CLI); mutations support dry-run.
 
 ## Optional review agents
 
@@ -547,7 +524,6 @@ home, without application dependencies.
 The supervisor example is manual-only by default and emits local Markdown.
 See examples/agent-supervisor for installation and scope. Installed copies are
 not overwritten by package updates. Application-specific agents live externally.
-
 
 ### Source-linked compaction evidence
 
@@ -591,7 +567,6 @@ eval samples keep their existing behavior; continuation belongs to managed runs.
 A fresh run snapshots its generation limit and scheduling slice, so configuration
 changes require a new fresh run; retry preserves that original agent snapshot.
 
-
 ### Evidence and worker review refinements
 
 Compaction source packets retain bounded ancestor scalar metadata with each
@@ -628,8 +603,7 @@ help exposes recovery, cache, schema, verification and diagnostic operations.
 ## CLI and HTTP surface (schema 32)
 
 Cache inspection is part of `agents get`; saved cache removal is
-`agents cache clear`. Hook recovery is `runs hooks retry`, and root token rotation
-is `config token rotate`. Command words use spaces rather than hyphens.
+`agents cache delete`. Root token rotation is `config token rotate`. Command words use spaces rather than hyphens.
 The boolean config field `httpEnabled` defaults to true. Setting it false and
 restarting disables the HTTP listener, while local CLI control remains available.
 The replaced names remain absent; the freeze protects the current names.
@@ -637,11 +611,11 @@ The replaced names remain absent; the freeze protects the current names.
 ## CLI observation and discovery (schema 33)
 
 Root help exposes a compact command tree; exact command help adds metadata.
-Model capabilities belong to `models get` and the aggregate `doctor` report.
+Model capabilities belong to `models get` and the aggregate `status --doctor` report.
 `config reload` adopts skill/tool filesystem edits. Removed commands and flags
 have no aliases: use `--verbosity` and `--no-input`.
 
-`agents run --wait` and `instant submit --wait` submit once, then poll the shared
+`agents run --wait` and `instant create --wait` submit once, then poll the shared
 get procedures until terminal. They compose the existing acceptance and detail
 result contracts. They never cancel daemon work on timeout or signal, and errors
 after acceptance include the accepted resource ID. Scheduling remains unchanged.
@@ -655,7 +629,7 @@ observation timeouts up to 1440 minutes. Neither changes agent execution timeout
 
 ### Explicit instant model unloading
 
-`nightcrew instant unload` cancels accepted nonterminal instant requests and
+`nightcrew models unload` cancels accepted nonterminal instant requests and
 interactive runs for the configured instant model, waits for their computation
 to settle, and releases the resident model regardless of its idle/keep-warm timer.
 It preserves transcripts and configuration; the next explicit message can
@@ -681,7 +655,7 @@ context, not a claim that model memory remains resident after unloading.
 
 ### Explicit capability refresh
 
-`runs capabilities refresh RUN_ID` accepts `expectedRevision` and applies the
+`runs refresh RUN_ID` accepts `expectedRevision` and applies the
 agent's current tool/skill definitions to a terminal run with no pending input.
 It never submits a message or changes the run's model, prompt, history, state,
 or scheduling. Prior tool/skill snapshots are retained in `capabilityRefreshes`
@@ -747,3 +721,11 @@ graders retain their behavior.
 This is an approved additive contract change. Agent-specific fixtures, TypeScript
 graders and checks are colocated under their example directories. See
 [the eval format](eval-format.md) for the canonical executable protocol.
+
+## CLI simplification (schema 42)
+
+Use `status --doctor` for configuration, executable, presence and live daemon checks, including when the daemon is unavailable. Plain `status` stays a fast runtime overview. Both expose the shared status request/result contract.
+
+Instant inference uses `instant create`, `instant get`, and `instant delete`. Delete first settles cancellation, then forgets the request and result. `models unload` retains the guarded instant-model unload behavior and takes no operand. `agents cache delete` removes saved KV only; `runs refresh` adopts current capabilities in a terminal run.
+
+There is no manual annotation/review workflow or public hook retry command. Run outcomes retain execution, validation and delivery evidence; `needsAttention`, status `issues` and `issuesTruncated` are derived rather than manually acknowledged.
