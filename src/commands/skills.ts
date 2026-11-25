@@ -1,15 +1,15 @@
+import { loadSkillContent } from "../engine/capabilities/skills.js";
 import { z } from "zod";
+import { Service, fail } from "../engine/service.js";
 import {
-  id,
   skillLoadInputSchema,
   skillLoadResultSchema,
   skillSchema,
-} from "../engine/contracts.js";
-import { Service, fail } from "../engine/service.js";
-import { loadSkillContent } from "../engine/skills.js";
+} from "../schemas/agent.js";
+import { id } from "../schemas/common.js";
+import { fingerprint } from "../utils/json.js";
 import { createOperations } from "./definition.js";
 import {
-  fingerprint,
   mutateRegistration,
   resourceCommand,
   type ManagementInput,
@@ -30,17 +30,11 @@ export const operationInputs = {
   "skills delete": z.strictObject({ expectedHash: z.string() }),
 };
 const requestSchemas: Record<string, z.ZodType> = operationInputs;
-
 export async function handle(
   service: Service,
   input: ManagementInput,
 ): Promise<unknown> {
-  const { command, resourceID, dryRun = false, yes = false } = input;
-  const [resource, action] = command.split(" ");
-  const name =
-    resourceID === undefined || command === "runs search"
-      ? undefined
-      : id.parse(resourceID);
+  const { command } = input;
   const raw = input.request ?? {};
   if (command === "skills read") {
     const request = requestSchemas[command]!.parse(raw) as { runID?: string };
@@ -106,19 +100,8 @@ export const operations = {
     true,
   ),
 };
-
 const resourceActions: ResourceActions = {
-  async read({
-    service,
-    input,
-    next,
-    registry,
-    resource,
-    action,
-    name,
-    dryRun,
-    value,
-  }: ResourceContext) {
+  async read({ registry, action, name }: ResourceContext) {
     const items = [...registry.skills.values()].map((x) => ({
       ...x,
       hash: fingerprint(x),

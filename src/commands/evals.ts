@@ -1,37 +1,33 @@
 import { z } from "zod";
-import { chatAcceptanceSchema, id } from "../engine/contracts.js";
 import {
   evalRunResultSchema,
   evalRunSchema,
   evalSampleSchema,
   evalSuiteSchema,
-  runEval,
-} from "../engine/evals.js";
-import { remainingTimeout } from "../engine/execution.js";
+} from "../engine/evals/format.js";
+import { runEval } from "../engine/evals/runner.js";
+import { remainingTimeout } from "../engine/execution/process.js";
 import type { Service } from "../engine/service.js";
 import { fail } from "../engine/service.js";
+import { id } from "../schemas/common.js";
+import { chatAcceptanceSchema } from "../schemas/run.js";
 import { createOperations } from "./definition.js";
 import type { Define } from "./registry.js";
 import { type ManagementInput } from "./resources.js";
 
 const control: typeof import("../server/daemon.js").control = async (...args) =>
   (await import("../server/daemon.js")).control(...args);
-
 export const operationInputs = {
   "evals release": z.strictObject({}),
   "evals sample": evalSampleSchema,
 };
-
 export async function handle(
   service: Service,
   input: ManagementInput,
 ): Promise<unknown> {
-  const { command, resourceID, dryRun = false, yes = false } = input;
-  const [resource, action] = command.split(" ");
-  const name =
-    resourceID === undefined || command === "runs search"
-      ? undefined
-      : id.parse(resourceID);
+  const { command, resourceID, dryRun = false } = input;
+  const [] = command.split(" ");
+  const name = resourceID === undefined ? undefined : id.parse(resourceID);
   const raw = input.request ?? {};
   if (command === "evals release") {
     const chat = service.chat(name ?? fail("missing_id"));
@@ -77,7 +73,6 @@ export const operations = {
     "daemon",
   ),
 };
-
 export function registerLocal(define: Define) {
   define(
     "evals validate",

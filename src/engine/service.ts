@@ -1,38 +1,35 @@
+import { type Agent } from "../schemas/agent.js";
+import { type ChatInput, type UserMessage } from "../schemas/common.js";
+import { type Config } from "../schemas/config.js";
+import { type Run } from "../schemas/run.js";
 import type { OperationalLog } from "../server/logging.js";
 import { RunRecords } from "../storage/records.js";
 import { Storage } from "../storage/store.js";
-import { Compaction } from "./compaction.js";
-import { Completion } from "./completion.js";
+import { AgentRegistry, builtinTools } from "./capabilities/registry.js";
+import { Compaction } from "./compaction/coordinator.js";
 import { Configuration } from "./configuration.js";
-import { Context } from "./context.js";
-import {
-  type Agent,
-  type ChatInput,
-  type Config,
-  type Run,
-  type UserMessage,
-} from "./contracts.js";
-import { Dispatch } from "./dispatch.js";
+import { Completion } from "./execution/completion.js";
+import { Context } from "./execution/context.js";
+import { Inference } from "./execution/inference.js";
+import { RequestBuilder } from "./execution/request.js";
+import { ResponseRecorder } from "./execution/response.js";
+import { Runner } from "./execution/runner.js";
+import { ToolExecution } from "./execution/tools.js";
 import { Hooks } from "./hooks.js";
-import { Inference } from "./inference.js";
-import { Instant, type Chat } from "./instant.js";
-import { AgentRegistry, builtinTools } from "./registry.js";
-import { RequestBuilder } from "./request.js";
-import { ResponseRecorder } from "./response.js";
-import { Runner } from "./runner.js";
-import { Runs } from "./runs.js";
-import type { Presence, Runtime } from "./runtimeTypes.js";
-import { type SchedulerSnapshot } from "./scheduler.js";
-import { ToolExecution } from "./tools.js";
+import { Instant, type Chat } from "./instant/requests.js";
+import type { Presence, Runtime } from "./models/types.js";
+import { Runs } from "./runs/submissions.js";
+import { Dispatch } from "./scheduling/dispatch.js";
+import { type SchedulerSnapshot } from "./scheduling/policy.js";
 
-export { fail } from "./protocol.js";
 export type {
   Attempt,
   PartialOutput,
   Presence,
   Result,
   Runtime,
-} from "./runtimeTypes.js";
+} from "./models/types.js";
+export { fail } from "./protocol.js";
 export const tools = builtinTools;
 
 export class Service {

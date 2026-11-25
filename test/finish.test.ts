@@ -6,7 +6,8 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { Storage, initializeHome } from "../dist/storage/store.js";
+import { Storage } from "../dist/storage/store.js";
+import { initializeHome } from "../dist/storage/config.js";
 import { Service } from "../dist/engine/service.js";
 import { manage as rawmanage } from "../dist/commands/management.js";
 const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
@@ -19,10 +20,8 @@ const callOperation: (
   ...args: Parameters<typeof rawcallOperation>
 ) => Promise<any> = rawcallOperation;
 import { runOutcome, loopProblem } from "../dist/engine/supervision.js";
-import {
-  validateSummaryEvidence,
-  compactionInstructions,
-} from "../dist/engine/compactionFormat.js";
+import {validateSummaryEvidence} from "../dist/engine/compaction/evidence.js";
+import {compactionInstructions} from "../dist/engine/compaction/format.js";
 const input = () => ({
   messageID: randomUUID(),
   content: "perform the task",

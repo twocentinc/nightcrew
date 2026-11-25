@@ -1,23 +1,24 @@
+import { chmod, lstat, unlink } from "node:fs/promises";
+import { createConnection, createServer } from "node:net";
+import path from "node:path";
+import { z } from "zod";
+import { type ManagementInput } from "../commands/management.js";
 import { callOperation } from "../commands/operations.js";
 import {
   Execution,
+  checkpoint,
   currentExecution,
   executionSignal,
   remainingTimeout,
-  checkpoint,
-} from "../engine/execution.js";
+} from "../engine/execution/process.js";
 import {
   NightcrewError,
+  errorSchema,
   normalizeError,
   timeoutFailure,
-  errorSchema,
 } from "../engine/protocol.js";
-import { createServer, createConnection } from "node:net";
-import path from "node:path";
-import { lstat, chmod, unlink } from "node:fs/promises";
-import { z } from "zod";
-import { type ManagementInput } from "../commands/management.js";
 import { startServer } from "./http.js";
+
 const controlSchema = z.strictObject({
   command: z.string(),
   resourceID: z.string().optional(),
@@ -177,7 +178,13 @@ export async function runDaemon(home: string, quiet = false) {
           if (closing) throw Error("Daemon stopping");
           const input = controlSchema.parse(JSON.parse(buffer.split("\n")[0]!));
           const { getCommand } = await import("../commands/registry.js");
-          const definition = getCommand(input.command) ?? (["evals sample", "evals release"].includes(input.command) ? (await import("../commands/operations.js")).getOperation(input.command) : undefined);
+          const definition =
+            getCommand(input.command) ??
+            (["evals sample", "evals release"].includes(input.command)
+              ? (await import("../commands/operations.js")).getOperation(
+                  input.command,
+                )
+              : undefined);
           if (
             !definition ||
             !["management", "daemon"].includes(definition.scope)

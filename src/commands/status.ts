@@ -1,15 +1,10 @@
 import { z } from "zod";
-import {
-  id,
-  now,
-  runSummarySchema,
-  statusSchema,
-  terminal,
-  triggerSchema,
-} from "../engine/contracts.js";
-import { schedulerStatusSchema } from "../engine/scheduler.js";
+import { schedulerStatusSchema } from "../engine/scheduling/policy.js";
 import type { Service } from "../engine/service.js";
 import { fail } from "../engine/service.js";
+import { triggerSchema } from "../schemas/agent.js";
+import { now, terminal } from "../schemas/common.js";
+import { runSummarySchema, statusSchema } from "../schemas/run.js";
 import { createOperations } from "./definition.js";
 import { type ManagementInput } from "./resources.js";
 import { handle as triggerHandler } from "./triggers.js";
@@ -17,23 +12,17 @@ import { handle as triggerHandler } from "./triggers.js";
 export const operationInputs = {
   status: z.strictObject({ details: z.boolean().default(false) }),
 };
-
 const triggerInfo = triggerSchema.extend({
   nextFireAt: z.string().nullable(),
   automaticDispatchEnabled: z.boolean(),
   blockers: z.array(z.string()),
 });
-
 export async function handle(
   service: Service,
   input: ManagementInput,
 ): Promise<unknown> {
-  const { command, resourceID, dryRun = false, yes = false } = input;
-  const [resource, action] = command.split(" ");
-  const name =
-    resourceID === undefined || command === "runs search"
-      ? undefined
-      : id.parse(resourceID);
+  const { command } = input;
+  const [] = command.split(" ");
   const raw = input.request ?? {};
   if (command === "status") {
     const runs = [...service.storage.summaries.values()].sort(

@@ -1,24 +1,26 @@
 import { z } from "zod";
+import type { Service } from "../engine/service.js";
+import { fail } from "../engine/service.js";
 import {
-  acceptanceSchema,
   id,
   pageSchema,
+  revision,
+  userMessageSchema,
+  uuid,
+} from "../schemas/common.js";
+import {
+  acceptanceSchema,
   runDetailSchema,
   runState,
   runSummarySchema,
   searchMatchSchema,
   transcriptEntrySchema,
-  userMessageSchema,
-  uuid,
-} from "../engine/contracts.js";
-import type { Service } from "../engine/service.js";
-import { fail } from "../engine/service.js";
+} from "../schemas/run.js";
 import { exportRun, verifyRun } from "../storage/artifacts.js";
-import { canonical } from "../storage/store.js";
+import { canonical } from "../utils/json.js";
 import { createOperations } from "./definition.js";
 import { type ManagementInput } from "./resources.js";
 
-const revision = z.number().int().positive();
 export const operationInputs = {
   "runs review": z.strictObject({
     expectedRevision: revision,
@@ -71,12 +73,11 @@ export const operationInputs = {
   }),
 };
 const requestSchemas: Record<string, z.ZodType> = operationInputs;
-
 export async function handle(
   service: Service,
   input: ManagementInput,
 ): Promise<unknown> {
-  const { command, resourceID, dryRun = false, yes = false } = input;
+  const { command, resourceID, dryRun = false } = input;
   const [resource, action] = command.split(" ");
   const name =
     resourceID === undefined || command === "runs search"
@@ -127,7 +128,7 @@ export async function handle(
       dryRun,
     );
   if (resource === "runs") {
-    const { userMessageSchema } = await import("../engine/contracts.js");
+    const { userMessageSchema } = await import("../schemas/common.js");
     if (action === "run" || action === "reply") {
       const { message } = z
         .strictObject({ message: userMessageSchema })
@@ -199,7 +200,9 @@ export async function handle(
       );
     }
     if (action === "verify") {
-      const input = requestSchemas[command]!.parse(raw) as { bundle?: string };
+      const input = requestSchemas[command]!.parse(raw) as {
+        bundle?: string;
+      };
       return verifyRun(service, name ?? fail("missing_id"), input.bundle);
     }
     if (action === "get")

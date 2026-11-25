@@ -1,4 +1,5 @@
 import { createRouterClient, type AnyProcedure } from "@orpc/server";
+import { NightcrewError } from "../engine/protocol.js";
 import type { Service } from "../engine/service.js";
 import { operations as agents } from "./agents.js";
 import { operations as config } from "./config.js";
@@ -7,7 +8,6 @@ import { operations as init } from "./init.js";
 import { operations as instant } from "./instant.js";
 import { type ManagementInput } from "./management.js";
 import { operations as models } from "./models.js";
-import { NightcrewError } from "../engine/protocol.js";
 import { operations as runs } from "./runs.js";
 import { operations as scheduler } from "./scheduler.js";
 import { operations as skills } from "./skills.js";

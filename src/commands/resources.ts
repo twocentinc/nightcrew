@@ -1,22 +1,22 @@
-import { createHash } from "node:crypto";
 import { lstat, mkdir, unlink } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
 import {
-  id,
-  skillSchema,
-  validateConfig,
-  type Store,
-} from "../engine/contracts.js";
-import { checkpoint } from "../engine/execution.js";
-import {
   builtinTools,
   toolDefinitionSchema,
   validateRegistry,
-} from "../engine/registry.js";
+} from "../engine/capabilities/registry.js";
+import {
+  canonicalSkill,
+  writeSkillFolder,
+} from "../engine/capabilities/skills.js";
+import { checkpoint } from "../engine/execution/process.js";
 import { Service, fail } from "../engine/service.js";
-import { canonicalSkill, writeSkillFolder } from "../engine/skills.js";
-import { atomicJSON, canonical } from "../storage/store.js";
+import { skillSchema } from "../schemas/agent.js";
+import { id } from "../schemas/common.js";
+import { validateConfig, type Store } from "../schemas/config.js";
+import { atomicJSON } from "../storage/files.js";
+import { fingerprint } from "../utils/json.js";
 
 export type ManagementInput = {
   command: string;
@@ -25,8 +25,6 @@ export type ManagementInput = {
   dryRun?: boolean;
   yes?: boolean;
 };
-export const fingerprint = (value: unknown) =>
-  createHash("sha256").update(canonical(value)).digest("hex");
 export function exposeConfig(store: Store) {
   const { rootTokenHash, ...config } = store.config;
   return config;
@@ -81,26 +79,7 @@ export async function resourceCommand(
     validateConfig(next);
     validateRegistry(next.agents, registry.skills, registry.tools);
     if (!dryRun) {
-      const liveSettingsOnly =
-        resource === "config" &&
-        Object.keys(value.changes as object).every((k) =>
-          [
-            "logging",
-            "interactionCooldownMs",
-            "scheduler",
-            "httpEnabled",
-          ].includes(k),
-        );
-      const schedulerChanges =
-        resource === "config"
-          ? (value.changes as { scheduler?: Record<string, unknown> }).scheduler
-          : undefined;
-      const resizingScheduler =
-        schedulerChanges &&
-        ["maxConcurrent", "contextTokens", "instantModelID"].some((k) =>
-          Object.hasOwn(schedulerChanges, k),
-        );
-      if ((resource !== "agents" && !liveSettingsOnly) || resizingScheduler)
+      if (configurationChangePolicy(resource!, value.changes).closeRuntime)
         await service.runtime.close();
       await service.storage.saveConfig(next);
     }
@@ -121,7 +100,7 @@ export type ResourceContext = {
   input: ManagementInput;
   next: Store;
   registry: {
-    skills: Map<string, import("../engine/contracts.js").Skill>;
+    skills: Map<string, import("../schemas/agent.js").Skill>;
     tools: Map<string, z.infer<typeof toolDefinitionSchema>>;
   };
   resource: string;
@@ -134,10 +113,8 @@ export type ResourceActions = {
   read?: (context: ResourceContext) => Promise<unknown>;
   mutate: (context: ResourceContext) => Promise<unknown>;
 };
-
 export async function mutateRegistration({
   service,
-  input,
   next,
   registry,
   resource,
@@ -169,11 +146,15 @@ export async function mutateRegistration({
     action === "update" &&
     item &&
     current &&
-    !(value.skill as { files?: unknown }).files
+    !(
+      value.skill as {
+        files?: unknown;
+      }
+    ).files
   )
     item = skillSchema.parse({
       ...item,
-      files: (current as import("../engine/contracts.js").Skill).files,
+      files: (current as import("../schemas/agent.js").Skill).files,
     });
   if (action === "create" && current) fail("already_exists", 409);
   if (action !== "create" && !current) fail("not_found", 404);
@@ -210,5 +191,31 @@ export async function mutateRegistration({
   return {
     changed: !dryRun,
     item: item ? { ...item, hash: fingerprint(item) } : null,
+  };
+}
+/** Shared policy only; callers keep their existing admission checks and write order. */
+export function configurationChangePolicy(resource: string, value: unknown) {
+  const changes = (value ?? {}) as Record<string, unknown>;
+  const liveSettingsOnly =
+    resource === "config" &&
+    Object.keys(changes).every((key) =>
+      ["logging", "interactionCooldownMs", "scheduler", "httpEnabled"].includes(
+        key,
+      ),
+    );
+  const scheduler =
+    resource === "config"
+      ? (changes.scheduler as Record<string, unknown> | undefined)
+      : undefined;
+  const resizingScheduler =
+    !!scheduler &&
+    ["maxConcurrent", "contextTokens", "instantModelID"].some((key) =>
+      Object.hasOwn(scheduler, key),
+    );
+  return {
+    requiresIdleQueue: !liveSettingsOnly,
+    resizingScheduler,
+    closeRuntime:
+      (resource !== "agents" && !liveSettingsOnly) || resizingScheduler,
   };
 }

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import type { Run, Message } from "./contracts.js";
+import type { Message } from "../schemas/common.js";
+import type { Run } from "../schemas/run.js";
 
 export const outputValidationSchema = z.strictObject({
   validator: z.discriminatedUnion("type", [
@@ -345,7 +346,8 @@ export async function validateOutput(
             .join("; "),
         );
     } else {
-      const { executeExternalTool } = await import("./registry.js");
+      const { executeExternalTool } =
+        await import("./capabilities/registry.js");
       const result = await executeExternalTool(
         {
           toolID: "output_validator",

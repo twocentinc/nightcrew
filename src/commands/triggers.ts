@@ -1,26 +1,24 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
+import { checkpoint } from "../engine/execution/process.js";
+import { nextFireAt } from "../engine/scheduling/schedule.js";
+import type { Service } from "../engine/service.js";
+import { fail } from "../engine/service.js";
+import { triggerDraftSchema, triggerSchema } from "../schemas/agent.js";
 import {
   id,
   now,
-  storeSchema,
+  revision,
   terminal,
-  triggerDraftSchema,
-  triggerSchema,
   userMessageSchema,
   uuid,
-  validateConfig,
-  type Run,
-} from "../engine/contracts.js";
-import { checkpoint } from "../engine/execution.js";
-import type { Service } from "../engine/service.js";
-import { fail } from "../engine/service.js";
-import { nextFireAt } from "../engine/triggers.js";
-import { canonical } from "../storage/store.js";
+} from "../schemas/common.js";
+import { storeSchema, validateConfig } from "../schemas/config.js";
+import { type Run } from "../schemas/run.js";
+import { canonical } from "../utils/json.js";
 import { createOperations } from "./definition.js";
 import { type ManagementInput } from "./resources.js";
 
-const revision = z.number().int().positive();
 export const operationInputs = {
   "triggers create": z.strictObject({ trigger: triggerDraftSchema }),
   "triggers update": z.strictObject({
@@ -54,19 +52,13 @@ export async function handle(
 ): Promise<unknown> {
   const { command, resourceID, dryRun = false, yes = false } = input;
   const [resource, action] = command.split(" ");
-  const name =
-    resourceID === undefined || command === "runs search"
-      ? undefined
-      : id.parse(resourceID);
+  const name = resourceID === undefined ? undefined : id.parse(resourceID);
   const raw = input.request ?? {};
   if (resource === "triggers") {
     if (action === "fire") {
       const value = requestSchemas[command]!.parse(raw) as {
         occurrenceID?: string;
-        message?: Omit<
-          import("../engine/contracts.js").UserMessage,
-          "messageID"
-        >;
+        message?: Omit<import("../schemas/common.js").UserMessage, "messageID">;
       };
       return service.fireTrigger(
         name ?? fail("missing_id"),

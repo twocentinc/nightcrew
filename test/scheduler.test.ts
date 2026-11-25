@@ -7,7 +7,8 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { Storage, initializeHome } from "../dist/storage/store.js";
+import { Storage } from "../dist/storage/store.js";
+import { initializeHome } from "../dist/storage/config.js";
 import { Service } from "../dist/engine/service.js";
 import { manage as rawmanage } from "../dist/commands/management.js";
 const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
@@ -18,7 +19,7 @@ import {
   defaultPlan,
   validatePlan,
   policyPlan,
-} from "../dist/engine/scheduler.js";
+} from "../dist/engine/scheduling/policy.js";
 const message = (content: string) => ({
   messageID: randomUUID(),
   content,
@@ -365,16 +366,16 @@ test("time slices pause without failing and timer admission has no catch-up", as
       },
     },
   });
-  await f.service["dispatch"]["dispatchTimers"]();
-  assert.ok(f.service["dispatch"]["triggerDue"].get("timer").at > Date.now());
-  f.service["dispatch"]["triggerDue"].set("timer", {
+  await f.service["dispatch"]["timers"]["dispatchTimers"]();
+  assert.ok(f.service["dispatch"]["timers"]["triggerDue"].get("timer").at > Date.now());
+  f.service["dispatch"]["timers"]["triggerDue"].set("timer", {
     revision: 1,
     at: Date.now() - 100000,
   });
-  await f.service["dispatch"]["dispatchTimers"]();
+  await f.service["dispatch"]["timers"]["dispatchTimers"]();
   assert.equal((await f.service.run(run.runID)).segment, 0);
-  f.service["dispatch"]["triggerDue"].set("timer", { revision: 1, at: Date.now() - 100 });
-  await f.service["dispatch"]["dispatchTimers"]();
+  f.service["dispatch"]["timers"]["triggerDue"].set("timer", { revision: 1, at: Date.now() - 100 });
+  await f.service["dispatch"]["timers"]["dispatchTimers"]();
   await until(async () => (await f.service.run(run.runID)).segment === 1);
   assert.equal(f.service.storage.summaries.size, 1);
 });

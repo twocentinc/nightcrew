@@ -1,7 +1,7 @@
 import { runtimeConfig } from "../../fixtures.ts";
 import { readFile } from "node:fs/promises";
 import { startServer } from "../../../dist/server/http.js";
-import { LlamaRuntime } from "../../../dist/engine/runtime.js";
+import { LlamaRuntime } from "../../../dist/engine/models/runtime.js";
 const home = process.argv[2];
 const config = JSON.parse(
   (await readFile(home + "/config.json", "utf8")).toString(),
@@ -29,8 +29,8 @@ process.send!({
 });
 let pid: any;
 const timer = setInterval(() => {
-  if (runtime["child"]?.pid && runtime["child"].pid !== pid) {
-    pid = runtime["child"].pid;
+  if (runtime["server"]["child"]?.pid && runtime["server"]["child"].pid !== pid) {
+    pid = runtime["server"]["child"].pid;
     process.send!({ runtimePID: pid });
   }
 }, 25);

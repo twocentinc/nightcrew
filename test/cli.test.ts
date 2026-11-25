@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { setTimeout as delay } from "node:timers/promises";
 import { fileURLToPath } from "node:url";
 import { control, parseCLI } from "../dist/cli.js";
-import { executeExternalTool, toolDefinitionSchema } from "../dist/engine/registry.js";
+import { executeExternalTool, toolDefinitionSchema } from "../dist/engine/capabilities/registry.js";
 import { renderPlist } from "../dist/server/startup.js";
 const cli = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
 async function call(
@@ -522,7 +522,7 @@ test("executable-only tools preserve structured JSON input and reject adapter fi
     false,
   );
   const { normalizeStoredTool, builtinTools } =
-    await import("../dist/engine/registry.js");
+    await import("../dist/engine/capabilities/registry.js");
   assert.deepEqual(
     normalizeStoredTool({ ...definition, adapter: "exec" }),
     tool,
@@ -653,7 +653,7 @@ test("argv placeholders preserve boundaries and typed stdin without shell evalua
     '{"a":2}',
   ]);
   assert.deepEqual(result.input, { ...input, limit: 7 });
-  const { resolveToolArgv } = await import("../dist/engine/registry.js");
+  const { resolveToolArgv } = await import("../dist/engine/capabilities/registry.js");
   assert.throws(
     () => resolveToolArgv(["%missing%"], {}),
     /Missing tool parameter/,

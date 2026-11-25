@@ -1,26 +1,30 @@
-import {
-  remainingTimeout,
-  executionSignal,
-  checkpoint,
-  pause,
-} from "../engine/execution.js";
-import { NightcrewError, invalidInput, timeoutFailure } from "../engine/protocol.js";
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { homedir } from "node:os";
+import { createHash, randomUUID } from "node:crypto";
 import {
+  lstat,
   mkdir,
+  open,
   readFile,
-  writeFile,
   rename,
   unlink,
-  lstat,
-  open,
+  writeFile,
 } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomUUID, createHash } from "node:crypto";
-import { setTimeout as delay } from "node:timers/promises";
+import { promisify } from "node:util";
+import {
+  checkpoint,
+  executionSignal,
+  pause,
+  remainingTimeout,
+} from "../engine/execution/process.js";
+import {
+  NightcrewError,
+  invalidInput,
+  timeoutFailure,
+} from "../engine/protocol.js";
+
 export const label = "dev.nightcrew.daemon";
 export const projectRoot = fileURLToPath(new URL("../../", import.meta.url));
 export const cliFile = path.join(projectRoot, "dist", "cli.js");
@@ -351,37 +355,72 @@ export async function startupLogs(
 // Follow active files by byte offset, retaining partial UTF-8 lines and draining
 // an open inode before switching to its replacement after log rotation.
 export async function* tailLogs(home: string, lines = 100) {
-  type OpenLog = { handle: Awaited<ReturnType<typeof open>>; inode: number; offset: number; pending: Buffer };
+  type OpenLog = {
+    handle: Awaited<ReturnType<typeof open>>;
+    inode: number;
+    offset: number;
+    pending: Buffer;
+  };
   const files = new Map<string, OpenLog>();
   const seen = new Set<string>();
-  const paths = ["daemon.jsonl", "launchd.stdout.log", "launchd.stderr.log"].map(name => path.join(home, "logs", name));
-  const read = async (file: string, state: OpenLog, initial = false, skipFragment = false) => {
+  const paths = [
+    "daemon.jsonl",
+    "launchd.stdout.log",
+    "launchd.stderr.log",
+  ].map((name) => path.join(home, "logs", name));
+  const read = async (
+    file: string,
+    state: OpenLog,
+    initial = false,
+    skipFragment = false,
+  ) => {
     const stat = await state.handle.stat();
-    if (stat.size < state.offset) { state.offset = 0; state.pending = Buffer.alloc(0); }
+    if (stat.size < state.offset) {
+      state.offset = 0;
+      state.pending = Buffer.alloc(0);
+    }
     const output: string[] = [];
     while (state.offset < stat.size) {
       checkpoint();
-      const bytes = Buffer.alloc(Math.min(1024 * 1024, stat.size - state.offset));
-      const { bytesRead } = await state.handle.read(bytes, 0, bytes.length, state.offset);
+      const bytes = Buffer.alloc(
+        Math.min(1024 * 1024, stat.size - state.offset),
+      );
+      const { bytesRead } = await state.handle.read(
+        bytes,
+        0,
+        bytes.length,
+        state.offset,
+      );
       if (!bytesRead) break;
       state.offset += bytesRead;
       const data = Buffer.concat([state.pending, bytes.subarray(0, bytesRead)]);
       const end = data.lastIndexOf(10);
-      if (end >= 0) output.push(...data.subarray(0, end).toString("utf8").split(/\r?\n/));
+      if (end >= 0)
+        output.push(...data.subarray(0, end).toString("utf8").split(/\r?\n/));
       state.pending = data.subarray(end + 1);
-      if (state.pending.length > 1024 * 1024) throw invalidInput("Log line exceeds 1 MB");
+      if (state.pending.length > 1024 * 1024)
+        throw invalidInput("Log line exceeds 1 MB");
     }
     if (skipFragment) output.shift();
-    return { path: file, lines: initial ? output.slice(-lines) : output, truncated: skipFragment };
+    return {
+      path: file,
+      lines: initial ? output.slice(-lines) : output,
+      truncated: skipFragment,
+    };
   };
   try {
     while (true) {
       for (const file of paths) {
         checkpoint();
         let stat;
-        try { stat = await lstat(file); }
-        catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") continue; throw e; }
-        if (!stat.isFile() || stat.isSymbolicLink()) throw invalidInput("Invalid log file");
+        try {
+          stat = await lstat(file);
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code === "ENOENT") continue;
+          throw e;
+        }
+        if (!stat.isFile() || stat.isSymbolicLink())
+          throw invalidInput("Invalid log file");
         let state = files.get(file);
         if (state && state.inode !== stat.ino) {
           const old = await read(file, state);
@@ -395,8 +434,15 @@ export async function* tailLogs(home: string, lines = 100) {
           const handle = await open(file, "r");
           const opened = await handle.stat();
           // Only the first observation skips old content; replacements start at zero.
-          const offset = seen.has(file) ? 0 : Math.max(0, opened.size - 1024 * 1024);
-          state = { handle, inode: opened.ino, offset, pending: Buffer.alloc(0) };
+          const offset = seen.has(file)
+            ? 0
+            : Math.max(0, opened.size - 1024 * 1024);
+          state = {
+            handle,
+            inode: opened.ino,
+            offset,
+            pending: Buffer.alloc(0),
+          };
           files.set(file, state);
           const entry = await read(file, state, !seen.has(file), offset > 0);
           seen.add(file);
@@ -410,6 +456,6 @@ export async function* tailLogs(home: string, lines = 100) {
       await pause(250);
     }
   } finally {
-    await Promise.all([...files.values()].map(file => file.handle.close()));
+    await Promise.all([...files.values()].map((file) => file.handle.close()));
   }
 }

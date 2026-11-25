@@ -1,11 +1,17 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
-import { configSchema, id } from "../engine/contracts.js";
 import { Service, fail } from "../engine/service.js";
+import { revision } from "../schemas/common.js";
+import {
+  adminConfig,
+  configMutation,
+  configSchema,
+} from "../schemas/config.js";
 import { loggingSchema } from "../server/logging.js";
-import { tokenHash } from "../storage/store.js";
+import { tokenHash } from "../storage/config.js";
 import { createOperations } from "./definition.js";
 import {
+  configurationChangePolicy,
   exposeConfig,
   resourceCommand,
   verifyModels,
@@ -14,7 +20,6 @@ import {
   type ResourceContext,
 } from "./resources.js";
 
-const revision = z.number().int().positive();
 export const operationInputs = {
   "config update": z.strictObject({
     expectedRevision: revision,
@@ -37,27 +42,12 @@ export const operationInputs = {
   }),
 };
 const requestSchemas: Record<string, z.ZodType> = operationInputs;
-
 const changed = z.object({ changed: z.boolean() });
-const adminConfig = configSchema.omit({ rootTokenHash: true });
-const configMutation = z.object({
-  changed: z.boolean(),
-  restartRequired: z.boolean(),
-  config: adminConfig,
-  agentID: z.string().optional(),
-});
-
 export async function handle(
   service: Service,
   input: ManagementInput,
 ): Promise<unknown> {
-  const { command, resourceID, dryRun = false, yes = false } = input;
-  const [resource, action] = command.split(" ");
-  const name =
-    resourceID === undefined || command === "runs search"
-      ? undefined
-      : id.parse(resourceID);
-  const raw = input.request ?? {};
+  const { command, dryRun = false, yes = false } = input;
   if (command === "config reload")
     return { changed: !dryRun, ...(await service.reloadRegistry(dryRun)) };
   if (command === "config token rotate") {
@@ -109,46 +99,21 @@ export const operations = {
     true,
   ),
 };
-
 const resourceActions: ResourceActions = {
-  async mutate({
-    service,
-    input,
-    next,
-    registry,
-    resource,
-    action,
-    name,
-    dryRun,
-    value,
-  }: ResourceContext) {
+  async mutate({ service, next, resource, value }: ResourceContext) {
     if (
       value.expectedRevision !== undefined &&
       next.config.revision !== value.expectedRevision
     )
       fail("revision_conflict", 409);
-    const liveSettingsOnly =
-      resource === "config" &&
-      Object.keys(value.changes as object).every((k) =>
-        [
-          "logging",
-          "interactionCooldownMs",
-          "scheduler",
-          "httpEnabled",
-        ].includes(k),
-      );
-    if (!liveSettingsOnly && service.status().queue.length)
+    const policy = configurationChangePolicy(resource, value.changes);
+    if (policy.requiresIdleQueue && service.status().queue.length)
       fail("runtime_busy", 409);
     const changes = value.changes as Partial<typeof next.config>;
     if (Object.keys(changes).length === 0) fail("empty_changes");
     if (changes.scheduler) {
-      const resizing = [
-        "maxConcurrent",
-        "contextTokens",
-        "instantModelID",
-      ].some((k) => Object.hasOwn(changes.scheduler!, k));
       if (
-        resizing &&
+        policy.resizingScheduler &&
         (service.schedulerStatus().active.length ||
           [...service.chats.values()].some((c) => c.state === "queued"))
       )

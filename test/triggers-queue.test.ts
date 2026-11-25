@@ -6,12 +6,13 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
-import { Storage, initializeHome } from "../dist/storage/store.js";
+import { Storage } from "../dist/storage/store.js";
+import { initializeHome } from "../dist/storage/config.js";
 import { Service } from "../dist/engine/service.js";
 import { manage as rawmanage } from "../dist/commands/management.js";
 const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
   rawmanage;
-import { nextFireAt, scheduleSchema } from "../dist/engine/triggers.js";
+import { nextFireAt, scheduleSchema } from "../dist/engine/scheduling/schedule.js";
 
 async function fixture(t: import("node:test").TestContext) {
   const home = await mkdtemp(path.join(tmpdir(), "nc-trigger-"));

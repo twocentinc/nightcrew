@@ -13,12 +13,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
-import { Storage, initializeHome } from "../dist/storage/store.js";
+import { Storage } from "../dist/storage/store.js";
+import { initializeHome } from "../dist/storage/config.js";
 import { Service } from "../dist/engine/service.js";
 import { manage as rawmanage } from "../dist/commands/management.js";
 const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
   rawmanage;
-import { runSchema } from "../dist/engine/contracts.js";
+import { runSchema } from "../dist/schemas/run.js";
 import { startupLogs } from "../dist/server/startup.js";
 
 async function fixture(t: import("node:test").TestContext) {
@@ -320,7 +321,7 @@ test("pending work index survives reload and clears after cancellation", async (
 });
 
 test("a stalled read releases the serialization queue without accepting late results", async (t) => {
-  const { boundedRead } = await import("../dist/storage/store.js");
+  const { boundedRead } = await import("../dist/storage/files.js");
   const { storage } = await fixture(t);
   let finish: any,
     committed = false;
@@ -348,7 +349,7 @@ test(
   { timeout: 15000 },
   async (t) => {
     const { storage } = await fixture(t);
-    storage["readRun"] = () => new Promise<any>(() => {});
+    storage["transcripts"]["readRun"] = () => new Promise<any>(() => {});
     await assert.rejects(
       storage.exclusive(() => storage.read(randomUUID())),
       (e: any) => e.code === "storage.readTimeout",
@@ -358,7 +359,7 @@ test(
 );
 
 test("durable replacement and exclusive claims preserve distinct semantics", async (t) => {
-  const { atomicJSON, claimJSON } = await import("../dist/storage/store.js");
+  const { atomicJSON, claimJSON } = await import("../dist/storage/files.js");
   const root = await mkdtemp(path.join(tmpdir(), "nc-durable-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const file = path.join(root, "state.json");
@@ -427,4 +428,141 @@ test("pagination shares one frozen snapshot across replayed cursors", async (t) 
   }
   assert.equal(calls, 1);
   assert.equal(second.items[0].id, 1);
+});
+
+test("config and transcript writes share ordering and survive a rejected transaction", async (t) => {
+  const { storage, home, makeRun } = await fixture(t);
+  const run = await makeRun(randomUUID());
+  const next = structuredClone(storage.store);
+  next.config.revision++;
+  let release!: () => void;
+  let entered!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const order: string[] = [];
+  const configWrite = storage.exclusive(async () => {
+    order.push("config:start");
+    entered();
+    await gate;
+    await storage.saveConfig(next);
+    order.push("config:committed");
+  });
+  await started;
+  const rejected = assert.rejects(
+    storage.exclusive(async () => {
+      const invalid = structuredClone(storage.store);
+      invalid.config.revision = -1;
+      await storage.saveConfig(invalid);
+    }),
+  );
+  const runWrite = storage.exclusive(async () => {
+    assert.equal(storage.store.config.revision, next.config.revision);
+    order.push("run:start");
+    run.revision++;
+    await storage.write(run);
+    order.push("run:committed");
+  });
+  try {
+    assert.deepEqual(order, ["config:start"]);
+    assert.equal((await storage.read(run.runID)).revision, 1);
+  } finally {
+    release();
+  }
+  await Promise.all([configWrite, rejected, runWrite]);
+  assert.deepEqual(order, [
+    "config:start",
+    "config:committed",
+    "run:start",
+    "run:committed",
+  ]);
+  assert.equal(
+    JSON.parse(await readFile(path.join(home, "config.json"), "utf8")).config
+      .revision,
+    next.config.revision,
+  );
+  assert.equal((await storage.read(run.runID)).revision, 2);
+  assert.equal(storage.summaries.get(run.runID)?.revision, 2);
+});
+
+test("transcript projection resolves pending inputs and attempts without changing event order", async (t) => {
+  const { service, makeRun } = await fixture(t);
+  const run = await makeRun(randomUUID());
+  const pending = {
+    messageID: randomUUID(),
+    content: "pending",
+    attachments: [],
+  };
+  run.pendingInputs.push({ message: pending, cancelled: false, source: null });
+  const attempt = {
+    attemptID: randomUUID(),
+    segment: 0,
+    startedAt: run.createdAt,
+    updatedAt: run.updatedAt,
+    status: "interrupted" as const,
+    reason: "restart",
+    thinking: true,
+    text: "partial",
+    reasoningContent: "thinking",
+    toolCalls: [],
+    truncated: false,
+    messageID: null,
+  };
+  run.attempts.push(attempt);
+  const data: (typeof run.events)[number]["data"][] = [
+    { messageID: pending.messageID },
+    { attemptID: attempt.attemptID, messageID: run.messages[0]!.messageID },
+    { messageID: randomUUID(), attemptID: randomUUID() },
+    null,
+    { messageID: pending.messageID },
+  ];
+  run.events = data.map((data, index) => ({
+    sequence: index + 1,
+    at: run.createdAt,
+    type: "message",
+    segment: 0,
+    data,
+  }));
+  const before = structuredClone(run);
+  const projected = service.transcript(run);
+  assert.deepEqual(
+    projected.map((e) => e.sequence),
+    [1, 2, 3, 4, 5],
+  );
+  assert.deepEqual(projected[0]!.message, {
+    ...pending,
+    role: "user",
+    toolCalls: [],
+    toolCallID: null,
+  });
+  assert.equal(projected[1]!.attempt, attempt);
+  assert.equal(projected[1]!.message, run.messages[0]);
+  assert.equal(projected[2]!.message, null);
+  assert.equal(projected[2]!.attempt, null);
+  assert.equal(projected[3]!.message, null);
+  assert.deepEqual(projected[4]!.message, projected[0]!.message);
+  assert.deepEqual(run, before);
+});
+
+test("canonical fingerprints retain persisted hash encoding and ignore object key order", async () => {
+  const { canonical, fingerprint } = await import("../dist/utils/json.js");
+  const { createHash } = await import("node:crypto");
+  const expected = '{"a":[{"c":null,"d":true},2],"z":"é"}';
+  const value = { z: "é", a: [{ d: true, c: null }, 2] };
+  assert.equal(canonical(value), expected);
+  assert.equal(
+    fingerprint(value),
+    createHash("sha256").update(expected).digest("hex"),
+  );
+  assert.equal(
+    fingerprint(value),
+    fingerprint({ a: [{ c: null, d: true }, 2], z: "é" }),
+  );
+  assert.notEqual(
+    fingerprint(value),
+    fingerprint({ ...value, a: [2, { c: null, d: true }] }),
+  );
 });

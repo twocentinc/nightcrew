@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { now, terminal, type Event, type Run } from "../engine/contracts.js";
-import { checkpoint } from "../engine/execution.js";
+import { checkpoint } from "../engine/execution/process.js";
 import { fail } from "../engine/protocol.js";
-import { Storage, summarize } from "./store.js";
+import { now, terminal } from "../schemas/common.js";
+import { type Event, type Run } from "../schemas/run.js";
+import { Storage } from "./store.js";
+import { summarize } from "./transcript.js";
 
 type PageSnapshot = {
   key: string;
@@ -118,6 +120,23 @@ export class RunRecords {
       );
   }
   transcript(r: Run) {
+    const attempts = new Map<string, Run["attempts"][number]>();
+    for (const attempt of r.attempts)
+      if (!attempts.has(attempt.attemptID))
+        attempts.set(attempt.attemptID, attempt);
+    const allMessages = [
+      ...r.messages,
+      ...r.pendingInputs.map((p) => ({
+        ...p.message,
+        role: "user" as const,
+        toolCalls: [],
+        toolCallID: null,
+      })),
+    ];
+    const messages = new Map<string, (typeof allMessages)[number]>();
+    for (const message of allMessages)
+      if (!messages.has(message.messageID))
+        messages.set(message.messageID, message);
     return r.events.map((e) => ({
       ...e,
       attempt:
@@ -125,28 +144,14 @@ export class RunRecords {
         typeof e.data === "object" &&
         !Array.isArray(e.data) &&
         "attemptID" in e.data
-          ? (r.attempts.find(
-              (a) =>
-                a.attemptID === (e.data as { attemptID: string }).attemptID,
-            ) ?? null)
+          ? (attempts.get(e.data.attemptID as string) ?? null)
           : null,
       message:
         e.data &&
         typeof e.data === "object" &&
         !Array.isArray(e.data) &&
         "messageID" in e.data
-          ? ([
-              ...r.messages,
-              ...r.pendingInputs.map((p) => ({
-                ...p.message,
-                role: "user" as const,
-                toolCalls: [],
-                toolCallID: null,
-              })),
-            ].find(
-              (m) =>
-                m.messageID === (e.data as { messageID: string }).messageID,
-            ) ?? null)
+          ? (messages.get(e.data.messageID as string) ?? null)
           : null,
     }));
   }

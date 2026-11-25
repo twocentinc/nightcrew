@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { configSchema } from "../engine/contracts.js";
-import { initializeHome } from "../storage/store.js";
+import { adminConfig, configSchema } from "../schemas/config.js";
+import { initializeHome } from "../storage/config.js";
 import type { Define } from "./registry.js";
 
 export const operationInputs = {
@@ -17,8 +17,6 @@ export const operationInputs = {
       hooks: configSchema.shape.hooks.default([]),
     }),
 };
-
-const adminConfig = configSchema.omit({ rootTokenHash: true });
 
 export const operations = {};
 

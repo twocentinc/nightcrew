@@ -1,12 +1,8 @@
 import { z } from "zod";
-import {
-  chatAcceptanceSchema,
-  chatDetailSchema,
-  chatInputSchema,
-  id,
-} from "../engine/contracts.js";
 import type { Service } from "../engine/service.js";
 import { fail } from "../engine/service.js";
+import { chatDetailSchema, chatInputSchema, id } from "../schemas/common.js";
+import { chatAcceptanceSchema } from "../schemas/run.js";
 import { createOperations } from "./definition.js";
 import { type ManagementInput } from "./resources.js";
 
@@ -15,17 +11,13 @@ export const operationInputs = {
   "instant unload": z.strictObject({}),
 };
 const requestSchemas: Record<string, z.ZodType> = operationInputs;
-
 export async function handle(
   service: Service,
   input: ManagementInput,
 ): Promise<unknown> {
-  const { command, resourceID, dryRun = false, yes = false } = input;
+  const { command, resourceID, dryRun = false } = input;
   const [resource, action] = command.split(" ");
-  const name =
-    resourceID === undefined || command === "runs search"
-      ? undefined
-      : id.parse(resourceID);
+  const name = resourceID === undefined ? undefined : id.parse(resourceID);
   const raw = input.request ?? {};
   if (resource === "instant") {
     if (action === "unload") return service.unloadInstant(dryRun);
@@ -35,7 +27,7 @@ export async function handle(
       return service.submitChat(
         requestSchemas[command]!.parse(
           raw,
-        ) as import("../engine/contracts.js").ChatInput,
+        ) as import("../schemas/common.js").ChatInput,
       );
     }
     if (action === "get") {

@@ -1,11 +1,10 @@
 import { ORPCError, os, type InferSchemaInput } from "@orpc/server";
-import { timingSafeEqual } from "node:crypto";
 import { z } from "zod";
-import { currentExecution, Execution } from "../engine/execution.js";
-import type { Service } from "../engine/service.js";
-import { tokenHash } from "../storage/store.js";
-import type { ManagementInput } from "./management.js";
+import { currentExecution, Execution } from "../engine/execution/process.js";
 import { NightcrewError } from "../engine/protocol.js";
+import type { Service } from "../engine/service.js";
+import { verifyBearerToken } from "../storage/config.js";
+import type { ManagementInput } from "./management.js";
 
 type Handler = (service: Service, input: ManagementInput) => Promise<unknown>;
 const empty = z.strictObject({});
@@ -30,13 +29,9 @@ function procedure<I extends z.ZodType, O extends z.ZodType>(
       if (!context.local) {
         const header = context.request?.headers.authorization;
         if (
-          !header?.startsWith("Bearer ") ||
-          !timingSafeEqual(
-            Buffer.from(tokenHash(header.slice(7)), "hex"),
-            Buffer.from(
-              context.service.storage.store.config.rootTokenHash,
-              "hex",
-            ),
+          !verifyBearerToken(
+            header,
+            context.service.storage.store.config.rootTokenHash,
           )
         )
           throw new ORPCError("UNAUTHORIZED");

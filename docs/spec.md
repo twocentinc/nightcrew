@@ -23,54 +23,65 @@ model priorities, residency preference and wait aging avoid unnecessary swaps.
 
 ## Source organization
 
-- `src/cli.ts`: executable entry point, argument parsing and command observation.
-- `src/commands/`: one module per top-level command (agents, runs, models,
-  daemon, evals, triggers, and the remaining command families), plus shared
-  discovery, procedure construction and atomic resource transactions.
-- `src/engine/`: agent loops, scheduling, inference, compaction, executable
-  tools, skills, eval execution and domain schemas.
-- `src/storage/`: durable configuration/run state, transcripts and run bundles.
-- `src/server/`: HTTP/oRPC hosting, private control socket, LaunchAgent lifecycle,
-  operational logging and readiness diagnostics.
+`src/cli.ts` is the executable entry point. `commands/` has one module per
+public command family. Shared types and validators live in `schemas/`; import
+schemas directly from their owners rather than through re-export barrels.
 
-Transport adapters call the command procedures; command handlers call the engine
-and storage. Engine execution does not depend on CLI registration. Public npm
-exports remain `nightcrew` and `nightcrew/operations`; internal module paths are
-not public compatibility entry points.
+`engine/service.ts` composes the components and retains the service-facing API.
+Components declare narrow dependencies and keep their state with its owner.
 
-### Engine ownership
-
-`engine/service.ts` is the composition root and service-facing facade. It starts
-and stops the engine; each component receives only its declared dependencies.
-
-| Module | Ownership |
+| Folder/module | Ownership |
 | --- | --- |
-| `engine/runs.ts` | Submission, persistent segments, pending inputs, trigger firing and run controls |
-| `engine/runner.ts` | Coordinates turn steps, live runs, active-time charging and cancellation settlement |
-| `engine/request.ts` | Builds prompts, recovery/finalization instructions, tools and sampling parameters |
-| `engine/inference.ts` | Persists attempts, invokes generation and captures streamed evidence; shared streaming buffer |
-| `engine/response.ts` | Reassembles continuation chunks and commits model responses |
-| `engine/tools.ts` | Recovers pending calls, executes tools and commits paired results |
-| `engine/completion.ts` | Validates final answers and settles interruption, completion and hook scheduling |
-| `engine/instant.ts` | Instant/eval requests, their deadlines, events and generation |
-| `engine/dispatch.ts` | Timer admission, scheduling, active execution handles, interruption, presence and cooldown |
-| `engine/context.ts` | Model-visible history, skill catalog injection and transcript storage limits |
-| `engine/compaction.ts` | Token budgets, compactor handoffs, retries and checkpoint recovery |
-| `engine/compactionFormat.ts` | Compaction schemas, summary parsing, evidence provenance and script protocol |
-| `engine/hooks.ts` | Hook receipts, delivery, explicit retry and shutdown draining |
-| `engine/configuration.ts` | Shared agent/configuration validation and mutation |
-| `engine/registry.ts` | Executable tools and loaded agent capabilities |
-| `engine/runtimeTypes.ts` | Runtime adapter, generation result and presence interfaces |
-| `storage/records.ts` | Run reads/projections, search, pagination, event/save helpers and startup recovery |
+| `engine/runs/submissions.ts` | Submission, replies and persistent segments |
+| `engine/runs/controls.ts` | Pause, resume, cancellation, retries, reviews and capability refresh |
+| `engine/runs/triggers.ts` | Trigger admission, deduplication and pending-input activation |
+| `engine/execution/` | Runner, context, request, inference, response, tools, completion and bounded process execution |
+| `engine/instant/` | Request lifecycle and a separate interactive generation runner |
+| `engine/scheduling/` | Dispatch, policy, schedule definitions and timer tracking |
+| `engine/models/runtime.ts` | Model admission, switching and residency |
+| `engine/models/server.ts` | llama.cpp process startup, health and shutdown |
+| `engine/models/client.ts` | Generation and tokenization requests |
+| `engine/models/stream.ts` | Stream decoding, reasoning and tool-call assembly |
+| `engine/models/cache.ts` | Slot ownership, snapshots, compatibility checks and pruning |
+| `engine/models/types.ts` | Runtime adapter contracts |
+| `engine/compaction/` | Coordinator, recovery, format and source evidence |
+| `engine/capabilities/` | Tool registry, skill resources and bundled executable commands |
+| `engine/evals/` | Suite runner, schemas, mock tools and grading/results |
+| `schemas/` | Common primitives, agents, models, runs and configuration |
+| `storage/store.ts` | Home lock, lifecycle and the shared transaction queue |
+| `storage/config.ts` | Configuration initialization, validation and persistence |
+| `storage/transcript.ts` | Run validation, transcript persistence and post-write index commits |
+| `storage/files.ts` | Atomic writes, file permissions and bounded reads |
+| `utils/json.ts` | Canonical JSON serialization and compatible content fingerprints |
+| `storage/runIndex.ts` | Run discovery, reconciliation, message ownership and derived indexes |
+| `storage/records.ts` | Run projections, pagination, search and startup recovery |
+| `storage/artifacts.ts` | Export bundles and integrity verification |
+| `server/http.ts` | HTTP/oRPC hosting, authentication and router mounting |
+| `server/resources.ts` | Legacy HTTP resource adapters |
+| `server/streams.ts` | Event-stream lifecycle and limits |
 
-The runner calls the tool, completion, request, compaction, inference and response
-steps in order. Context projection supplies the request and compaction steps.
-Instant requests keep their distinct tool permissions and request lifecycle while
-sharing the inference streaming buffer; they do not acquire the background tool loop. These phases keep the existing storage-lock boundaries and write
-ordering. Compaction hands execution back through dispatch; it does not start a
-second independent scheduler. Shutdown stops and settles execution before closing
-the model runtime, drains outstanding hooks, then closes storage. Startup recovery
-marks uncertain delivery receipts unknown rather than replaying messages.
+Smaller engine concerns remain in `configuration.ts`, `supervision.ts`,
+`hooks.ts` and `protocol.ts`. Server control-socket, startup, diagnostics and
+logging modules remain alongside HTTP hosting.
+
+The runner calls tool recovery, completion validation, request preparation,
+compaction, inference and response recording in order. Instant requests retain
+their different tool permissions and persistence rules. Compaction yields through
+dispatch instead of starting an independent scheduler.
+
+Preserve storage-lock boundaries and durable write ordering across components.
+Shutdown settles execution before closing the model runtime, drains hooks, then
+closes storage. Startup recovery marks uncertain deliveries unknown instead of
+replaying messages. Derived indexes change only after their durable writes commit.
+
+Public npm exports remain `nightcrew` and `nightcrew/operations`. Internal file
+paths are implementation details, not compatibility entry points.
+
+Shared JSON canonicalization and fingerprints live in `src/utils/json.ts`.
+Configuration response schemas live in `src/schemas/config.ts`; command resource
+helpers own configuration-change admission policy. Bearer-token verification is
+shared through `src/storage/config.ts`, while transports retain their error responses.
+Transcript projections build per-call message and attempt indexes.
 
 ## Canonical contracts and transport
 
@@ -136,8 +147,8 @@ Substitution is nonrecursive and does not invoke a shell. Structured input is
 still supplied on stdin; arrays do not spread and optional flags are not omitted.
 
 Models define chat or audio behavior, paths, idle unloading, priority, optional KV
-snapshots, and compactionThresholdTokens. Configuration schemas in src/engine/contracts.ts,
-src/engine/scheduler.ts, src/engine/triggers.ts and src/engine/compactionFormat.ts define limits and defaults.
+snapshots, and compactionThresholdTokens. Configuration schemas in src/schemas/config.ts,
+src/engine/scheduling/policy.ts, src/engine/scheduling/schedule.ts and src/engine/compaction/format.ts define limits and defaults.
 Examples are opt-in files under examples; init does not install bespoke agents.
 
 ## On-demand skills
@@ -252,7 +263,7 @@ minimum residency and aging. A bounded external scheduler hook may propose
 starts and pauses. Nightcrew revalidates every plan against presence, cooldown,
 model compatibility, slot ownership, dependency and capacity constraints.
 Failure policy chooses built-in fallback or hold. Scheduler hook configuration
-and its request/result schemas live in src/engine/scheduler.ts.
+and its request/result schemas live in src/engine/scheduling/policy.ts.
 
 KV snapshots are disposable acceleration data. They are not authoritative run
 history. Model snapshot settings choose whether/where to save them; the default

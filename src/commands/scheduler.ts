@@ -1,26 +1,19 @@
-import { id } from "../engine/contracts.js";
 import {
   policyResultSchema,
   schedulerSnapshotSchema,
-} from "../engine/scheduler.js";
+} from "../engine/scheduling/policy.js";
 import type { Service } from "../engine/service.js";
 import { fail } from "../engine/service.js";
 import { createOperations } from "./definition.js";
 import { type ManagementInput } from "./resources.js";
 
 export const operationInputs = {};
-
 export async function handle(
   service: Service,
   input: ManagementInput,
 ): Promise<unknown> {
-  const { command, resourceID, dryRun = false, yes = false } = input;
-  const [resource, action] = command.split(" ");
-  const name =
-    resourceID === undefined || command === "runs search"
-      ? undefined
-      : id.parse(resourceID);
-  const raw = input.request ?? {};
+  const { command } = input;
+  const [] = command.split(" ");
   if (command === "scheduler explain") return service.explainScheduler();
   return fail("unknown_command");
 }

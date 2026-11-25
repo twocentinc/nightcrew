@@ -1,14 +1,12 @@
 import { z } from "zod";
-import {
-  configSchema,
-  id,
-  modelSchema,
-  slotSchema,
-} from "../engine/contracts.js";
 import { Service, fail } from "../engine/service.js";
+import { revision } from "../schemas/common.js";
+import { configMutation } from "../schemas/config.js";
+import { modelSchema, slotSchema } from "../schemas/model.js";
 import { capabilities, capabilitiesSchema } from "../server/diagnostics.js";
 import { createOperations } from "./definition.js";
 import {
+  configurationChangePolicy,
   resourceCommand,
   verifyModels,
   type ManagementInput,
@@ -16,7 +14,6 @@ import {
   type ResourceContext,
 } from "./resources.js";
 
-const revision = z.number().int().positive();
 export const operationInputs = {
   "models create": z.strictObject({
     model: modelSchema,
@@ -35,27 +32,10 @@ export const operationInputs = {
   "models delete": z.strictObject({ expectedRevision: revision }),
 };
 const requestSchemas: Record<string, z.ZodType> = operationInputs;
-
-const adminConfig = configSchema.omit({ rootTokenHash: true });
-const configMutation = z.object({
-  changed: z.boolean(),
-  restartRequired: z.boolean(),
-  config: adminConfig,
-  agentID: z.string().optional(),
-});
-
 export async function handle(
   service: Service,
   input: ManagementInput,
 ): Promise<unknown> {
-  const { command, resourceID, dryRun = false, yes = false } = input;
-  const [resource, action] = command.split(" ");
-  const name =
-    resourceID === undefined || command === "runs search"
-      ? undefined
-      : id.parse(resourceID);
-  const raw = input.request ?? {};
-
   return resourceCommand(service, input, requestSchemas, resourceActions);
 }
 const defineOperation = createOperations(operationInputs, handle);
@@ -100,19 +80,8 @@ export const operations = {
     true,
   ),
 };
-
 const resourceActions: ResourceActions = {
-  async read({
-    service,
-    input,
-    next,
-    registry,
-    resource,
-    action,
-    name,
-    dryRun,
-    value,
-  }: ResourceContext) {
+  async read({ service, next, action, name }: ResourceContext) {
     const items = next.config.models;
     if (action === "list") return { items };
     const item =
@@ -126,13 +95,10 @@ const resourceActions: ResourceActions = {
   },
   async mutate({
     service,
-    input,
     next,
-    registry,
     resource,
     action,
     name,
-    dryRun,
     value,
   }: ResourceContext) {
     if (
@@ -140,17 +106,8 @@ const resourceActions: ResourceActions = {
       next.config.revision !== value.expectedRevision
     )
       fail("revision_conflict", 409);
-    const liveSettingsOnly =
-      resource === "config" &&
-      Object.keys(value.changes as object).every((k) =>
-        [
-          "logging",
-          "interactionCooldownMs",
-          "scheduler",
-          "httpEnabled",
-        ].includes(k),
-      );
-    if (!liveSettingsOnly && service.status().queue.length)
+    const policy = configurationChangePolicy(resource, value.changes);
+    if (policy.requiresIdleQueue && service.status().queue.length)
       fail("runtime_busy", 409);
     if (action === "create") {
       const model = modelSchema.parse(value.model);
@@ -173,10 +130,6 @@ const resourceActions: ResourceActions = {
         });
     }
     next.config.revision++;
-    if (
-      resource !== "config" ||
-      (value.changes as Record<string, unknown>).models !== undefined
-    )
-      await verifyModels(next);
+    await verifyModels(next);
   },
 };

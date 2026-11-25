@@ -7,7 +7,7 @@ import path from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { commandDefinitions, help, exportSchemas } from "../dist/commands/registry.js";
 import { parseCLI } from "../dist/cli.js";
-import { Execution, withoutExecution, checkpoint } from "../dist/engine/execution.js";
+import { Execution, withoutExecution, checkpoint } from "../dist/engine/execution/process.js";
 import { Storage } from "../dist/storage/store.js";
 const cli = new URL("../dist/cli.js", import.meta.url).pathname;
 const call = (args: string[], { keepStdin = false } = {}) =>

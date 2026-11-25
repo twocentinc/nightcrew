@@ -7,8 +7,9 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { startServer } from "../../dist/server/http.js";
-import { tokenHash } from "../../dist/storage/store.js";
-import { modelSchema, storeSchema } from "../../dist/engine/contracts.js";
+import { tokenHash } from "../../dist/storage/config.js";
+import {modelSchema} from "../../dist/schemas/model.js";
+import {storeSchema} from "../../dist/schemas/config.js";
 
 test(
   "real models: thinking, persistent restart, compaction and optional audio",

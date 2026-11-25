@@ -12,7 +12,7 @@ import { handle as statusCommands } from "./status.js";
 import { handle as tools } from "./tools.js";
 import { handle as triggers } from "./triggers.js";
 
-export { fingerprint, type ManagementInput } from "./resources.js";
+export { type ManagementInput } from "./resources.js";
 
 const handlers: Record<
   string,

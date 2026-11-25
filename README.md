@@ -657,16 +657,27 @@ and throughput require separate validation.
 
 ## Source organization
 
-`src/cli.ts` is the executable entry point. `src/commands/` owns command families
-and their shared contracts, `src/engine/` owns agent execution and scheduling,
-`src/storage/` owns persistence and artifacts, and `src/server/` owns HTTP, the
-control socket and daemon hosting. See [the spec](docs/spec.md#source-organization)
-for module boundaries. The service facade delegates to run control, generation,
-instant inference, dispatch, context management and hook components, each with
-explicit dependencies and owned state. The runner coordinates context, request
-building, compaction, inference, response recording, tool execution and completion
-steps. Compaction schemas and evidence helpers live separately in
-`engine/compactionFormat.ts`. npm exports remain `nightcrew` and `nightcrew/operations`.
+`src/cli.ts` is the executable entry point. `commands/` owns CLI families,
+`schemas/` shared contracts, `storage/` durable state and indexes, and `server/`
+HTTP, event streams and daemon hosting.
+
+The engine is grouped into `runs/`, `execution/`, `instant/`, `scheduling/`,
+`models/`, `compaction/`, `capabilities/` and `evals/`. The service composes
+these components; each keeps explicit dependencies and owned state. See
+[the spec](docs/spec.md#source-organization) for module ownership. npm exports
+remain `nightcrew` and `nightcrew/operations`.
+
+Configuration and transcript persistence share one `Storage.exclusive()` queue.
+Within `src/storage/`, `config.ts` owns configuration I/O, `transcript.ts` owns
+run validation and writes, and `files.ts` supplies durable filesystem operations.
+`store.ts` coordinates them and owns the home lock; derived indexes update only
+after the corresponding run write succeeds.
+
+Shared JSON canonicalization and fingerprints live in `src/utils/json.ts`.
+Configuration response schemas live in `src/schemas/config.ts`; command resource
+helpers own configuration-change admission policy. Bearer-token verification is
+shared through `src/storage/config.ts`, while transports retain their error responses.
+Transcript projections build per-call message and attempt indexes.
 
 ## Shared contracts, evidence and storage (0.14)
 

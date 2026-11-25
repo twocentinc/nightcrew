@@ -8,8 +8,8 @@ import { randomUUID } from "node:crypto";
 import { fork, execFileSync } from "node:child_process";
 import { createServer } from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
-import { storeSchema } from "../../dist/engine/contracts.js";
-import { tokenHash } from "../../dist/storage/store.js";
+import {storeSchema} from "../../dist/schemas/config.js";
+import { tokenHash } from "../../dist/storage/config.js";
 const alive = (pid?: any) => {
   try {
     process.kill(pid, 0);

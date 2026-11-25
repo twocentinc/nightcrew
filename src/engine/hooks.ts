@@ -1,11 +1,12 @@
 import { realpath } from "node:fs/promises";
+import { now, terminal } from "../schemas/common.js";
+import { type Run } from "../schemas/run.js";
 import type { RunRecords } from "../storage/records.js";
 import { Storage } from "../storage/store.js";
-import { now, terminal, type Run } from "./contracts.js";
-import type { Dispatch } from "./dispatch.js";
-import { runExecutable, withoutExecution } from "./execution.js";
+import { runExecutable, withoutExecution } from "./execution/process.js";
+import type { Runner } from "./execution/runner.js";
 import { fail } from "./protocol.js";
-import type { Runner } from "./runner.js";
+import type { Dispatch } from "./scheduling/dispatch.js";
 
 interface Dependencies {
   readonly storage: Storage;

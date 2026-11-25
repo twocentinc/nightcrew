@@ -1,3 +1,4 @@
+import {readStream} from "../dist/engine/models/stream.js";
 import { runtimeConfig } from "./fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -7,7 +8,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { startServer } from "../dist/server/http.js";
-import { tokenHash } from "../dist/storage/store.js";
+import { tokenHash } from "../dist/storage/config.js";
 const token = "test-only-token";
 const message = (content = "hello") => ({
   messageID: randomUUID(),
@@ -440,7 +441,7 @@ test("malformed state blocks new admission without hiding healthy history", asyn
 });
 
 test("managed llama router provisions from PATH and parses streamed completions", async (t) => {
-  const { LlamaRuntime } = await import("../dist/engine/runtime.js");
+  const { LlamaRuntime } = await import("../dist/engine/models/runtime.js");
   const { chmod } = await import("node:fs/promises");
   const directory = await mkdtemp(
     path.join(tmpdir(), "nightcrew-process-test-"),
@@ -886,7 +887,7 @@ test("daemon logging changes live without changing unrelated configuration", asy
 });
 
 test("audio adapter sends output settings and the WAV attachment to transcription", async (t) => {
-  const { LlamaRuntime } = await import("../dist/engine/runtime.js");
+  const { LlamaRuntime } = await import("../dist/engine/models/runtime.js");
   const { chmod } = await import("node:fs/promises");
   const home = await mkdtemp(path.join(tmpdir(), "nightcrew-audio-"));
   const binary = path.join(home, "llama-server");
@@ -959,7 +960,7 @@ test("audio adapter sends output settings and the WAV attachment to transcriptio
 });
 
 test("stream parser separates thinking from answers and tool calls across byte chunks", async () => {
-  const { LlamaRuntime } = await import("../dist/engine/runtime.js");
+  const { LlamaRuntime } = await import("../dist/engine/models/runtime.js");
   const runtime = new LlamaRuntime(() =>
     runtimeConfig({ models: [], slots: [] }),
   );
@@ -994,7 +995,7 @@ test("stream parser separates thinking from answers and tool calls across byte c
       }),
     );
   let streamed = "";
-  const result = await runtime["readStream"](
+  const result = await readStream(
     response(),
     new AbortController().signal,
     (text: string) => (streamed += text),
@@ -1006,7 +1007,7 @@ test("stream parser separates thinking from answers and tool calls across byte c
   assert.equal(result.toolCalls[0].name, "inspect");
   assert.equal(
     (
-      await runtime["readStream"](
+      await readStream(
         response(),
         new AbortController().signal,
         undefined,
@@ -1748,7 +1749,7 @@ test("agent sampling settings are validated, snapshotted and forwarded to infere
   });
   assert.deepEqual(sampled, sampling);
   assert.deepEqual(run.agent.sampling, sampling);
-  const { agentSchema } = await import("../dist/engine/contracts.js");
+  const { agentSchema } = await import("../dist/schemas/agent.js");
   assert.equal(agentSchema.safeParse(run.agent).success, true);
   assert.equal(
     agentSchema.safeParse({ ...run.agent, sampling: { presencePenalty: 3 } })
@@ -1869,7 +1870,7 @@ test("fleet overview HTTP uses the same authenticated outcome contract as the CL
 });
 
 test("length finish reasons are recoverable only for managed continuations; broken streams still fail", async () => {
-  const { LlamaRuntime } = await import("../dist/engine/runtime.js");
+  const { LlamaRuntime } = await import("../dist/engine/models/runtime.js");
   const runtime = new LlamaRuntime(() => runtimeConfig({}));
   const response = (done = true, finish = "length") =>
     new Response(
@@ -1892,7 +1893,7 @@ test("length finish reasons are recoverable only for managed continuations; brok
         (done ? "data: [DONE]\n\n" : ""),
     );
   let fragments;
-  const r = await runtime["readStream"](
+  const r = await readStream(
     response(),
     new AbortController().signal,
     undefined,
@@ -1905,11 +1906,11 @@ test("length finish reasons are recoverable only for managed continuations; brok
   assert.deepEqual(r.toolCalls, []);
   assert.equal(fragments!.toolCalls[0].arguments, "{");
   await assert.rejects(
-    runtime["readStream"](response(), new AbortController().signal),
+    readStream(response(), new AbortController().signal),
     /Incomplete generation/,
   );
   await assert.rejects(
-    runtime["readStream"](
+    readStream(
       response(false),
       new AbortController().signal,
       undefined,
@@ -1920,7 +1921,7 @@ test("length finish reasons are recoverable only for managed continuations; brok
     /Incomplete generation/,
   );
   await assert.rejects(
-    runtime["readStream"](
+    readStream(
       response(true, "content_filter"),
       new AbortController().signal,
       undefined,
@@ -1967,12 +1968,12 @@ test("instant completion is published only after its cooldown is durable", async
 });
 
 test("runtime reports loading and unloading until their operations settle", async () => {
-  const { LlamaRuntime } = await import("../dist/engine/runtime.js");
+  const { LlamaRuntime } = await import("../dist/engine/models/runtime.js");
   const runtime = new LlamaRuntime(() =>
     runtimeConfig({ models: [{ modelID: "q", kind: "chat" }], slots: [] }),
   );
   let releaseLoad: any;
-  runtime["start"] = () =>
+  runtime["server"]["start"] = () =>
     new Promise<any>((resolve) => {
       releaseLoad = resolve;
     });
@@ -1982,7 +1983,7 @@ test("runtime reports loading and unloading until their operations settle", asyn
   await preparing;
   assert.equal(runtime.status()[0].state, "ready");
   let releaseStop: any;
-  runtime["stop"] = () =>
+  runtime["server"]["stop"] = () =>
     new Promise<void>((resolve) => {
       releaseStop = () => {
         runtime["loadedModel"] = undefined;

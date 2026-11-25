@@ -1,15 +1,11 @@
+import { agentSchema, type Agent } from "../schemas/agent.js";
+import { now } from "../schemas/common.js";
+import { validateConfig, type Config } from "../schemas/config.js";
 import { Storage } from "../storage/store.js";
-import {
-  agentSchema,
-  now,
-  validateConfig,
-  type Agent,
-  type Config,
-} from "./contracts.js";
-import type { Dispatch } from "./dispatch.js";
+import type { AgentRegistry } from "./capabilities/registry.js";
+import type { Runtime } from "./models/types.js";
 import { fail } from "./protocol.js";
-import type { AgentRegistry } from "./registry.js";
-import type { Runtime } from "./runtimeTypes.js";
+import type { Dispatch } from "./scheduling/dispatch.js";
 
 interface Dependencies {
   readonly storage: Storage;

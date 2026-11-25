@@ -14,8 +14,10 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { randomUUID } from "node:crypto";
-import { evalSuiteSchema, runEval as rawRunEval } from "../dist/engine/evals.js";
-import { Storage, initializeHome } from "../dist/storage/store.js";
+import {evalSuiteSchema} from "../dist/engine/evals/format.js";
+import {runEval as rawRunEval} from "../dist/engine/evals/runner.js";
+import { Storage } from "../dist/storage/store.js";
+import { initializeHome } from "../dist/storage/config.js";
 import { Service } from "../dist/engine/service.js";
 import { callOperation as rawcallOperation } from "../dist/commands/operations.js";
 const callOperation: (

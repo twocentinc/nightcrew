@@ -8,9 +8,10 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { startServer } from "../../dist/server/http.js";
-import { LlamaRuntime, samplePresence } from "../../dist/engine/runtime.js";
-import { storeSchema, validateAttachments } from "../../dist/engine/contracts.js";
-import { tokenHash } from "../../dist/storage/store.js";
+import { LlamaRuntime, samplePresence } from "../../dist/engine/models/runtime.js";
+import {storeSchema} from "../../dist/schemas/config.js";
+import {validateAttachments} from "../../dist/schemas/common.js";
+import { tokenHash } from "../../dist/storage/config.js";
 
 test(
   "unattended real-model acceptance: timer, priority, cooldown, restart, compaction, delivery and KV restore",
@@ -140,8 +141,8 @@ test(
         () => runtimeConfig(app?.service.storage.store.config ?? config),
         home,
       );
-      const original = runtime["slotAction"].bind(runtime);
-      runtime["slotAction"] = async (...args: any[]) => {
+      const original = runtime["cache"]["slotAction"].bind(runtime["cache"]);
+      runtime["cache"]["slotAction"] = async (...args: Parameters<typeof original>) => {
         const out = await original(...args);
         evidence.snapshots.push({
           slotID: args[0],

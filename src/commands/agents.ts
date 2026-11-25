@@ -1,14 +1,10 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
-import {
-  acceptanceSchema,
-  agentDraftSchema,
-  agentSchema,
-  configSchema,
-  id,
-  userMessageSchema,
-} from "../engine/contracts.js";
 import { Service, fail } from "../engine/service.js";
+import { agentDraftSchema, agentSchema } from "../schemas/agent.js";
+import { id, revision, userMessageSchema } from "../schemas/common.js";
+import { configMutation } from "../schemas/config.js";
+import { acceptanceSchema } from "../schemas/run.js";
 import { createOperations } from "./definition.js";
 import {
   resourceCommand,
@@ -17,7 +13,6 @@ import {
   type ResourceContext,
 } from "./resources.js";
 
-const revision = z.number().int().positive();
 export const operationInputs = {
   "agents run": z.strictObject({ message: userMessageSchema }),
   "agents create": z.strictObject({ agent: agentDraftSchema }),
@@ -46,25 +41,13 @@ export const operationInputs = {
   "agents delete": z.strictObject({ expectedRevision: revision }),
 };
 const requestSchemas: Record<string, z.ZodType> = operationInputs;
-
-const adminConfig = configSchema.omit({ rootTokenHash: true });
-const configMutation = z.object({
-  changed: z.boolean(),
-  restartRequired: z.boolean(),
-  config: adminConfig,
-  agentID: z.string().optional(),
-});
-
 export async function handle(
   service: Service,
   input: ManagementInput,
 ): Promise<unknown> {
   const { command, resourceID, dryRun = false, yes = false } = input;
-  const [resource, action] = command.split(" ");
-  const name =
-    resourceID === undefined || command === "runs search"
-      ? undefined
-      : id.parse(resourceID);
+  const [] = command.split(" ");
+  const name = resourceID === undefined ? undefined : id.parse(resourceID);
   const raw = input.request ?? {};
   if (command === "agents cache clear") {
     service.agent(name ?? fail("missing_id"));
@@ -182,19 +165,8 @@ export const operations = {
     "daemon",
   ),
 };
-
 const resourceActions: ResourceActions = {
-  async read({
-    service,
-    input,
-    next,
-    registry,
-    resource,
-    action,
-    name,
-    dryRun,
-    value,
-  }: ResourceContext) {
+  async read({ service, next, action, name }: ResourceContext) {
     const items = next.agents;
     if (action === "list") return { items };
     const item =
@@ -209,17 +181,7 @@ const resourceActions: ResourceActions = {
       cache: cache ? { contextID: cache.contextID, items: cache.items } : null,
     };
   },
-  async mutate({
-    service,
-    input,
-    next,
-    registry,
-    resource,
-    action,
-    name,
-    dryRun,
-    value,
-  }: ResourceContext) {
+  async mutate({ service, next, action, name, value }: ResourceContext) {
     if (action !== "delete") fail("unknown_command");
     const agent = service.agent(name ?? fail("missing_id"));
     if (agent.revision !== value.expectedRevision)
