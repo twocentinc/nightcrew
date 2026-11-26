@@ -36,10 +36,44 @@ export async function validateReport(
       ),
     );
   } catch {
-    return {
-      valid: false,
-      reason: "Read the supervisor overview before completing the report.",
-    };
+    // Tool overrides return data without writing the inspector's snapshot file.
+    // A recorded successful overview carries the same validation evidence.
+    try {
+      const run = JSON.parse(
+        await readFile(
+          path.join(home, "runs", input.runID, "state.json"),
+          "utf8",
+        ),
+      );
+      const overviewCalls = new Set<string>();
+      for (const message of run.messages ?? []) {
+        if (message.role === "assistant")
+          for (const call of message.toolCalls ?? []) {
+            if (call.name !== "nightcrew_inspect") continue;
+            try {
+              if (JSON.parse(call.arguments).action === "overview")
+                overviewCalls.add(call.callID);
+            } catch {}
+          }
+        if (message.role === "tool" && overviewCalls.has(message.toolCallID)) {
+          try {
+            const response = JSON.parse(message.content);
+            if (
+              response.ok === true &&
+              Array.isArray(response.result?.coverage?.priorityIssues)
+            )
+              snapshot = {
+                priorityIssues: response.result.coverage.priorityIssues,
+              };
+          } catch {}
+        }
+      }
+    } catch {}
+    if (!snapshot)
+      return {
+        valid: false,
+        reason: "Read the supervisor overview before completing the report.",
+      };
   }
   if (!Array.isArray(snapshot.priorityIssues))
     return {

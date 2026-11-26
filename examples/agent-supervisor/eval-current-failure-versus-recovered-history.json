@@ -34,24 +34,27 @@
         "action": "overview"
       },
       "output": {
-        "capturedAt": "2026-11-12T00:00:20Z",
-        "previousReport": null,
-        "firstReview": true,
-        "totalRuns": 3,
-        "totalPages": 1,
-        "unreadableRuns": 0,
-        "omittedRuns": 0,
-        "scope": "Synthetic metrics only, not a factual audit.",
-        "nextPage": 0,
-        "coverage": {
-          "priorityIssues": [
-            {
-              "runID": "run-invalid",
-              "execution": "completed",
-              "output": "failed",
-              "delivery": "failed"
-            }
-          ]
+        "ok": true,
+        "result": {
+          "capturedAt": "2026-11-12T00:00:20Z",
+          "previousReport": null,
+          "firstReview": true,
+          "totalRuns": 3,
+          "totalPages": 1,
+          "unreadableRuns": 0,
+          "omittedRuns": 0,
+          "scope": "Synthetic metrics only, not a factual audit.",
+          "nextPage": 0,
+          "coverage": {
+            "priorityIssues": [
+              {
+                "runID": "run-invalid",
+                "execution": "completed",
+                "output": "failed",
+                "delivery": "failed"
+              }
+            ]
+          }
         }
       }
     },
@@ -62,49 +65,52 @@
         "page": 0
       },
       "output": {
-        "page": 0,
-        "items": [
-          {
-            "runID": "run-invalid",
-            "execution": "completed",
-            "output": "failed",
-            "delivery": "failed",
-            "agentID": "worker",
-            "state": "completed",
-            "validationFailures": 1,
-            "hookFailures": 1,
-            "errorCode": null
-          },
-          {
-            "runID": "recovered-child",
-            "parentRunID": "recovered-parent",
-            "state": "failed",
-            "execution": "failed",
-            "output": "unknown",
-            "delivery": "not_required",
-            "currentProblem": false,
-            "recoveryEvidence": "Parent has a committed replacement compaction and completed successfully."
-          },
-          {
-            "runID": "recovered-parent",
-            "state": "completed",
-            "execution": "completed",
-            "output": "valid",
-            "delivery": "not_required",
-            "compactions": 1
-          }
-        ],
-        "nextPage": null,
-        "complete": true,
-        "coverage": {
-          "priorityIssues": [
+        "ok": true,
+        "result": {
+          "page": 0,
+          "items": [
             {
               "runID": "run-invalid",
               "execution": "completed",
               "output": "failed",
-              "delivery": "failed"
+              "delivery": "failed",
+              "agentID": "worker",
+              "state": "completed",
+              "validationFailures": 1,
+              "hookFailures": 1,
+              "errorCode": null
+            },
+            {
+              "runID": "recovered-child",
+              "parentRunID": "recovered-parent",
+              "state": "failed",
+              "execution": "failed",
+              "output": "unknown",
+              "delivery": "not_required",
+              "currentProblem": false,
+              "recoveryEvidence": "Parent has a committed replacement compaction and completed successfully."
+            },
+            {
+              "runID": "recovered-parent",
+              "state": "completed",
+              "execution": "completed",
+              "output": "valid",
+              "delivery": "not_required",
+              "compactions": 1
             }
-          ]
+          ],
+          "nextPage": null,
+          "complete": true,
+          "coverage": {
+            "priorityIssues": [
+              {
+                "runID": "run-invalid",
+                "execution": "completed",
+                "output": "failed",
+                "delivery": "failed"
+              }
+            ]
+          }
         }
       }
     },
@@ -115,30 +121,33 @@
         "runID": "run-invalid"
       },
       "output": {
-        "runID": "run-invalid",
-        "execution": "completed",
-        "output": "failed",
-        "delivery": "failed",
-        "state": "completed",
-        "coverage": {
-          "priorityIssues": [
+        "ok": true,
+        "result": {
+          "runID": "run-invalid",
+          "execution": "completed",
+          "output": "failed",
+          "delivery": "failed",
+          "state": "completed",
+          "coverage": {
+            "priorityIssues": [
+              {
+                "runID": "run-invalid",
+                "execution": "completed",
+                "output": "failed",
+                "delivery": "failed"
+              }
+            ]
+          },
+          "validationFailures": 1,
+          "hookFailures": 1,
+          "failures": [
             {
-              "runID": "run-invalid",
-              "execution": "completed",
-              "output": "failed",
-              "delivery": "failed"
+              "type": "output_validation",
+              "message": "Required report section missing."
             }
-          ]
-        },
-        "validationFailures": 1,
-        "hookFailures": 1,
-        "failures": [
-          {
-            "type": "output_validation",
-            "message": "Required report section missing."
-          }
-        ],
-        "caveat": "Generation completed, but the report failed validation and export."
+          ],
+          "caveat": "Generation completed, but the report failed validation and export."
+        }
       }
     }
   ]

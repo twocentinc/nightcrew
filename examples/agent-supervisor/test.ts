@@ -38,3 +38,81 @@ test("bundled eval definitions validate against the shared contract", async () =
         JSON.parse(await readFile(new URL(file, import.meta.url), "utf8")),
       );
 });
+
+test("supervisor validation can use a recorded overview without tool filesystem side effects", async (t) => {
+  const { mkdtemp, mkdir, writeFile, rm } = await import("node:fs/promises");
+  const { tmpdir } = await import("node:os");
+  const path = await import("node:path");
+  const { validateReport } = await import("./report.ts");
+  const home = await mkdtemp(path.join(tmpdir(), "nc-supervisor-eval-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  const dir = path.join(home, "runs", "review");
+  await mkdir(dir, { recursive: true });
+  const message = {
+    role: "tool",
+    toolCallID: "overview",
+    content: JSON.stringify({
+      ok: true,
+      result: {
+        coverage: {
+          priorityIssues: [
+            {
+              runID: "failure",
+              execution: "completed",
+              output: "failed",
+              delivery: "failed",
+            },
+          ],
+        },
+      },
+    }),
+  };
+  const messages = [
+    {
+      role: "assistant",
+      toolCalls: [
+        {
+          callID: "overview",
+          name: "nightcrew_inspect",
+          arguments: '{"action":"overview"}',
+        },
+      ],
+    },
+    message,
+  ];
+  await writeFile(path.join(dir, "state.json"), JSON.stringify({ messages }));
+  assert.equal(
+    (
+      await validateReport(
+        { runID: "review", text: "Everything is fine" },
+        home,
+      )
+    ).valid,
+    false,
+  );
+  assert.equal(
+    (
+      await validateReport(
+        {
+          runID: "review",
+          text: "### failure\nExecution: completed\nOutput: failed\nDelivery: failed\nAssessment: The accepted output failed its validation checks.\nNext action: Inspect the failed validation.",
+        },
+        home,
+      )
+    ).valid,
+    true,
+  );
+  await writeFile(
+    path.join(dir, "state.json"),
+    JSON.stringify({ messages: [message] }),
+  );
+  assert.equal(
+    (
+      await validateReport(
+        { runID: "review", text: "Everything is fine" },
+        home,
+      )
+    ).valid,
+    false,
+  );
+});

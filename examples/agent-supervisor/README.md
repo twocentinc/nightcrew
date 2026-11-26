@@ -86,6 +86,9 @@ Configure the agent output-validation hook with your Node path and copied
 `report.ts --validate` path. The inspector repeats recent priority incidents
 in every response; reports need one `### RUN_ID` section for each with exact
 Execution, Output and Delivery status lines, an Assessment and a Next action.
+If the snapshot file is absent, validation uses the recorded successful overview
+tool response from the run transcript. This supports eval tool overrides without
+requiring simulated filesystem writes or weakening coverage checks.
 The validator checks coverage, not semantic accuracy. Recent unresolved incidents
 remain visible after checkpoints, while capability refresh alone is not a new
 incident. The exporter rejects incomplete coverage before saving/checkpointing.

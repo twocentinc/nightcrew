@@ -34,15 +34,21 @@
         "action": "overview"
       },
       "output": {
-        "capturedAt": "2026-11-12T00:00:20Z",
-        "previousReport": null,
-        "firstReview": true,
-        "totalRuns": 1,
-        "totalPages": 1,
-        "unreadableRuns": 0,
-        "omittedRuns": 0,
-        "scope": "Synthetic metrics only, not a factual audit.",
-        "nextPage": 0
+        "ok": true,
+        "result": {
+          "capturedAt": "2026-11-12T00:00:20Z",
+          "previousReport": null,
+          "firstReview": true,
+          "totalRuns": 1,
+          "totalPages": 1,
+          "unreadableRuns": 0,
+          "omittedRuns": 0,
+          "scope": "Synthetic metrics only, not a factual audit.",
+          "nextPage": 0,
+          "coverage": {
+            "priorityIssues": []
+          }
+        }
       }
     },
     {
@@ -52,43 +58,46 @@
         "page": 0
       },
       "output": {
-        "page": 0,
-        "items": [
-          {
-            "runID": "run-retry",
-            "revision": 1,
-            "agentID": "worker",
-            "parentRunID": null,
-            "state": "completed",
-            "held": false,
-            "createdAt": "2026-11-12T00:00:00Z",
-            "updatedAt": "2026-11-12T00:00:10Z",
-            "activeMs": 4000,
-            "elapsedThroughLastUpdateMs": 10000,
-            "attempts": 0,
-            "unsuccessfulAttempts": 0,
-            "toolCalls": 2,
-            "toolErrors": 1,
-            "repeatedCalls": [
-              {
-                "tool": "read",
-                "count": 2
-              }
-            ],
-            "repeatedGroupsOmitted": 0,
-            "compactions": 0,
-            "compactionRetries": 1,
-            "hookFailures": 0,
-            "validationFailures": 0,
-            "errorCode": null,
-            "resultCharacters": 2,
-            "modelID": "qwen",
-            "thinking": false,
-            "maxOutputTokens": 512
-          }
-        ],
-        "nextPage": null,
-        "complete": true
+        "ok": true,
+        "result": {
+          "page": 0,
+          "items": [
+            {
+              "runID": "run-retry",
+              "revision": 1,
+              "agentID": "worker",
+              "parentRunID": null,
+              "state": "completed",
+              "held": false,
+              "createdAt": "2026-11-12T00:00:00Z",
+              "updatedAt": "2026-11-12T00:00:10Z",
+              "activeMs": 4000,
+              "elapsedThroughLastUpdateMs": 10000,
+              "attempts": 0,
+              "unsuccessfulAttempts": 0,
+              "toolCalls": 2,
+              "toolErrors": 1,
+              "repeatedCalls": [
+                {
+                  "tool": "read",
+                  "count": 2
+                }
+              ],
+              "repeatedGroupsOmitted": 0,
+              "compactions": 0,
+              "compactionRetries": 1,
+              "hookFailures": 0,
+              "validationFailures": 0,
+              "errorCode": null,
+              "resultCharacters": 2,
+              "modelID": "qwen",
+              "thinking": false,
+              "maxOutputTokens": 512
+            }
+          ],
+          "nextPage": null,
+          "complete": true
+        }
       }
     },
     {
@@ -98,44 +107,47 @@
         "runID": "run-retry"
       },
       "output": {
-        "runID": "run-retry",
-        "revision": 1,
-        "agentID": "worker",
-        "parentRunID": null,
-        "state": "completed",
-        "held": false,
-        "createdAt": "2026-11-12T00:00:00Z",
-        "updatedAt": "2026-11-12T00:00:10Z",
-        "activeMs": 4000,
-        "elapsedThroughLastUpdateMs": 10000,
-        "attempts": 0,
-        "unsuccessfulAttempts": 0,
-        "toolCalls": 2,
-        "toolErrors": 1,
-        "repeatedCalls": [
-          {
-            "tool": "read",
-            "count": 2
-          }
-        ],
-        "repeatedGroupsOmitted": 0,
-        "compactions": 0,
-        "compactionRetries": 1,
-        "hookFailures": 0,
-        "validationFailures": 0,
-        "errorCode": null,
-        "resultCharacters": 2,
-        "modelID": "qwen",
-        "thinking": false,
-        "maxOutputTokens": 512,
-        "snapshotRevision": 1,
-        "error": null,
-        "failures": [
-          {
-            "type": "compactionRetry"
-          }
-        ],
-        "caveat": "Tool arguments intentionally omitted. Repeated calls may be legitimate; investigate before acting."
+        "ok": true,
+        "result": {
+          "runID": "run-retry",
+          "revision": 1,
+          "agentID": "worker",
+          "parentRunID": null,
+          "state": "completed",
+          "held": false,
+          "createdAt": "2026-11-12T00:00:00Z",
+          "updatedAt": "2026-11-12T00:00:10Z",
+          "activeMs": 4000,
+          "elapsedThroughLastUpdateMs": 10000,
+          "attempts": 0,
+          "unsuccessfulAttempts": 0,
+          "toolCalls": 2,
+          "toolErrors": 1,
+          "repeatedCalls": [
+            {
+              "tool": "read",
+              "count": 2
+            }
+          ],
+          "repeatedGroupsOmitted": 0,
+          "compactions": 0,
+          "compactionRetries": 1,
+          "hookFailures": 0,
+          "validationFailures": 0,
+          "errorCode": null,
+          "resultCharacters": 2,
+          "modelID": "qwen",
+          "thinking": false,
+          "maxOutputTokens": 512,
+          "snapshotRevision": 1,
+          "error": null,
+          "failures": [
+            {
+              "type": "compactionRetry"
+            }
+          ],
+          "caveat": "Tool arguments intentionally omitted. Repeated calls may be legitimate; investigate before acting."
+        }
       }
     }
   ]
