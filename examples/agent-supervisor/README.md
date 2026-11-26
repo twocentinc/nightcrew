@@ -65,7 +65,7 @@ review its reports before adding any schedule. Package updates do not overwrite
 installed copies. Tests use synthetic run homes and require no inference.
 
 Current operational evidence is grouped under `current`: execution, active holds,
-latest segment validation, effective delivery retries, and the linked parent's
+latest turn validation, effective delivery retries, and the linked parent's
 state. `historical` keeps failure counts and retained errors for context. A
 successful retry supersedes its failed attempts; a child whose parent finished
 or no longer awaits it is stale cleanup, not a blocked parent. Missing parent or

@@ -1,15 +1,20 @@
 import { executionRecord, workingExecution } from "../schemas/execution.js";
-import { randomUUID } from "node:crypto";
-import { lstat, mkdir, open, rename } from "node:fs/promises";
+import { RunDocuments } from "./runDocument.js";
+import { lstat, mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { z } from "zod";
 import { validateCompactionState } from "../engine/compaction/format.js";
 import { NightcrewError } from "../engine/protocol.js";
 import { runOutcome, type outcomeSchema } from "../engine/supervision.js";
-import { runSchema, encodeRun, decodeRun, type Run } from "../schemas/run.js";
+import {
+  runProjectionSchema,
+  encodeRun,
+  decodeRun,
+  type Run,
+} from "../schemas/run.js";
 import type { OperationalLog } from "../server/logging.js";
 import { fingerprint } from "../utils/json.js";
-import { atomicJSON, boundedRead, readJSON } from "./files.js";
+import { boundedRead } from "./files.js";
 import type { RunIndex } from "./runIndex.js";
 
 export type Summary = Pick<
@@ -19,7 +24,7 @@ export type Summary = Pick<
   | "createdAt"
   | "updatedAt"
   | "state"
-  | "segment"
+  | "turnID"
   | "activeMs"
   | "pauseReason"
   | "held"
@@ -38,7 +43,7 @@ export const summarize = (r: Run): Summary => ({
   createdAt: r.createdAt,
   updatedAt: r.updatedAt,
   state: r.state,
-  segment: r.segment,
+  turnID: r.turnID,
   activeMs: r.activeMs,
   pauseReason: r.pauseReason,
   held: r.held,
@@ -46,11 +51,14 @@ export const summarize = (r: Run): Summary => ({
 });
 /** Run persistence only; it never creates a competing transaction queue. */
 export class TranscriptStore {
+  private documents: RunDocuments;
   constructor(
     private readonly home: string,
     private readonly runIndex: Pick<RunIndex, "checkedMessageIDs" | "index">,
     private readonly logger?: OperationalLog,
-  ) {}
+  ) {
+    this.documents = new RunDocuments(path.join(home, "runs"));
+  }
   async read(runID: string) {
     try {
       return await boundedRead(() => this.readRun(runID));
@@ -74,9 +82,7 @@ export class TranscriptStore {
       (stat.mode & 0o077) !== 0
     )
       throw new Error("Invalid run directory");
-    const r = decodeRun(
-      await readJSON(path.join(dir, "state.json"), runSchema, 64 * 1024 * 1024),
-    );
+    const r = decodeRun(await this.documents.read(runID));
     if (r.runID !== runID) throw new Error("Run identity mismatch");
     if (
       new Set([
@@ -142,32 +148,11 @@ export class TranscriptStore {
     return r;
   }
   async write(r: Run, initial = false) {
-    r.version = 3;
+    r.version = 4;
     const record = encodeRun(r);
     this.runIndex.checkedMessageIDs(r);
-    const root = path.join(this.home, "runs");
-    if (initial) {
-      const staging = path.join(root, "." + randomUUID());
-      await mkdir(staging, { mode: 0o700 });
-      await atomicJSON(
-        path.join(staging, "state.json"),
-        record,
-        56 * 1024 * 1024,
-      );
-      // The daemon lock serializes allocation; no externally supplied directory names.
-      await rename(staging, path.join(root, r.runID));
-      const h = await open(root, "r");
-      try {
-        await h.sync();
-      } finally {
-        await h.close();
-      }
-    } else
-      await atomicJSON(
-        path.join(root, r.runID, "state.json"),
-        record,
-        64 * 1024 * 1024,
-      );
+    await mkdir(path.join(this.home, "runs"), { recursive: true, mode: 0o700 });
+    await this.documents.write(record, initial);
     this.runIndex.index({ ...r, ...workingExecution(record.execution) });
   }
 }

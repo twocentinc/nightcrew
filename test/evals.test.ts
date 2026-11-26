@@ -636,7 +636,7 @@ test("eval model overrides select a different configured model without changing 
   );
 });
 
-test("replies preserve eval overrides and prior grades while regrading the new segment", async (t) => {
+test("replies preserve eval overrides and prior grades while regrading the new turnID", async (t) => {
   const f = await fixture(t, () => finish("ok"), {
     contextMode: "persistent",
     thinking: true,
@@ -653,7 +653,7 @@ test("replies preserve eval overrides and prior grades while regrading the new s
   );
   const second = await until(async () => {
     const r = await f.service.run(first.runID);
-    return r.segment === 1 && r.evaluation!.grade.status === "passed"
+    return r.turnID !== first.turnID && r.evaluation!.grade.status === "passed"
       ? r
       : false;
   });

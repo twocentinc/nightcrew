@@ -91,7 +91,7 @@ nightcrew evals delete record-answer --yes
 - `evals run` submits immediately; it does not wait for the scheduler by default. `--wait` observes ordinary completion and grading without cancelling the run on disconnection. A completed execution with failed grading is returned with that grade; inspect `evaluation.grade.status`.
 - Presence, interaction cooldown, queue holds, and model residency policies apply. Use ordinary `runs` controls for inspection and recovery.
 - Updates use `{ "expectedRevision": 1, "changes": { "overrides": { "thinking": false } } }`. Revision checks are optional. Specified fields replace those fields; omitted fields remain unchanged. Use `grader: null`, `tools: []`, or `messages: []` to clear them.
-- Replies/retries reuse the eval snapshot and grade each new segment; wait for grading to settle before reopening a terminal run. Historical verdicts remain in events.
+- Replies/retries reuse the eval snapshot and grade each new turn; wait for grading to settle before reopening a terminal run. Historical verdicts remain in events.
 - Delete removes only the definition; previous runs retain their snapshots.
 
 ```sh

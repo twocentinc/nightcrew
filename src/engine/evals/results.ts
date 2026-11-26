@@ -49,7 +49,7 @@ export async function gradeRun(run: Run): Promise<z.infer<typeof gradeSchema>> {
     });
   const latestValidation = [...run.validations]
     .reverse()
-    .find((v) => v.segment === run.segment);
+    .find((v) => v.turnID === run.turnID);
   if (latestValidation && latestValidation.status !== "passed")
     return finish({
       status: "failed",
@@ -61,7 +61,7 @@ export async function gradeRun(run: Run): Promise<z.infer<typeof gradeSchema>> {
   if (run.agent.finishSchema) {
     const completed = [...run.events]
       .reverse()
-      .find((e) => e.type === "completed" && e.segment === run.segment);
+      .find((e) => e.type === "completed" && e.turnID === run.turnID);
     const messageID =
       completed && "messageID" in completed.data
         ? completed.data.messageID

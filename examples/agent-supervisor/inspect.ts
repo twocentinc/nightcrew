@@ -14,6 +14,24 @@ import path from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+async function readRun(home: string, id: string) {
+  const state = await json(path.join(home, "runs", id, "state.json"));
+  const detail = (await call(home, ["runs", "get", id])).run;
+  if (state.revision !== detail.revision)
+    throw Error(
+      "Run changed during inspection; retry with a new review snapshot",
+    );
+  return {
+    ...detail,
+    messages: state.messages.filter((m: any) => m.role),
+    events: state.events
+      .filter((e: any) => e.type === "lifecycleRecorded")
+      .map((e: any) => e.data.event),
+    attempts: state.events
+      .filter((e: any) => e.type === "generationCheckpointed")
+      .map((e: any) => e.data.value),
+  };
+}
 const ID = /^[a-zA-Z0-9_-]{1,128}$/;
 const homeDefault = () =>
   process.env.NIGHTCREW_HOME ?? path.join(homedir(), ".nightcrew");
@@ -102,7 +120,7 @@ async function saveSnapshot(file: string, snapshot?: any) {
   });
   await rename(temporary, file);
 }
-async function project(r: any, home: string, summary?: any) {
+async function project(r: any, home: string, summary: any, read = readRun) {
   if (!summary || summary.revision !== r.revision)
     throw Error(
       "Run changed during inspection; retry with a new review snapshot",
@@ -110,7 +128,7 @@ async function project(r: any, home: string, summary?: any) {
   let parent;
   if (r.parentRunID && ID.test(r.parentRunID)) {
     try {
-      parent = await json(path.join(home, "runs", r.parentRunID, "state.json"));
+      parent = await read(home, r.parentRunID);
     } catch {
       /* Explicitly unverified; never infer a missing parent's state. */
     }
@@ -180,7 +198,7 @@ export function metrics(r?: any, parent?: any, outcome?: any) {
       "Canonical Nightcrew run outcome; external delivery is not independently verified.",
   };
   const validation = (r.validations ?? [])
-    .filter((v?: any) => v.segment === (r.segment ?? 0))
+    .filter((v?: any) => v.turnID === r.turnID)
     .at(-1);
   return {
     outcome,
@@ -265,6 +283,7 @@ export async function inspect(
     runID = process.env.NIGHTCREW_RUN_ID,
     now = Date.now(),
     readOutcomes = outcomes,
+    read = readRun,
     readOutcome = async (home: string, id: string) =>
       (await call(home, ["runs", "get", id])).run,
   } = {},
@@ -313,45 +332,55 @@ export async function inspect(
     const priorities = [];
     const items = [];
     let unreadableRuns = 0;
-    for (const entry of await readdir(path.join(home, "runs"), {
-      withFileTypes: true,
-    })) {
-      if (!entry.isDirectory() || !ID.test(entry.name) || entry.name === runID)
-        continue;
-      try {
-        const r = await json(path.join(home, "runs", entry.name, "state.json"));
-        if (r.agent.agentID === "agent-supervisor") continue;
-        const priority = recentProblem(
-          r,
-          summaries.get(r.runID)?.outcome,
-          prioritySince,
-        );
-        if (!priority && previous.revisions?.[r.runID] === r.revision) continue;
-        if (
-          !priority &&
-          Date.parse(r.updatedAt) < Date.parse(baselineAt) &&
-          !(
-            r.execution.state === "paused" && r.execution.resume === "manual"
-          ) &&
-          !["failed", "timedOut"].includes(r.execution.state)
-        )
-          continue;
-        const item = await project(r, home, summaries.get(r.runID));
-        if (priority)
-          priorities.push({
-            runID: r.runID,
-            agentID: r.agent.agentID,
-            execution: item.outcome.execution,
-            output: item.outcome.output,
-            delivery: item.outcome.delivery,
-            reasons: item.outcome.reasons
-              .slice(0, 3)
-              .map((x?: any) => x.slice(0, 300)),
-            parent: item.current.parent,
-          });
-        items.push(item);
-      } catch {
-        unreadableRuns++;
+    const entries = (
+      await readdir(path.join(home, "runs"), { withFileTypes: true })
+    ).filter(
+      (entry) =>
+        entry.isDirectory() && ID.test(entry.name) && entry.name !== runID,
+    );
+    for (let offset = 0; offset < entries.length; offset += 8) {
+      const batch = await Promise.all(
+        entries
+          .slice(offset, offset + 8)
+          .map((entry) => read(home, entry.name).catch(() => null)),
+      );
+      for (const r of batch) {
+        try {
+          if (!r) throw Error("Unreadable run");
+          if (r.agent.agentID === "agent-supervisor") continue;
+          const priority = recentProblem(
+            r,
+            summaries.get(r.runID)?.outcome,
+            prioritySince,
+          );
+          if (!priority && previous.revisions?.[r.runID] === r.revision)
+            continue;
+          if (
+            !priority &&
+            Date.parse(r.updatedAt) < Date.parse(baselineAt) &&
+            !(
+              r.execution.state === "paused" && r.execution.resume === "manual"
+            ) &&
+            !["failed", "timedOut"].includes(r.execution.state)
+          )
+            continue;
+          const item = await project(r, home, summaries.get(r.runID), read);
+          if (priority)
+            priorities.push({
+              runID: r.runID,
+              agentID: r.agent.agentID,
+              execution: item.outcome.execution,
+              output: item.outcome.output,
+              delivery: item.outcome.delivery,
+              reasons: item.outcome.reasons
+                .slice(0, 3)
+                .map((x?: any) => x.slice(0, 300)),
+              parent: item.current.parent,
+            });
+          items.push(item);
+        } catch {
+          unreadableRuns++;
+        }
       }
     }
     items.sort(
@@ -422,8 +451,13 @@ export async function inspect(
   }
   if (!snapshot.items.some((r?: any) => r.runID === input.runID))
     throw Error("Run is outside this review snapshot");
-  const r = await json(path.join(home, "runs", input.runID, "state.json"));
-  const projected = await project(r, home, await readOutcome(home, r.runID));
+  const r = await read(home, input.runID);
+  const projected = await project(
+    r,
+    home,
+    await readOutcome(home, r.runID),
+    read,
+  );
   snapshot.detailsExamined ??= {};
   snapshot.detailsExamined[r.runID] = r.revision;
   await saveSnapshot(file, snapshot);

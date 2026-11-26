@@ -19,7 +19,7 @@ import { Service } from "../dist/engine/service.js";
 import { manage as rawmanage } from "../dist/utils/commands/management.js";
 const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
   rawmanage;
-import { runSchema, decodeRun } from "../dist/schemas/run.js";
+import { runProjectionSchema, decodeRun } from "../dist/schemas/run.js";
 import { startupLogs } from "../dist/server/startup.js";
 
 async function fixture(t: import("node:test").TestContext) {
@@ -57,9 +57,10 @@ async function fixture(t: import("node:test").TestContext) {
   const makeRun = async (runID: string, state = "completed") => {
     const at = "2026-01-01T00:00:00.000Z";
     const messageID = randomUUID();
+    const outputID = randomUUID();
     const run = decodeRun(
-      runSchema.parse({
-        version: 3,
+      runProjectionSchema.parse({
+        version: 4,
         runID,
         revision: 1,
         createdAt: at,
@@ -81,7 +82,7 @@ async function fixture(t: import("node:test").TestContext) {
         },
         skills: [],
         toolSnapshots: [],
-        segment: 0,
+        turnID: messageID,
         execution: { state },
         activeMs: 0,
         messages: [
@@ -99,6 +100,18 @@ async function fixture(t: import("node:test").TestContext) {
             toolCalls: [],
             toolCallID: null,
           },
+          ...(state === "completed"
+            ? [
+                {
+                  messageID: outputID,
+                  role: "assistant",
+                  content: "result needle",
+                  attachments: [],
+                  toolCalls: [],
+                  toolCallID: null,
+                },
+              ]
+            : []),
         ],
         events: [
           {
@@ -106,7 +119,7 @@ async function fixture(t: import("node:test").TestContext) {
             sequence: 1,
             at,
             type: "message" as const,
-            segment: 0,
+            turnID: messageID,
             data: { messageID },
           },
           {
@@ -114,8 +127,8 @@ async function fixture(t: import("node:test").TestContext) {
             sequence: 2,
             at,
             type: state === "completed" ? "completed" : "queued",
-            segment: 0,
-            data: {},
+            turnID: messageID,
+            data: state === "completed" ? { messageID: outputID } : {},
           },
         ],
         result: state === "completed" ? "result needle" : null,
@@ -228,7 +241,8 @@ test("exports preserve committed source, refuse overwrite, verify checksums and 
   assert.equal(broken.valid, false);
   assert.match(broken.errors[0], /Checksum mismatch/);
   const invalid = JSON.parse(before.toString());
-  invalid.events[0].data.messageID = randomUUID();
+  invalid.events.find((e: any) => e.type === "messageRecorded").data.messageID =
+    randomUUID();
   await writeFile(source, JSON.stringify(invalid));
   assert.equal(
     (await manage(service, { command: "runs verify", resourceID: "active" }))
@@ -397,7 +411,10 @@ test("updating one run leaves other message ownership indexed and rejects collis
     (await storage.read(a.runID)).messages[0].messageID,
     a.messages[0].messageID,
   );
-  assert.equal(storage.messages.get(a.messages[1].messageID)!.runID, a.runID);
+  assert.equal(
+    storage.messages.get(a.messages.at(-1)!.messageID)!.runID,
+    a.runID,
+  );
 });
 test("pagination shares one frozen snapshot across replayed cursors", async (t) => {
   const { service } = await fixture(t);
@@ -501,7 +518,7 @@ test("transcript projection resolves pending inputs and attempts without changin
   run.pendingInputs.push({ message: pending, cancelled: false, source: null });
   const attempt = {
     attemptID: randomUUID(),
-    segment: 0,
+    turnID: run.turnID,
     startedAt: run.createdAt,
     updatedAt: run.updatedAt,
     status: "interrupted" as const,
@@ -524,7 +541,7 @@ test("transcript projection resolves pending inputs and attempts without changin
     eventID: randomUUID(),
     sequence: index + 1,
     at: run.createdAt,
-    segment: 0,
+    turnID: run.turnID,
     ...event,
   })) as typeof run.events;
   const before = structuredClone(run);

@@ -1,7 +1,7 @@
 # Public contract and compatibility
 
-The current frozen public contract is protocol 1, schema 45, introduced in
-0.44.0 through owner-approved removal of automatic output repair. The freeze began at schema 34;
+The current frozen public contract is protocol 1, schema 46, introduced in
+0.45.0 through the owner-approved run document simplification. The freeze began at schema 34;
 owner-approved changes since then are recorded below. This is the baseline for
 the upcoming 1.0 release, not a claim that acceptance work is complete.
 
@@ -173,3 +173,18 @@ Generated `/v1/operations/...` routes are the complete remote management surface
 - Invalid `finish` arguments, mixed finish/tool batches, text in place of a required finish call, and rejected/errored final-output validation fail execution immediately. No model correction request is made.
 - Removes `outputValidation.repairAttempts` from agent configuration and snapshots. Before upgrading an existing home, back up its configuration and run files, then remove this property from configured agents, each run's agent snapshot, and pending-input agent snapshots. Preserve all transcripts, validation records, and historical outcomes. New requests containing the retired field are rejected; there is no compatibility alias.
 - Eval grading remains a hidden post-run check and cannot repair output. Explicit manual retry/reply remains available. Ordinary tool-error handling and incomplete-generation continuation are unchanged.
+
+## Single-file run documents (0.45.0 / schema 46)
+
+- Stored format 4 keeps metadata, messages and events together in state.json.
+  No multi-file journal or transactional replay is required; latest unsaved
+  progress may be lost on a crash.
+- Numeric segment is removed from run, event, attempt and hook contracts.
+  `turnID` is the originating user message UUID. Update hook consumers accordingly.
+- CLI projections retain derived result and inspection fields. State files no
+  longer duplicate those fields; direct file readers must use the document
+  projection rather than assume the previous top-level arrays.
+- Migrate offline using `dist/storage/migrate.js`; original directories are
+  backed up before replacement. No compatibility reader or old field aliases.
+- Unresolved started tool calls pause rather than replay. This is conservative
+  recovery for external side effects, not a promise to recover unsaved output.

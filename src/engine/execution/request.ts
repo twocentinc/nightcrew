@@ -27,7 +27,7 @@ export class RequestBuilder {
     const turnMessages = r.messages.slice(
       r.messages.map((m) => m.role).lastIndexOf("user") + 1,
     );
-    const recovery = r.recovery?.segment === r.segment ? r.recovery : null;
+    const recovery = r.recovery?.turnID === r.turnID ? r.recovery : null;
     const afterRecovery = recovery
       ? turnMessages.slice(
           turnMessages.findIndex(
@@ -47,7 +47,7 @@ export class RequestBuilder {
     if (problem) {
       if (!recovery) {
         r.recovery = {
-          segment: r.segment,
+          turnID: r.turnID,
           afterMessageID: turnMessages.at(-1)!.messageID,
           reason: problem,
           finalizing: false,
@@ -77,10 +77,10 @@ export class RequestBuilder {
       ) >= r.agent.maxToolCalls;
     if (
       budgetExhausted &&
-      (r.recovery?.segment !== r.segment || !r.recovery.finalizing)
+      (r.recovery?.turnID !== r.turnID || !r.recovery.finalizing)
     ) {
       r.recovery = {
-        segment: r.segment,
+        turnID: r.turnID,
         afterMessageID: turnMessages.at(-1)!.messageID,
         reason:
           "Tool-call budget exhausted before the agent returned a final answer",
@@ -100,7 +100,7 @@ export class RequestBuilder {
     const finalizing =
       budgetExhausted ||
       emptyAnswer ||
-      (r.recovery?.segment === r.segment && r.recovery.finalizing);
+      (r.recovery?.turnID === r.turnID && r.recovery.finalizing);
     const thinking =
       finalizing || continuation.length > 0
         ? false
@@ -147,7 +147,7 @@ export class RequestBuilder {
         });
     }
     if (
-      r.recovery?.segment === r.segment &&
+      r.recovery?.turnID === r.turnID &&
       !r.recovery.finalizing &&
       !finalizing
     )

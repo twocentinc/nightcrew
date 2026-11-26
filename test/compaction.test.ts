@@ -1,4 +1,4 @@
-import {contextMessages} from "../dist/engine/execution/context.js";
+import { contextMessages } from "../dist/engine/execution/context.js";
 import { runtimeConfig } from "./fixtures.ts";
 import { settings, agentDraft, compactionFixture } from "./fixtures.ts";
 import test from "node:test";
@@ -14,8 +14,8 @@ import { Service } from "../dist/engine/service.js";
 import { manage as rawmanage } from "../dist/utils/commands/management.js";
 const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
   rawmanage;
-import {executeCompactionScript} from "../dist/engine/compaction/format.js";
-import {validateSummaryEvidence} from "../dist/engine/compaction/evidence.js";
+import { executeCompactionScript } from "../dist/engine/compaction/format.js";
+import { validateSummaryEvidence } from "../dist/engine/compaction/evidence.js";
 const message = (content: string) => ({
   messageID: randomUUID(),
   content,
@@ -391,7 +391,8 @@ test("compaction accepts harmless metadata but rejects unusable summaries", asyn
 });
 
 test("compaction normalizes JSON strings and fenced JSON without accepting arbitrary prose", async () => {
-  const { parseCompactionSummary } = await import("../dist/engine/compaction/format.js");
+  const { parseCompactionSummary } =
+    await import("../dist/engine/compaction/format.js");
   assert.equal(parseCompactionSummary('"summary text"'), "summary text");
   assert.equal(
     parseCompactionSummary(
@@ -411,7 +412,8 @@ test("compaction normalizes JSON strings and fenced JSON without accepting arbit
 });
 
 test("compaction projects evidence without thinking or base64 and preserves originals", async () => {
-  const { compactionRequest } = await import("../dist/engine/compaction/format.js");
+  const { compactionRequest } =
+    await import("../dist/engine/compaction/format.js");
   const run: any = {
     runID: "parent",
     compactions: [],
@@ -976,7 +978,8 @@ test("source evidence is bounded, omissions explicit, and unknown references can
 });
 
 test("compaction request and resumed context use the same original source references", async (t) => {
-  const { compactionRequest } = await import("../dist/engine/compaction/format.js");
+  const { compactionRequest } =
+    await import("../dist/engine/compaction/format.js");
   const f = await fixture(t, null);
   const run = structuredClone(f.original);
   run.messages[1].content = JSON.stringify({
@@ -1072,10 +1075,11 @@ test("an output continuation survives compaction without losing or summarizing i
       usage: { inputTokens: 100, outputTokens: 5 },
     };
   };
-  await f.service.submit(f.runID, message("another task"), true);
+  const nextTurn = message("another task");
+  await f.service.submit(f.runID, nextTurn, true);
   const r = await until(async () => {
     const r = await f.service.run(f.runID);
-    return r.state === "completed" && r.segment === 1 && r;
+    return r.state === "completed" && r.turnID === nextTurn.messageID && r;
   });
   assert.equal(r.result, '{"answer":42}');
   assert.equal(r.compactions.length, 1);
@@ -1191,7 +1195,8 @@ test("oversized annotated requests compact complete prefixes without losing tran
 
 test("interactive same-model compaction runs while the owner is present", async (t) => {
   const f = await fixture(t, { type: "agent" as const, agentID: "summarizer" });
-  const { executionSlots } = await import("../dist/engine/scheduling/policy.js");
+  const { executionSlots } =
+    await import("../dist/engine/scheduling/policy.js");
   const next = structuredClone(f.service.storage.store);
   next.config.slots = executionSlots(runtimeConfig(next.config));
   await f.service.storage.exclusive(() => f.service.storage.saveConfig(next));
@@ -1239,7 +1244,7 @@ test("run detail retains measured latest-inference tokens across replies and res
   });
   const after = f.service.detail(await f.service.run(f.runID)).contextUsage;
   assert.equal(measuredCompactedPrompt, true);
-  assert.equal(after!.segment, 1);
+  assert.equal(after!.turnID, (await f.service.run(f.runID)).turnID);
   assert.equal(after!.inputTokens, 10);
   assert.equal(after!.outputTokens, 10); // Latest inference, not the sum of both turns.
   await f.restart();
@@ -1411,7 +1416,8 @@ test("structured summaries reject wrong sections, extra fields and embedded sour
 });
 
 test("unknown structured provenance exhausts bounded retries without replacing context", async (t) => {
-  const { structuredSummaryJSONSchema } = await import("../dist/engine/compaction/format.js");
+  const { structuredSummaryJSONSchema } =
+    await import("../dist/engine/compaction/format.js");
   const f = await fixture(t, { type: "agent" as const, agentID: "summarizer" });
   await f.service.patchAgent(
     "summarizer",

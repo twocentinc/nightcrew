@@ -314,7 +314,7 @@ test("explicit persistent follow-up can succeed while retaining the prior failur
   const first = await f.submit();
   const second = await f.submit();
   assert.equal(first.runID, second.runID);
-  assert.equal(second.segment, 1);
+  assert.notEqual(second.turnID, first.turnID);
   assert.equal(first.state, "failed");
   assert.equal(second.state, "completed");
   assert.equal(second.validations.length, 2);
@@ -377,7 +377,7 @@ test("unchanged successful calls stop after the single recovery opportunity", as
   assert.equal(r.messages.filter((m?: any) => m.role === "tool").length, 4);
 });
 
-test("failed runs retry in place with a new segment and preserved failure evidence", async (t) => {
+test("failed runs retry in place with a new turnID and preserved failure evidence", async (t) => {
   const f = await fixture(t, async (_?: any, n?: any) => {
     if (n === 1) throw Error("fixture generation failure");
     return { text: "recovered" };
@@ -406,7 +406,7 @@ test("failed runs retry in place with a new segment and preserved failure eviden
     const r = await f.service.run(failed.runID);
     return r.state === "completed" && r;
   });
-  assert.equal(done.segment, failed.segment + 1);
+  assert.notEqual(done.turnID, failed.turnID);
   assert.equal(done.result, "recovered");
   assert.deepEqual(
     done.attempts.slice(0, failed.attempts.length),

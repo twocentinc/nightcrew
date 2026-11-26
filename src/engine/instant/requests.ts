@@ -101,7 +101,10 @@ export class Instant {
         sequence: c.events.length + 1,
         at: now(),
         type,
-        segment: 0,
+        turnID: (
+          c.input.messages.filter((m) => m.role === "user").at(-1) ??
+          c.input.messages.at(-1)!
+        ).messageID,
         data,
       }),
     );

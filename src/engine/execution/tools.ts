@@ -27,7 +27,7 @@ export class ToolExecution {
       r.agent.finishSchema &&
       (name === "finish" ||
         r.agent.mode === "single-turn" ||
-        (r.recovery?.segment === r.segment && r.recovery.finalizing))
+        (r.recovery?.turnID === r.turnID && r.recovery.finalizing))
     )
       return {
         ok: false,
@@ -151,6 +151,32 @@ export class ToolExecution {
         if (this.ports.context.atStorageLimit(r)) break;
         if (r.messages.some((m) => m.toolCallID === call.callID)) continue;
         if (controller.signal.aborted) break;
+        if (
+          r.events.some(
+            (e) => e.type === "toolStarted" && e.data.callID === call.callID,
+          )
+        ) {
+          r.state = "paused";
+          r.held = true;
+          r.pauseReason = "runtime_error";
+          r.error = {
+            code: "tool_outcome_unknown",
+            message:
+              "Tool execution started but no result was committed. Inspect the destination before submitting more work; this call will not be replayed.",
+          };
+          this.ports.records.event(r, "paused", {
+            reason: "runtime_error",
+            code: r.error.code,
+            message: r.error.message,
+          });
+          await this.ports.storage.exclusive(() => this.ports.records.save(r));
+          break;
+        }
+        this.ports.records.event(r, "toolStarted", {
+          callID: call.callID,
+          name: call.name,
+        });
+        await this.ports.storage.exclusive(() => this.ports.records.save(r));
         const callIndex = currentMessages
           .flatMap((m) =>
             m.toolCalls.filter(

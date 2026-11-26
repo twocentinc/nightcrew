@@ -15,6 +15,7 @@ const generation = z.strictObject({
 });
 export const eventPayloads = {
   evalGraded: gradeSchema,
+  toolStarted: z.strictObject({ callID: id, name: z.string() }),
   queued: z.strictObject({ parentRunID: id.optional() }),
   started: empty,
   paused: z.strictObject({
@@ -74,7 +75,7 @@ export const eventPayloads = {
   }),
   loopRecovery: z.strictObject({ reason, finalizing: z.boolean() }),
   retried: z.strictObject({
-    previousSegment: count,
+    previousTurnID: uuid,
     messageID: uuid,
     note: reason,
   }),
@@ -90,7 +91,7 @@ const envelope = {
   eventID: uuid,
   sequence: z.number().int().positive().max(2147483647),
   at: timestamp,
-  segment: count,
+  turnID: uuid,
 };
 export const eventSchema = z.discriminatedUnion(
   "type",

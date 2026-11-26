@@ -53,7 +53,7 @@ export class Hooks {
     await this.ports.storage.exclusive(async () => {
       const current = await this.ports.records.run(runID);
       if (
-        current.segment !== run.segment ||
+        current.turnID !== run.turnID ||
         current.evaluation?.grade.status !== "running"
       )
         return;
@@ -104,8 +104,8 @@ export class Hooks {
       if (receipt.status === "unknown" && !input.acceptUnknown)
         fail("hook_outcome_unknown", 409);
       const event = run.events.find((e) => e.eventID === receipt.eventID);
-      if (!event || event.segment !== run.segment)
-        fail("hook_segment_changed", 409);
+      if (!event || event.turnID !== run.turnID)
+        fail("hook_turnID_changed", 409);
       const hook = this.ports.storage.store.config.hooks.find(
         (h) =>
           h.hookID === receipt.hookID &&
@@ -192,8 +192,8 @@ export class Hooks {
           return null;
         const blocked =
           hook.purpose === "delivery" &&
-          r.validations.some((v) => v.segment === event.segment) &&
-          r.validations.filter((v) => v.segment === event.segment).at(-1)
+          r.validations.some((v) => v.turnID === event.turnID) &&
+          r.validations.filter((v) => v.turnID === event.turnID).at(-1)
             ?.status !== "passed";
         const receiptID = retryID ?? randomUUID();
         const updated = {
@@ -235,7 +235,7 @@ export class Hooks {
               event: eventName,
               runID: r.runID,
               agentID: r.agent.agentID,
-              segment: event.segment,
+              turnID: event.turnID,
               state: eventType === "storageLimit" ? "paused" : eventType,
               eventID: event.eventID,
               eventSequence: event.sequence,
@@ -273,13 +273,13 @@ export class Hooks {
         receipt.status = hookResult.ok ? "succeeded" : "failed";
         receipt.diagnostic = hookResult.diagnostic;
         receipt.finishedAt = now();
-        // Delivery may settle after a follow-up begins; retain its originating segment.
+        // Delivery may settle after a follow-up begins; retain its originating turnID.
         current.events.push({
           eventID: randomUUID(),
           sequence: current.events.length + 1,
           at: now(),
           type: "hookResult",
-          segment: event.segment,
+          turnID: event.turnID,
           data: {
             receiptID: receipt.receiptID,
             sourceEventID: event.eventID,

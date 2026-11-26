@@ -209,7 +209,9 @@ test("shutdown after a rejected finish preserves the terminal failure", async (t
   const f = await fixture(t, async () => finish("{"));
   const tools = f.service["toolStep"];
   const resumeTools = tools.resumeTools.bind(tools);
-  tools.resumeTools = async (...args: Parameters<ToolExecution["resumeTools"]>) => {
+  tools.resumeTools = async (
+    ...args: Parameters<ToolExecution["resumeTools"]>
+  ) => {
     await resumeTools(...args);
     if (args[0].state === "failed") args[4].abort("restart");
   };
@@ -344,7 +346,7 @@ test("ordinary JSON output validation rejects duplicate keys even when last valu
   const verdict = await validateOutput(
     {
       agent: { outputValidation: validation },
-      segment: 0,
+      turnID: "00000000-0000-4000-8000-000000000000",
     } as unknown as Parameters<typeof validateOutput>[0],
     {
       role: "assistant",

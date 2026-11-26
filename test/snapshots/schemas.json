@@ -3137,20 +3137,20 @@
                       },
                       "type": "array"
                     },
-                    "segment": {
-                      "maximum": 9007199254740991,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
                     "sourceAgentRevision": {
                       "exclusiveMinimum": 0,
                       "maximum": 9007199254740991,
                       "type": "integer"
+                    },
+                    "turnID": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
                     }
                   },
                   "required": [
                     "at",
-                    "segment",
+                    "turnID",
                     "sourceAgentRevision",
                     "previousToolIDs",
                     "previousSkillIDs",
@@ -3618,10 +3618,10 @@
                         "minimum": 0,
                         "type": "integer"
                       },
-                      "segment": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
+                      "turnID": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
                       }
                     },
                     "required": [
@@ -3629,7 +3629,7 @@
                       "outputTokens",
                       "capacityTokens",
                       "measuredAt",
-                      "segment"
+                      "turnID"
                     ],
                     "type": "object"
                   },
@@ -5399,14 +5399,14 @@
                         "maxLength": 2000,
                         "type": "string"
                       },
-                      "segment": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
+                      "turnID": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
                       }
                     },
                     "required": [
-                      "segment",
+                      "turnID",
                       "afterMessageID",
                       "reason",
                       "finalizing"
@@ -5442,11 +5442,6 @@
               "runID": {
                 "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
                 "type": "string"
-              },
-              "segment": {
-                "maximum": 2147483647,
-                "minimum": 0,
-                "type": "integer"
               },
               "skills": {
                 "items": {
@@ -5751,6 +5746,11 @@
                   }
                 ]
               },
+              "turnID": {
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "type": "string"
+              },
               "updatedAt": {
                 "format": "date-time",
                 "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -5775,11 +5775,6 @@
                       "maxLength": 2000,
                       "type": "string"
                     },
-                    "segment": {
-                      "maximum": 9007199254740991,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
                     "status": {
                       "enum": [
                         "passed",
@@ -5787,10 +5782,15 @@
                         "error"
                       ],
                       "type": "string"
+                    },
+                    "turnID": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
                     }
                   },
                   "required": [
-                    "segment",
+                    "turnID",
                     "messageID",
                     "status",
                     "reason",
@@ -5808,7 +5808,7 @@
               "createdAt",
               "updatedAt",
               "execution",
-              "segment",
+              "turnID",
               "activeMs",
               "agentID",
               "remainingMs",
@@ -11008,20 +11008,20 @@
                       },
                       "type": "array"
                     },
-                    "segment": {
-                      "maximum": 9007199254740991,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
                     "sourceAgentRevision": {
                       "exclusiveMinimum": 0,
                       "maximum": 9007199254740991,
                       "type": "integer"
+                    },
+                    "turnID": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
                     }
                   },
                   "required": [
                     "at",
-                    "segment",
+                    "turnID",
                     "sourceAgentRevision",
                     "previousToolIDs",
                     "previousSkillIDs",
@@ -11489,10 +11489,10 @@
                         "minimum": 0,
                         "type": "integer"
                       },
-                      "segment": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
+                      "turnID": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
                       }
                     },
                     "required": [
@@ -11500,7 +11500,7 @@
                       "outputTokens",
                       "capacityTokens",
                       "measuredAt",
-                      "segment"
+                      "turnID"
                     ],
                     "type": "object"
                   },
@@ -13270,14 +13270,14 @@
                         "maxLength": 2000,
                         "type": "string"
                       },
-                      "segment": {
-                        "maximum": 9007199254740991,
-                        "minimum": 0,
-                        "type": "integer"
+                      "turnID": {
+                        "format": "uuid",
+                        "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                        "type": "string"
                       }
                     },
                     "required": [
-                      "segment",
+                      "turnID",
                       "afterMessageID",
                       "reason",
                       "finalizing"
@@ -13313,11 +13313,6 @@
               "runID": {
                 "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
                 "type": "string"
-              },
-              "segment": {
-                "maximum": 2147483647,
-                "minimum": 0,
-                "type": "integer"
               },
               "skills": {
                 "items": {
@@ -13622,6 +13617,11 @@
                   }
                 ]
               },
+              "turnID": {
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                "type": "string"
+              },
               "updatedAt": {
                 "format": "date-time",
                 "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -13646,11 +13646,6 @@
                       "maxLength": 2000,
                       "type": "string"
                     },
-                    "segment": {
-                      "maximum": 9007199254740991,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
                     "status": {
                       "enum": [
                         "passed",
@@ -13658,10 +13653,15 @@
                         "error"
                       ],
                       "type": "string"
+                    },
+                    "turnID": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
                     }
                   },
                   "required": [
-                    "segment",
+                    "turnID",
                     "messageID",
                     "status",
                     "reason",
@@ -13679,7 +13679,7 @@
               "createdAt",
               "updatedAt",
               "execution",
-              "segment",
+              "turnID",
               "activeMs",
               "agentID",
               "remainingMs",
@@ -22610,20 +22610,20 @@
                   },
                   "type": "array"
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sourceAgentRevision": {
                   "exclusiveMinimum": 0,
                   "maximum": 9007199254740991,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 }
               },
               "required": [
                 "at",
-                "segment",
+                "turnID",
                 "sourceAgentRevision",
                 "previousToolIDs",
                 "previousSkillIDs",
@@ -23091,10 +23091,10 @@
                     "minimum": 0,
                     "type": "integer"
                   },
-                  "segment": {
-                    "maximum": 9007199254740991,
-                    "minimum": 0,
-                    "type": "integer"
+                  "turnID": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -23102,7 +23102,7 @@
                   "outputTokens",
                   "capacityTokens",
                   "measuredAt",
-                  "segment"
+                  "turnID"
                 ],
                 "type": "object"
               },
@@ -24872,14 +24872,14 @@
                     "maxLength": 2000,
                     "type": "string"
                   },
-                  "segment": {
-                    "maximum": 9007199254740991,
-                    "minimum": 0,
-                    "type": "integer"
+                  "turnID": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
                   }
                 },
                 "required": [
-                  "segment",
+                  "turnID",
                   "afterMessageID",
                   "reason",
                   "finalizing"
@@ -24915,11 +24915,6 @@
           "runID": {
             "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
             "type": "string"
-          },
-          "segment": {
-            "maximum": 2147483647,
-            "minimum": 0,
-            "type": "integer"
           },
           "skills": {
             "items": {
@@ -25224,6 +25219,11 @@
               }
             ]
           },
+          "turnID": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
           "updatedAt": {
             "format": "date-time",
             "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -25248,11 +25248,6 @@
                   "maxLength": 2000,
                   "type": "string"
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "status": {
                   "enum": [
                     "passed",
@@ -25260,10 +25255,15 @@
                     "error"
                   ],
                   "type": "string"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 }
               },
               "required": [
-                "segment",
+                "turnID",
                 "messageID",
                 "status",
                 "reason",
@@ -25281,7 +25281,7 @@
           "createdAt",
           "updatedAt",
           "execution",
-          "segment",
+          "turnID",
           "activeMs",
           "agentID",
           "remainingMs",
@@ -25686,10 +25686,10 @@
               "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
               "type": "string"
             },
-            "segment": {
-              "maximum": 2147483647,
-              "minimum": 0,
-              "type": "integer"
+            "turnID": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
             },
             "updatedAt": {
               "format": "date-time",
@@ -25703,7 +25703,7 @@
             "createdAt",
             "updatedAt",
             "execution",
-            "segment",
+            "turnID",
             "activeMs",
             "agentID",
             "remainingMs",
@@ -26454,20 +26454,20 @@
                   },
                   "type": "array"
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sourceAgentRevision": {
                   "exclusiveMinimum": 0,
                   "maximum": 9007199254740991,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 }
               },
               "required": [
                 "at",
-                "segment",
+                "turnID",
                 "sourceAgentRevision",
                 "previousToolIDs",
                 "previousSkillIDs",
@@ -26935,10 +26935,10 @@
                     "minimum": 0,
                     "type": "integer"
                   },
-                  "segment": {
-                    "maximum": 9007199254740991,
-                    "minimum": 0,
-                    "type": "integer"
+                  "turnID": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -26946,7 +26946,7 @@
                   "outputTokens",
                   "capacityTokens",
                   "measuredAt",
-                  "segment"
+                  "turnID"
                 ],
                 "type": "object"
               },
@@ -28716,14 +28716,14 @@
                     "maxLength": 2000,
                     "type": "string"
                   },
-                  "segment": {
-                    "maximum": 9007199254740991,
-                    "minimum": 0,
-                    "type": "integer"
+                  "turnID": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
                   }
                 },
                 "required": [
-                  "segment",
+                  "turnID",
                   "afterMessageID",
                   "reason",
                   "finalizing"
@@ -28759,11 +28759,6 @@
           "runID": {
             "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
             "type": "string"
-          },
-          "segment": {
-            "maximum": 2147483647,
-            "minimum": 0,
-            "type": "integer"
           },
           "skills": {
             "items": {
@@ -29068,6 +29063,11 @@
               }
             ]
           },
+          "turnID": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
           "updatedAt": {
             "format": "date-time",
             "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -29092,11 +29092,6 @@
                   "maxLength": 2000,
                   "type": "string"
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "status": {
                   "enum": [
                     "passed",
@@ -29104,10 +29099,15 @@
                     "error"
                   ],
                   "type": "string"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 }
               },
               "required": [
-                "segment",
+                "turnID",
                 "messageID",
                 "status",
                 "reason",
@@ -29125,7 +29125,7 @@
           "createdAt",
           "updatedAt",
           "execution",
-          "segment",
+          "turnID",
           "activeMs",
           "agentID",
           "remainingMs",
@@ -30024,20 +30024,20 @@
                   },
                   "type": "array"
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sourceAgentRevision": {
                   "exclusiveMinimum": 0,
                   "maximum": 9007199254740991,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 }
               },
               "required": [
                 "at",
-                "segment",
+                "turnID",
                 "sourceAgentRevision",
                 "previousToolIDs",
                 "previousSkillIDs",
@@ -30505,10 +30505,10 @@
                     "minimum": 0,
                     "type": "integer"
                   },
-                  "segment": {
-                    "maximum": 9007199254740991,
-                    "minimum": 0,
-                    "type": "integer"
+                  "turnID": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -30516,7 +30516,7 @@
                   "outputTokens",
                   "capacityTokens",
                   "measuredAt",
-                  "segment"
+                  "turnID"
                 ],
                 "type": "object"
               },
@@ -32286,14 +32286,14 @@
                     "maxLength": 2000,
                     "type": "string"
                   },
-                  "segment": {
-                    "maximum": 9007199254740991,
-                    "minimum": 0,
-                    "type": "integer"
+                  "turnID": {
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                    "type": "string"
                   }
                 },
                 "required": [
-                  "segment",
+                  "turnID",
                   "afterMessageID",
                   "reason",
                   "finalizing"
@@ -32329,11 +32329,6 @@
           "runID": {
             "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
             "type": "string"
-          },
-          "segment": {
-            "maximum": 2147483647,
-            "minimum": 0,
-            "type": "integer"
           },
           "skills": {
             "items": {
@@ -32638,6 +32633,11 @@
               }
             ]
           },
+          "turnID": {
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+            "type": "string"
+          },
           "updatedAt": {
             "format": "date-time",
             "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -32662,11 +32662,6 @@
                   "maxLength": 2000,
                   "type": "string"
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "status": {
                   "enum": [
                     "passed",
@@ -32674,10 +32669,15 @@
                     "error"
                   ],
                   "type": "string"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 }
               },
               "required": [
-                "segment",
+                "turnID",
                 "messageID",
                 "status",
                 "reason",
@@ -32695,7 +32695,7 @@
           "createdAt",
           "updatedAt",
           "execution",
-          "segment",
+          "turnID",
           "activeMs",
           "agentID",
           "remainingMs",
@@ -32835,16 +32835,16 @@
               "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
               "type": "string"
             },
-            "segment": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
+            "turnID": {
+              "format": "uuid",
+              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+              "type": "string"
             }
           },
           "required": [
             "runID",
             "eventSequence",
-            "segment",
+            "turnID",
             "excerpt",
             "matchOffset"
           ],
@@ -32942,11 +32942,6 @@
                           "maxLength": 1048576,
                           "type": "string"
                         },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
-                        },
                         "startedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -33006,6 +33001,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -33014,7 +33014,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -33239,15 +33239,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "evalGraded",
@@ -33260,7 +33260,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -33310,11 +33310,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -33375,6 +33370,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -33383,7 +33383,309 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
+                        "startedAt",
+                        "updatedAt",
+                        "status",
+                        "reason",
+                        "thinking",
+                        "text",
+                        "reasoningContent",
+                        "toolCalls",
+                        "truncated",
+                        "messageID"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "default": null
+                },
+                "data": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "callID": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "callID",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "eventID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
+                },
+                "message": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "attachments": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "dataBase64": {
+                                "maxLength": 12000000,
+                                "type": "string"
+                              },
+                              "mediaType": {
+                                "enum": [
+                                  "text/plain",
+                                  "application/json",
+                                  "audio/wav"
+                                ],
+                                "type": "string"
+                              },
+                              "name": {
+                                "maxLength": 255,
+                                "minLength": 1,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "mediaType",
+                              "dataBase64"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 16,
+                          "type": "array"
+                        },
+                        "content": {
+                          "maxLength": 1048576,
+                          "type": "string"
+                        },
+                        "messageID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "reasoningContent": {
+                          "maxLength": 1048576,
+                          "type": "string"
+                        },
+                        "role": {
+                          "enum": [
+                            "system",
+                            "user",
+                            "assistant",
+                            "tool"
+                          ],
+                          "type": "string"
+                        },
+                        "thinking": {
+                          "type": "boolean"
+                        },
+                        "toolCallID": {
+                          "anyOf": [
+                            {
+                              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "toolCalls": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "arguments": {
+                                "maxLength": 64000,
+                                "type": "string"
+                              },
+                              "callID": {
+                                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+                                "type": "string"
+                              },
+                              "name": {
+                                "maxLength": 128,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "callID",
+                              "name",
+                              "arguments"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 32,
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "messageID",
+                        "role",
+                        "content",
+                        "attachments",
+                        "toolCalls",
+                        "toolCallID"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "sequence": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 2147483647,
+                  "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
+                },
+                "type": {
+                  "const": "toolStarted",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "attempt",
+                "message",
+                "eventID",
+                "sequence",
+                "at",
+                "turnID",
+                "type",
+                "data"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "at": {
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                  "type": "string"
+                },
+                "attempt": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "attemptID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "messageID": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reason": {
+                          "anyOf": [
+                            {
+                              "maxLength": 128,
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "reasoningContent": {
+                          "maxLength": 1048576,
+                          "type": "string"
+                        },
+                        "startedAt": {
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                          "type": "string"
+                        },
+                        "status": {
+                          "enum": [
+                            "running",
+                            "completed",
+                            "failed",
+                            "interrupted",
+                            "cancelled",
+                            "timedOut"
+                          ],
+                          "type": "string"
+                        },
+                        "text": {
+                          "maxLength": 1048576,
+                          "type": "string"
+                        },
+                        "thinking": {
+                          "type": "boolean"
+                        },
+                        "toolCalls": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "arguments": {
+                                "maxLength": 64000,
+                                "type": "string"
+                              },
+                              "callID": {
+                                "maxLength": 128,
+                                "type": "string"
+                              },
+                              "index": {
+                                "maximum": 31,
+                                "minimum": 0,
+                                "type": "integer"
+                              },
+                              "name": {
+                                "maxLength": 128,
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "index",
+                              "callID",
+                              "name",
+                              "arguments"
+                            ],
+                            "type": "object"
+                          },
+                          "maxItems": 32,
+                          "type": "array"
+                        },
+                        "truncated": {
+                          "type": "boolean"
+                        },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
+                        "updatedAt": {
+                          "format": "date-time",
+                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "attemptID",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -33534,15 +33836,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "queued",
@@ -33555,7 +33857,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -33605,11 +33907,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -33670,6 +33967,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -33678,7 +33980,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -33824,15 +34126,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "started",
@@ -33845,7 +34147,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -33895,11 +34197,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -33960,6 +34257,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -33968,7 +34270,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -34142,15 +34444,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "paused",
@@ -34163,7 +34465,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -34213,11 +34515,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -34278,6 +34575,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -34286,7 +34588,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -34432,15 +34734,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "resumed",
@@ -34453,7 +34755,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -34503,11 +34805,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -34568,6 +34865,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -34576,7 +34878,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -34853,15 +35155,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "message",
@@ -34874,7 +35176,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -34924,11 +35226,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -34989,6 +35286,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -34997,7 +35299,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -35274,15 +35576,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "toolResult",
@@ -35295,7 +35597,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -35345,11 +35647,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -35410,6 +35707,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -35418,7 +35720,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -35647,15 +35949,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "completed",
@@ -35668,7 +35970,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -35718,11 +36020,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -35783,6 +36080,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -35791,7 +36093,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -35937,15 +36239,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "failed",
@@ -35958,7 +36260,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -36008,11 +36310,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -36073,6 +36370,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -36081,7 +36383,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -36227,15 +36529,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "cancelled",
@@ -36248,7 +36550,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -36298,11 +36600,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -36363,6 +36660,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -36371,7 +36673,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -36517,15 +36819,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "timedOut",
@@ -36538,7 +36840,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -36588,11 +36890,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -36653,6 +36950,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -36661,7 +36963,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -36807,15 +37109,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "interrupted",
@@ -36828,7 +37130,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -36878,11 +37180,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -36943,6 +37240,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -36951,7 +37253,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -37128,15 +37430,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "hookResult",
@@ -37149,7 +37451,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -37199,11 +37501,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -37264,6 +37561,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -37272,7 +37574,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -37418,15 +37720,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "held",
@@ -37439,7 +37741,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -37489,11 +37791,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -37554,6 +37851,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -37562,7 +37864,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -37713,15 +38015,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "released",
@@ -37734,7 +38036,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -37784,11 +38086,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -37849,6 +38146,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -37857,7 +38159,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -38012,15 +38314,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "coalesced",
@@ -38033,7 +38335,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -38083,11 +38385,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -38148,6 +38445,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -38156,7 +38458,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -38311,15 +38613,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "pendingInput",
@@ -38332,7 +38634,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -38382,11 +38684,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -38447,6 +38744,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -38455,7 +38757,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -38610,15 +38912,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "attempt",
@@ -38631,7 +38933,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -38681,11 +38983,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -38746,6 +39043,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -38754,7 +39056,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -38944,15 +39246,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "storageLimit",
@@ -38965,7 +39267,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -39015,11 +39317,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -39080,6 +39377,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -39088,7 +39390,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -39289,15 +39591,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "compactionRequested",
@@ -39310,7 +39612,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -39360,11 +39662,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -39425,6 +39722,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -39433,7 +39735,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -39625,15 +39927,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "compacted",
@@ -39646,7 +39948,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -39696,11 +39998,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -39761,6 +40058,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -39769,7 +40071,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -39923,15 +40225,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "compactionFailed",
@@ -39944,7 +40246,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -39994,11 +40296,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -40059,6 +40356,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -40067,7 +40369,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -40236,15 +40538,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "outputValidation",
@@ -40257,7 +40559,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -40307,11 +40609,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -40372,6 +40669,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -40380,7 +40682,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -40538,15 +40840,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "loopRecovery",
@@ -40559,7 +40861,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -40609,11 +40911,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -40674,6 +40971,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -40682,7 +40984,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -40714,14 +41016,14 @@
                       "maxLength": 2000,
                       "type": "string"
                     },
-                    "previousSegment": {
-                      "maximum": 9007199254740991,
-                      "minimum": 0,
-                      "type": "integer"
+                    "previousTurnID": {
+                      "format": "uuid",
+                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                      "type": "string"
                     }
                   },
                   "required": [
-                    "previousSegment",
+                    "previousTurnID",
                     "messageID",
                     "note"
                   ],
@@ -40848,15 +41150,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "retried",
@@ -40869,7 +41171,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -40919,11 +41221,6 @@
                         "reasoningContent": {
                           "maxLength": 1048576,
                           "type": "string"
-                        },
-                        "segment": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
                         },
                         "startedAt": {
                           "format": "date-time",
@@ -40984,6 +41281,11 @@
                         "truncated": {
                           "type": "boolean"
                         },
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
+                        },
                         "updatedAt": {
                           "format": "date-time",
                           "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -40992,7 +41294,7 @@
                       },
                       "required": [
                         "attemptID",
-                        "segment",
+                        "turnID",
                         "startedAt",
                         "updatedAt",
                         "status",
@@ -41176,15 +41478,15 @@
                     }
                   ]
                 },
-                "segment": {
-                  "maximum": 9007199254740991,
-                  "minimum": 0,
-                  "type": "integer"
-                },
                 "sequence": {
                   "exclusiveMinimum": 0,
                   "maximum": 2147483647,
                   "type": "integer"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "type": {
                   "const": "compactionRetry",
@@ -41197,7 +41499,7 @@
                 "eventID",
                 "sequence",
                 "at",
-                "segment",
+                "turnID",
                 "type",
                 "data"
               ],
@@ -43122,10 +43424,10 @@
                           "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
                           "type": "string"
                         },
-                        "segment": {
-                          "maximum": 2147483647,
-                          "minimum": 0,
-                          "type": "integer"
+                        "turnID": {
+                          "format": "uuid",
+                          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                          "type": "string"
                         },
                         "updatedAt": {
                           "format": "date-time",
@@ -43139,7 +43441,7 @@
                         "createdAt",
                         "updatedAt",
                         "execution",
-                        "segment",
+                        "turnID",
                         "activeMs",
                         "agentID",
                         "remainingMs",
@@ -43718,10 +44020,10 @@
                   "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
                   "type": "string"
                 },
-                "segment": {
-                  "maximum": 2147483647,
-                  "minimum": 0,
-                  "type": "integer"
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
                 "updatedAt": {
                   "format": "date-time",
@@ -43735,7 +44037,7 @@
                 "createdAt",
                 "updatedAt",
                 "execution",
-                "segment",
+                "turnID",
                 "activeMs",
                 "agentID",
                 "remainingMs",

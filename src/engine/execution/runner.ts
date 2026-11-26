@@ -121,7 +121,7 @@ export class Runner {
           finishBatch,
           controller,
         );
-        if (controller.signal.aborted || terminal(r.state)) break;
+        if (controller.signal.aborted || terminal(r.state) || r.held) break;
         if (
           r.agent.finishSchema &&
           lastAssistant &&

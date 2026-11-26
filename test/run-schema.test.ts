@@ -1,7 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { runSchema, decodeRun, encodeRun } from "../dist/schemas/run.js";
+import {
+  runProjectionSchema,
+  decodeRun,
+  encodeRun,
+} from "../dist/schemas/run.js";
 import { executionSchema } from "../dist/schemas/execution.js";
 import { eventSchema } from "../dist/schemas/event.js";
 import { Context } from "../dist/engine/execution/context.js";
@@ -10,8 +14,8 @@ const at = "2026-01-01T00:00:00.000Z";
 function fixture() {
   const messageID = randomUUID();
   return decodeRun(
-    runSchema.parse({
-      version: 3,
+    runProjectionSchema.parse({
+      version: 4,
       runID: randomUUID(),
       revision: 1,
       createdAt: at,
@@ -31,7 +35,7 @@ function fixture() {
         updatedAt: at,
       },
       skills: [],
-      segment: 0,
+      turnID: "00000000-0000-4000-8000-000000000000",
       execution: { state: "completed" },
       activeMs: 0,
       messages: [
@@ -49,7 +53,7 @@ function fixture() {
           eventID: randomUUID(),
           sequence: 1,
           at,
-          segment: 0,
+          turnID: "00000000-0000-4000-8000-000000000000",
           type: "message",
           data: { messageID },
         },
@@ -57,7 +61,7 @@ function fixture() {
           eventID: randomUUID(),
           sequence: 2,
           at,
-          segment: 0,
+          turnID: "00000000-0000-4000-8000-000000000000",
           type: "completed",
           data: {},
         },
@@ -114,14 +118,14 @@ test("event payloads and tool snapshots reject invalid shapes", () => {
     false,
   );
   assert.equal(
-    runSchema.safeParse({
+    runProjectionSchema.safeParse({
       ...encodeRun(run),
       toolSnapshots: [{ anything: true }],
     }).success,
     false,
   );
   assert.equal(
-    runSchema.safeParse({
+    runProjectionSchema.safeParse({
       ...encodeRun(run),
       execution: { state: "completed" },
       held: false,
@@ -139,7 +143,7 @@ test("count limits identify the actual resource and cannot be fixed by raising M
             eventID: randomUUID(),
             sequence: r.events.length + 1,
             at,
-            segment: r.segment,
+            turnID: r.turnID,
             type,
             data,
           }),
@@ -208,7 +212,7 @@ test("completed instant events retain model output-limit metadata", () => {
     eventID: randomUUID(),
     sequence: 1,
     at,
-    segment: 0,
+    turnID: "00000000-0000-4000-8000-000000000000",
     type: "completed",
     data: {
       text: "partial",

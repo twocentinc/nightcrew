@@ -220,7 +220,7 @@ export class RunTriggers {
           this.ports.dependencies.dispatch.instantSlot(r.agent.slotID);
         if (r.evaluation) r.evaluation.grade = { status: "pending" };
         r.deliveryExpected = false;
-        r.segment++;
+        r.turnID = pending!.message.messageID;
         r.activeMs = 0;
         r.state = "queued";
         r.pauseReason = null;

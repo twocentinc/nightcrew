@@ -17,7 +17,7 @@ export class ResponseRecorder {
   responseContinuation(run: Run) {
     const chunks: Attempt[] = [];
     for (const attempt of [...run.attempts].reverse()) {
-      if (attempt.segment !== run.segment || attempt.messageID) break;
+      if (attempt.turnID !== run.turnID || attempt.messageID) break;
       if (attempt.reason === "output_limit") chunks.unshift(attempt);
     }
     return chunks;
@@ -39,7 +39,7 @@ export class ResponseRecorder {
         inputTokens: result.usage.inputTokens,
         outputTokens: result.usage.outputTokens,
         measuredAt: now(),
-        segment: r.segment,
+        turnID: r.turnID,
       };
     }
     if (result.outputLimitReached) {

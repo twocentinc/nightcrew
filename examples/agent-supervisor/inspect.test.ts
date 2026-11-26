@@ -10,7 +10,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { inspect, metrics as projectMetrics } from "./inspect.ts";
+import { inspect as inspectRaw, metrics as projectMetrics } from "./inspect.ts";
 import { report } from "./report.ts";
 import {
   workingExecution,
@@ -19,7 +19,7 @@ import {
 import { runOutcome } from "../../dist/engine/supervision.js";
 const canonical = (r?: any) =>
   runOutcome({
-    segment: 0,
+    turnID: "00000000-0000-4000-8000-000000000000",
     hookReceipts: [],
     validations: [],
 
@@ -34,6 +34,8 @@ const readOutcome = async (home: string, id: string) => {
   );
   return { ...r, outcome: canonical(r) };
 };
+const inspect = (input: any, options: any = {}) =>
+  inspectRaw(input, { ...options, read: readOutcome });
 const readOutcomes = async (home: string) =>
   new Map(
     await Promise.all(
@@ -52,7 +54,7 @@ const run = (id: string, overrides: any = {}): any => ({
   createdAt: new Date(now - 20000).toISOString(),
   updatedAt: new Date(now - 10000).toISOString(),
   activeMs: 4000,
-  segment: 0,
+  turnID: "00000000-0000-4000-8000-000000000000",
   hookReceipts: [],
   validations: [],
 
@@ -112,7 +114,7 @@ test("supervisor freezes metrics, excludes itself and old healthy work, checkpoi
     state: "completed",
     agentID: "agent-supervisor",
     runID: "review",
-    segment: 0,
+    turnID: "00000000-0000-4000-8000-000000000000",
     result: JSON.stringify({
       incidents: [],
       observations: ["Review complete for first page."],
@@ -177,7 +179,7 @@ test("Markdown hook scopes agents, preserves exact result and rejects traversal"
     state: "completed",
     agentID: "loose-threads",
     runID: "report",
-    segment: 0,
+    turnID: "00000000-0000-4000-8000-000000000000",
     result: "# Open loops\nNone observed.",
   };
   const out = await report(e, home, ["loose-threads"]);
@@ -213,13 +215,29 @@ test("terminal supervisor records are not reported as active holds", () => {
 
 test("recovered delivery and validation supersede historical failures ", () => {
   const r = run("recovered", {
-    segment: 1,
+    turnID: "00000000-0000-4000-8000-000000000001",
     deliveryExpected: true,
     events: [
-      { eventID: 1, sequence: 1, segment: 0 },
-      { eventID: 2, sequence: 2, segment: 1 },
-      { eventID: 3, sequence: 3, segment: 1 },
-      { eventID: 4, sequence: 4, segment: 1 },
+      {
+        eventID: 1,
+        sequence: 1,
+        turnID: "00000000-0000-4000-8000-000000000000",
+      },
+      {
+        eventID: 2,
+        sequence: 2,
+        turnID: "00000000-0000-4000-8000-000000000001",
+      },
+      {
+        eventID: 3,
+        sequence: 3,
+        turnID: "00000000-0000-4000-8000-000000000001",
+      },
+      {
+        eventID: 4,
+        sequence: 4,
+        turnID: "00000000-0000-4000-8000-000000000001",
+      },
     ],
     hookReceipts: [
       {
@@ -256,8 +274,8 @@ test("recovered delivery and validation supersede historical failures ", () => {
       },
     ],
     validations: [
-      { segment: 1, status: "failed" },
-      { segment: 1, status: "passed" },
+      { turnID: "00000000-0000-4000-8000-000000000001", status: "failed" },
+      { turnID: "00000000-0000-4000-8000-000000000001", status: "passed" },
     ],
     error: { code: "old_failure" },
   });
@@ -332,7 +350,7 @@ test("priority failures survive checkpoints and every page, and reports must add
       {
         eventID: 1,
         sequence: 1,
-        segment: 0,
+        turnID: "00000000-0000-4000-8000-000000000000",
         type: "hookResult",
         at: new Date(now - 5000).toISOString(),
       },
@@ -423,7 +441,7 @@ test("priority failures survive checkpoints and every page, and reports must add
       state: "completed",
       agentID: "agent-supervisor",
       runID: opts.runID,
-      segment: 0,
+      turnID: "00000000-0000-4000-8000-000000000000",
       result: text,
     },
     home,

@@ -5,7 +5,7 @@
 - Prioritize interactive requests; pause background work until the interaction cooldown expires.
 - Manage everything through a JSON-first CLI or the optional HTTP API.
 - Keep transcripts, configuration and caches in your runtime home, separate from this repository.
-- Current release: **0.44.0**, protocol **1**, schema **45**. See the [compatibility policy](docs/compatibility.md) before upgrading or changing public contracts.
+- Current release: **0.45.0**, protocol **1**, schema **46**. See the [compatibility policy](docs/compatibility.md) before upgrading or changing public contracts.
 
 ## Get started
 
@@ -138,7 +138,7 @@
 
 - `contextMode: "fresh"` starts each run with fresh context; `"persistent"` keeps one run ID and transcript across invocations.
 - Persistent agents restore a named KV checkpoint into a shared physical slot; they do not reserve permanent slots.
-- `timeoutMs` limits active work. Paused time does not count; persistent segments also yield according to `timeSliceMs`.
+- `timeoutMs` limits active work. Paused time does not count; persistent turns also yield according to `timeSliceMs`.
 - Configure `thinking`, `temperature`, `maxOutputTokens`, optional `sampling`, and an optional `maxToolCalls` budget per agent.
 - A message's `thinking` override applies to that turn and its tool loop. Omission uses the run's snapshotted agent default.
 - Thinking traces, partial answers and interrupted attempts remain reviewable separately from completed answers.
@@ -192,7 +192,7 @@
 - Inspect `status`, `runs get` and `runs transcript` before taking recovery action.
 - A completed run can still have invalid output or failed delivery. Inspect its `outcome`; successful validation is not proof of factual correctness.
 - `runs pause RUN_ID` holds work; `runs resume RUN_ID` releases a hold or resumes paused work.
-- `runs cancel RUN_ID` stops work; `runs retry RUN_ID --yes` repeats the latest input as a new segment and may repeat tool side effects.
+- `runs cancel RUN_ID` stops work; `runs retry RUN_ID --yes` repeats the latest input as a new turn and may repeat tool side effects.
 - Recovery commands use revision-checked JSON requests. Discover fields with `schema get runs.resume`, `runs.retry`.
 - Restart never automatically replays uncertain delivery. Investigate the destination before repeating any side effect.
 - Recover compactor children through their parent run.

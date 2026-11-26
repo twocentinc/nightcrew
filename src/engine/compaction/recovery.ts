@@ -154,7 +154,7 @@ export class CompactionRecovery {
               pendingInputs: [],
               triggerHistory: [],
               triggerSource: null,
-              segment: 0,
+              turnID: randomUUID(),
               state: "queued",
               pauseReason: null,
               activeMs: 0,
@@ -185,6 +185,7 @@ export class CompactionRecovery {
                 },
               ],
             };
+            child.turnID = child.messages[1]!.messageID;
             this.ports.dependencies.records.event(child, "message", {
               messageID: child.messages[1]!.messageID,
             });
@@ -207,10 +208,9 @@ export class CompactionRecovery {
         if (child.state === "completed") {
           try {
             if (
-              child.validations.some((v) => v.segment === child.segment) &&
-              child.validations
-                .filter((v) => v.segment === child.segment)
-                .at(-1)?.status !== "passed"
+              child.validations.some((v) => v.turnID === child.turnID) &&
+              child.validations.filter((v) => v.turnID === child.turnID).at(-1)
+                ?.status !== "passed"
             )
               throw Error("Compactor output validation failed");
             pending.summary = parseCompactionSummary(child.result ?? "");

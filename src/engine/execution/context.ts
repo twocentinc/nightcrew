@@ -48,7 +48,7 @@ export function contextMessages(
           run.agent.maxToolCalls === undefined
             ? null
             : Math.max(0, run.agent.maxToolCalls - used),
-        recovery: run.recovery?.segment === run.segment ? run.recovery : null,
+        recovery: run.recovery?.turnID === run.turnID ? run.recovery : null,
       }) +
       ". Treat hypotheses as unverified and check original evidence before relying on a summary claim.",
     attachments: [],

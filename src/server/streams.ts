@@ -51,7 +51,7 @@ export function createEventStream(service: Service) {
                 type: e.type,
                 at: e.at,
                 resourceID,
-                segment: e.segment,
+                turnID: e.turnID,
                 data: e.data,
               },
               { id: String(e.sequence) },
@@ -67,12 +67,12 @@ export function createEventStream(service: Service) {
                 type: "textDelta",
                 at: new Date().toISOString(),
                 resourceID,
-                segment:
+                turnID:
                   kind === "run"
-                    ? "segment" in record
-                      ? record.segment
-                      : 0
-                    : 0,
+                    ? "turnID" in record
+                      ? record.turnID
+                      : null
+                    : null,
                 data: { attemptID, reset: true, text: "" },
               };
             }
@@ -82,7 +82,7 @@ export function createEventStream(service: Service) {
                 type: "textDelta",
                 at: new Date().toISOString(),
                 resourceID,
-                segment: "segment" in record ? record.segment : 0,
+                turnID: "turnID" in record ? record.turnID : null,
                 data: {
                   attemptID,
                   reset: false,

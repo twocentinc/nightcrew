@@ -74,7 +74,7 @@ export class RunControls {
           fail("capability_refresh_limit", 409);
         run.capabilityRefreshes.push({
           at: now(),
-          segment: run.segment,
+          turnID: run.turnID,
           sourceAgentRevision: configured.revision,
           previousToolIDs: run.agent.toolIDs,
           previousSkillIDs: run.agent.skillIDs,

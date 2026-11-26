@@ -20,7 +20,7 @@ import { agentSchema, skillSchema } from "../schemas/agent.js";
 import {
   encodeRun,
   decodeRun,
-  runSchema,
+  runProjectionSchema,
   transcriptEntrySchema,
   type Run,
 } from "../schemas/run.js";
@@ -46,8 +46,8 @@ const checksumSchema = z.strictObject({
 });
 const manifestSchema = z.strictObject({
   version: z.literal(1),
-  runID: runSchema.shape.runID,
-  revision: runSchema.shape.revision,
+  runID: runProjectionSchema.shape.runID,
+  revision: runProjectionSchema.shape.revision,
   lastEventSequence: z.number().int().nonnegative(),
   files: z
     .array(checksumSchema.extend({ path: z.enum(filenames) }))
@@ -115,8 +115,13 @@ function validate(run: Run, runID: string) {
   }
   const attemptIDs = new Set<string>();
   for (const attempt of run.attempts) {
-    if (attemptIDs.has(attempt.attemptID) || attempt.segment > run.segment)
-      throw Error("Invalid attempt identity or segment");
+    if (
+      attemptIDs.has(attempt.attemptID) ||
+      !run.messages.some(
+        (m) => m.messageID === attempt.turnID && m.role === "user",
+      )
+    )
+      throw Error("Invalid attempt identity or turnID");
     attemptIDs.add(attempt.attemptID);
     if (attempt.messageID && !messages.has(attempt.messageID))
       throw Error("Missing attempt message reference");
@@ -134,8 +139,13 @@ function validate(run: Run, runID: string) {
   }
   const referenced = new Set<string>();
   for (const [i, event] of run.events.entries()) {
-    if (event.sequence !== i + 1 || event.segment > run.segment)
-      throw Error("Invalid event ordering or segment");
+    if (
+      event.sequence !== i + 1 ||
+      !run.messages.some(
+        (m) => m.messageID === event.turnID && m.role === "user",
+      )
+    )
+      throw Error("Invalid event ordering or turnID");
     const reference =
       event.data &&
       typeof event.data === "object" &&
@@ -169,7 +179,7 @@ function validate(run: Run, runID: string) {
     run.agent.skillIDs.some((id) => !run.skills.some((s) => s.skillID === id))
   )
     throw Error("Missing or duplicate skill snapshot");
-  if (run.version === 3) {
+  if (run.version === 4) {
     const tools = run.toolSnapshots.map((tool) => normalizeStoredTool(tool));
     if (
       new Set(tools.map((t) => t.toolID)).size !== tools.length ||
@@ -318,7 +328,7 @@ export async function verifyRun(
         docs[file.path] = JSON.parse(bytes.toString());
       }
       checks.push("fileChecksums");
-      run = decodeRun(runSchema.parse(docs["run.json"]));
+      run = decodeRun(runProjectionSchema.parse(docs["run.json"]));
       const configuration = docs["configuration.json"] as {
         agent?: unknown;
         skills?: unknown;

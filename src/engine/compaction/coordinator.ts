@@ -89,7 +89,7 @@ export class Compaction {
           outputTokens: 0,
           capacityTokens: capacity,
           measuredAt: now(),
-          segment: run.segment,
+          turnID: run.turnID,
         };
       };
       let count = await this.ports.runtime.countTokens(input, signal);

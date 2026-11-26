@@ -323,7 +323,10 @@ test("persistent agents keep one run across completion, queued input and restart
     async () => (await f.service.run(first.runID)).state === "completed",
   );
   const run = await f.service.run(first.runID);
-  assert.equal(run.segment, 2);
+  assert.equal(
+    run.turnID,
+    run.messages.filter((m: any) => m.role === "user").at(-1)!.messageID,
+  );
   assert.equal(run.messages.filter((m?: any) => m.role === "user").length, 3);
   assert.equal(
     [...f.service.storage.summaries.values()].filter(
@@ -353,7 +356,10 @@ test("time slices pause without failing and timer admission has no catch-up", as
   const run = await f.service.run(accepted.runID);
   assert.ok(run.events.some((e?: any) => e.type === "paused"));
   assert.ok(run.activeMs >= 90);
-  assert.equal(run.segment, 0);
+  assert.equal(
+    run.turnID,
+    run.messages.find((m: any) => m.role === "user")!.messageID,
+  );
   await manage(f.service, {
     command: "triggers create",
     request: {
@@ -375,13 +381,15 @@ test("time slices pause without failing and timer admission has no catch-up", as
     at: Date.now() - 100000,
   });
   await f.service["dispatch"]["timers"]["dispatchTimers"]();
-  assert.equal((await f.service.run(run.runID)).segment, 0);
+  assert.equal((await f.service.run(run.runID)).turnID, run.turnID);
   f.service["dispatch"]["timers"]["triggerDue"].set("timer", {
     revision: 1,
     at: Date.now() - 100,
   });
   await f.service["dispatch"]["timers"]["dispatchTimers"]();
-  await until(async () => (await f.service.run(run.runID)).segment === 1);
+  await until(
+    async () => (await f.service.run(run.runID)).turnID !== run.turnID,
+  );
   assert.equal(f.service.storage.summaries.size, 1);
 });
 
@@ -577,6 +585,7 @@ test("fresh runs accept a reply after cancellation without replaying cancelled w
   });
   cancelled.held = true;
   const childID = randomUUID();
+  const childTurnID = randomUUID();
   await f.service.storage.write(
     {
       ...structuredClone(cancelled),
@@ -584,7 +593,13 @@ test("fresh runs accept a reply after cancellation without replaying cancelled w
       state: "paused",
       parentRunID: first.runID,
       compaction: null,
-      messages: [{ ...cancelled.messages[0], messageID: randomUUID() }],
+      turnID: childTurnID,
+      messages: [
+        {
+          ...cancelled.messages.find((m) => m.role === "user")!,
+          messageID: childTurnID,
+        },
+      ],
       events: [],
     },
     true,
@@ -612,7 +627,7 @@ test("fresh runs accept a reply after cancellation without replaying cancelled w
     async () => (await f.service.run(first.runID)).state === "completed",
   );
   const run = await f.service.run(first.runID);
-  assert.equal(run.segment, 1);
+  assert.equal(run.turnID, next.messageID);
   assert.equal(run.compaction, null);
   assert.equal((await f.service.run(childID)).state, "cancelled");
   assert.equal(run.held, false);

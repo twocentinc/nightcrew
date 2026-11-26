@@ -33,14 +33,14 @@ export const loopPolicySchema = z.strictObject({
   repeatedCalls: z.number().int().min(2).max(20).default(3),
 });
 export const validationRecordSchema = z.strictObject({
-  segment: z.number().int().nonnegative(),
+  turnID: z.string().uuid(),
   messageID: z.uuid(),
   status: z.enum(["passed", "failed", "error"]),
   reason: z.string().max(2000),
   at: z.iso.datetime(),
 });
 export const recoverySchema = z.strictObject({
-  segment: z.number().int().nonnegative(),
+  turnID: z.string().uuid(),
   afterMessageID: z.uuid(),
   reason: z.string().max(2000),
   finalizing: z.boolean().default(false),
@@ -80,14 +80,14 @@ export function runOutcome(run: Run): z.infer<typeof outcomeSchema> {
   const terminal = ["completed", "failed", "cancelled", "timedOut"].includes(
     run.state,
   );
-  const records = run.validations.filter((v) => v.segment === run.segment);
+  const records = run.validations.filter((v) => v.turnID === run.turnID);
   const validation = records.at(-1);
   const output =
     validation?.status ??
     (run.agent.outputValidation ? "pending" : "notConfigured");
   const receipts = effectiveReceipts(run).filter(
     (h) =>
-      run.events.find((e) => e.eventID === h.eventID)?.segment === run.segment,
+      run.events.find((e) => e.eventID === h.eventID)?.turnID === run.turnID,
   );
   const aggregate = (list: typeof receipts) =>
     list.some((h) => h.status === "failed")
@@ -114,7 +114,11 @@ export function runOutcome(run: Run): z.infer<typeof outcomeSchema> {
     run.pauseReason === "storage_limit"
   )
     reasons.push(run.error?.message ?? run.pauseReason);
-  if (run.recovery?.segment === run.segment && run.recovery.finalizing)
+  if (
+    run.recovery &&
+    run.recovery.turnID === run.turnID &&
+    run.recovery.finalizing
+  )
     reasons.push(run.recovery.reason);
   if (["failed", "unknown"].includes(hooks))
     reasons.push(
@@ -285,15 +289,15 @@ export async function validateOutput(
             type: "object",
             properties: {
               runID: { type: "string" },
-              segment: { type: "integer" },
+              turnID: { type: "string", format: "uuid" },
               text: { type: "string" },
             },
-            required: ["runID", "segment", "text"],
+            required: ["runID", "turnID", "text"],
             additionalProperties: false,
           },
           ...config.validator,
         },
-        { runID: run.runID, segment: run.segment, text: message.content },
+        { runID: run.runID, turnID: run.turnID, text: message.content },
         signal,
         { home, agentID: run.agent.agentID, runID: run.runID },
       );
@@ -314,7 +318,7 @@ export async function validateOutput(
         : "Output validation failed";
   }
   return {
-    segment: run.segment,
+    turnID: run.turnID,
     messageID: message.messageID,
     status,
     reason: reason.slice(0, 2000),

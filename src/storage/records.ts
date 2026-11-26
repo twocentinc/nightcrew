@@ -30,7 +30,7 @@ export class RunRecords {
         sequence: r.events.length + 1,
         at: now(),
         type,
-        segment: r.segment,
+        turnID: r.turnID,
         data,
       }),
     );
@@ -191,7 +191,7 @@ export class RunRecords {
           matches.push({
             runID: r.runID,
             eventSequence: e.sequence,
-            segment: e.segment,
+            turnID: e.turnID,
             excerpt: text.slice(start, start + 1000),
             matchOffset: offset - start,
           });
@@ -207,7 +207,7 @@ export class RunRecords {
           matches.push({
             runID: r.runID,
             eventSequence: event.sequence,
-            segment: event.segment,
+            turnID: event.turnID,
             excerpt: r.result.slice(start, start + 1000),
             matchOffset: offset - start,
           });

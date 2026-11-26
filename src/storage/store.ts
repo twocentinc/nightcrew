@@ -53,6 +53,14 @@ export class Storage {
   }
   async initialize(): Promise<void> {
     checkpoint();
+    try {
+      await lstat(path.join(this.home, "migration-v4.json"));
+      throw Error(
+        "Run migration is incomplete; resume the offline migration before starting Nightcrew",
+      );
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
     await mkdir(this.home, { recursive: true, mode: 0o700 });
     const st = await lstat(this.home);
     if (!st.isDirectory() || st.isSymbolicLink() || (st.mode & 0o077) !== 0)

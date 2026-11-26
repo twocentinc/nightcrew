@@ -28,7 +28,7 @@ export class Inference {
   async startAttempt(r: Run, thinking: boolean, state: RunExecution) {
     state.attempt = {
       attemptID: randomUUID(),
-      segment: r.segment,
+      turnID: r.turnID,
       startedAt: now(),
       updatedAt: now(),
       status: "running",

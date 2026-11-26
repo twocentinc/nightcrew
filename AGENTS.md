@@ -36,7 +36,7 @@ keeps the shared service-facing API, initialization and shutdown order. Componen
 receive explicit, narrow dependencies, never the entire Service.
 `src/engine/scheduling/dispatch.ts` owns active executions, cancellation handles, timer
 admission, plan revalidation, presence and interaction cooldown.
-`src/engine/runs/submissions.ts` owns submissions and persistent segments;
+`src/engine/runs/submissions.ts` owns submissions and persistent turns;
 `controls.ts` owns administrative transitions and `triggers.ts` owns trigger
 admission, deduplication and pending-input activation. `src/engine/execution/runner.ts` owns background
 execution order and live runs. Its step modules receive explicit dependencies:
@@ -137,7 +137,7 @@ behavior without an actual model-specific check.
 Real-model tests live under `test/live/`, outside the default suite. Do not run
 them without explicit authorization for inference.
 
-The public contract is frozen at schema 45; follow `docs/compatibility.md`.
+The public contract is frozen at schema 46; follow `docs/compatibility.md`.
 Do not remove or rename public commands, tighten accepted inputs, or change
 execution semantics without explicitly reopening the freeze. Schema increments
 alone do not authorize breaking changes. Keep
@@ -178,3 +178,5 @@ Commander owns option parsing, cron-parser owns cron syntax and next-occurrence
 semantics, and eventsource-parser owns SSE framing. Follow their native behavior
 without compatibility exceptions. Nightcrew retains command contracts, scheduler
 admission/no-catch-up policies, generation limits and completion validation.
+
+`src/storage/runDocument.ts` owns the format-4 single-file run document and its derived engine projection. Only state.json is written for run progress. Do not add a journal or multi-file transactions; unsaved progress can be lost on crashes. `src/storage/migrate.ts` is the explicit offline format migration with original-run backups.

@@ -211,8 +211,8 @@ export async function report(
     event.version !== 1 ||
     event.state !== "completed" ||
     !/^[a-zA-Z0-9_-]{1,128}$/.test(event.runID) ||
-    !Number.isInteger(event.segment) ||
-    event.segment < 0 ||
+    typeof event.turnID !== "string" ||
+    !/^[0-9a-f-]{36}$/i.test(event.turnID) ||
     typeof event.result !== "string" ||
     !event.result.trim() ||
     event.result.length > 1048576
@@ -230,7 +230,7 @@ export async function report(
   const file = path.join(
     dir,
     "reports",
-    event.runID + (event.segment ? "-segment-" + event.segment : "") + ".md",
+    event.runID + (event.turnID ? "-turn-" + event.turnID : "") + ".md",
   );
   const text =
     (event.agentID === "agent-supervisor"

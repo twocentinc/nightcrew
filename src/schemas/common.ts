@@ -158,7 +158,7 @@ export const streamEventSchema = z.object({
   type: z.string(),
   at: timestamp,
   resourceID: id,
-  segment: z.number().int().nonnegative().max(2147483647),
+  turnID: z.string().uuid().nullable(),
   data: z.json(),
 });
 export const pageOutput = <T extends z.ZodType>(item: T) =>

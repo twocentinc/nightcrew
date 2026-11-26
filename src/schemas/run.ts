@@ -40,7 +40,7 @@ export const runState = z.enum([
 ]);
 export const attemptSchema = z.strictObject({
   attemptID: uuid,
-  segment: z.number().int().nonnegative(),
+  turnID: z.string().uuid(),
   startedAt: timestamp,
   updatedAt: timestamp,
   status: z.enum([
@@ -73,15 +73,15 @@ export const contextUsageSchema = z.strictObject({
   outputTokens: z.number().int().nonnegative(),
   capacityTokens: z.number().int().positive(),
   measuredAt: timestamp,
-  segment: z.number().int().nonnegative(),
+  turnID: z.string().uuid(),
 });
-export const runSchema = z.strictObject({
+export const runProjectionSchema = z.strictObject({
   evaluation: evalRunStateSchema.optional(),
   capabilityRefreshes: z
     .array(
       z.strictObject({
         at: timestamp,
-        segment: z.number().int().nonnegative(),
+        turnID: z.string().uuid(),
         sourceAgentRevision: z.number().int().positive(),
         previousToolIDs: z.array(id),
         previousSkillIDs: z.array(id),
@@ -99,7 +99,7 @@ export const runSchema = z.strictObject({
   compactions: z.array(checkpointSchema).max(1000).default([]),
   compaction: compactionStateSchema.nullable().default(null),
   parentRunID: id.nullable().default(null),
-  version: z.literal(3),
+  version: z.literal(4),
   toolSnapshots: z.array(toolDefinitionSchema).max(65).default([]),
   interactive: z.boolean().nullable().default(null),
   pendingInputs: z
@@ -123,7 +123,7 @@ export const runSchema = z.strictObject({
   updatedAt: timestamp,
   agent: agentSchema,
   skills: z.array(skillSchema).max(40),
-  segment: z.number().int().nonnegative().max(2147483647),
+  turnID: z.string().uuid(),
   execution: executionSchema,
   activeMs: z.number().int().min(0).max(86400000),
   messages: z.array(messageSchema).max(10000),
@@ -131,11 +131,11 @@ export const runSchema = z.strictObject({
   result: z.string().max(1048576).nullable(),
   hookReceipts: z.array(hookReceiptSchema).max(1000),
 });
-export type StoredRun = z.infer<typeof runSchema>;
+export type StoredRun = z.infer<typeof runProjectionSchema>;
 export type Run = Omit<StoredRun, "execution"> & WorkingExecution;
 export function encodeRun(run: Run): StoredRun {
   const { state, held, pauseReason, error, storageLimit, ...record } = run;
-  const stored = runSchema.parse({
+  const stored = runProjectionSchema.parse({
     ...record,
     execution: executionRecord(run),
   });
@@ -147,14 +147,14 @@ export function decodeRun(record: StoredRun): Run {
   const { execution, ...rest } = record;
   return { ...rest, ...workingExecution(execution) };
 }
-export const runSummarySchema = runSchema
+export const runSummarySchema = runProjectionSchema
   .pick({
     runID: true,
     revision: true,
     createdAt: true,
     updatedAt: true,
     execution: true,
-    segment: true,
+    turnID: true,
     activeMs: true,
   })
   .extend({
@@ -164,20 +164,22 @@ export const runSummarySchema = runSchema
   });
 export const runDetailSchema = runSummarySchema.extend({
   evaluation: evalRunStateSchema.optional(),
-  capabilityRefreshes: runSchema.shape.capabilityRefreshes,
-  contextUsage: runSchema.shape.contextUsage,
-  validations: runSchema.shape.validations,
-  recovery: runSchema.shape.recovery,
-  compactions: runSchema.shape.compactions,
-  compaction: runSchema.shape.compaction,
-  parentRunID: runSchema.shape.parentRunID,
+  capabilityRefreshes: runProjectionSchema.shape.capabilityRefreshes,
+  contextUsage: runProjectionSchema.shape.contextUsage,
+  validations: runProjectionSchema.shape.validations,
+  recovery: runProjectionSchema.shape.recovery,
+  compactions: runProjectionSchema.shape.compactions,
+  compaction: runProjectionSchema.shape.compaction,
+  parentRunID: runProjectionSchema.shape.parentRunID,
   agent: agentSchema,
   triggerSource: triggerSourceSchema.nullable(),
-  pendingInputs: runSchema.shape.pendingInputs,
+  pendingInputs: runProjectionSchema.shape.pendingInputs,
   skills: z.array(skillSchema),
-  result: runSchema.shape.result,
+  result: runProjectionSchema.shape.result,
   hookReceipts: z.array(
-    runSchema.shape.hookReceipts.element.omit({ executablePath: true }),
+    runProjectionSchema.shape.hookReceipts.element.omit({
+      executablePath: true,
+    }),
   ),
 });
 export const transcriptEntrySchema = eventSchema.and(
@@ -212,7 +214,7 @@ export const statusSchema = z.object({
 export const searchMatchSchema = z.object({
   runID: id,
   eventSequence: z.number().int(),
-  segment: z.number().int(),
+  turnID: z.string().uuid(),
   excerpt: z.string().max(1000),
   matchOffset: z.number().int().nonnegative(),
 });
@@ -284,3 +286,23 @@ function validateRunLinks(run: StoredRun) {
         throw Error("Invalid hook result receipt reference");
     }
 }
+
+/** Metadata stored alongside messages and events in the single run document. */
+export const runStateRecordSchema = z.strictObject({
+  version: z.literal(4),
+  runID: id,
+  revision: z.number().int().positive(),
+  createdAt: timestamp,
+  updatedAt: timestamp,
+  turnID: uuid,
+  configurationID: z.string().regex(/^[a-f0-9]{64}$/),
+  execution: executionSchema,
+  activeMs: z.number().int().nonnegative(),
+  inFlight: z
+    .strictObject({
+      generationID: uuid.optional(),
+      compactionID: uuid.optional(),
+    })
+    .optional(),
+});
+export type RunStateRecord = z.infer<typeof runStateRecordSchema>;

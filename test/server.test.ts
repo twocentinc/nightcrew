@@ -353,7 +353,7 @@ test("completed replies preserve snapshots, attachments and stable transcript cu
     202,
   );
   const detail = (await q("GET", `/v1/runs/${first.runID}`)).body.run;
-  assert.equal(detail.segment, 1);
+  assert.equal(detail.turnID, followup.messageID);
   assert.equal(detail.agent.systemPrompt, "Research.");
   assert.equal(
     (await q("GET", "/v1/runs/search?query=searchable")).body.items.length,
@@ -633,8 +633,12 @@ test("custom executable tools run with snapshotted definitions and appear in dis
       await readFile(path.join(f.home, "runs", r.runID, "state.json"), "utf8")
     ).toString(),
   );
-  assert.equal(original.version, 3);
-  assert.equal(original.toolSnapshots[0].toolID, "inspect");
+  assert.equal(original.version, 4);
+  assert.equal(
+    original.events.find((e: any) => e.type === "configurationChanged").data
+      .configuration.tools[0].toolID,
+    "inspect",
+  );
   f.app.service.presence = {
     state: "away",
     reason: "test",

@@ -258,7 +258,7 @@ export class Runs {
       compactions: [],
       compaction: null,
       parentRunID: null,
-      version: 3,
+      version: 4,
       held: false,
       interactive:
         !evaluation &&
@@ -285,7 +285,7 @@ export class Runs {
           this.ports.registry.skills.get(s) ?? fail("skill_not_found"),
         ),
       ),
-      segment: 0,
+      turnID: message.messageID,
       state: "queued",
       pauseReason: null,
       activeMs: 0,
@@ -308,7 +308,7 @@ export class Runs {
       // A new user message continues the conversation, not the cancelled work.
       if (previous.state === "cancelled") {
         r.held = false;
-        // A cancelled segment's pending compaction must not block the new turn.
+        // A cancelled turn's pending compaction must not block the new turn.
         r.compaction = null;
         // Close unresolved tool calls without replaying potentially mutating work.
         const answered = new Set(r.messages.map((m) => m.toolCallID));
@@ -350,12 +350,13 @@ export class Runs {
         this.ports.dispatch.instantSlot(a.slotID);
       if (source) r.triggerHistory.push(source);
       r.deliveryExpected = false;
-      r.segment++;
+      const previousTurnID = r.turnID;
+      r.turnID = message.messageID;
       if (retryNote) {
         r.held = false;
         r.compaction = null;
         this.ports.records.event(r, "retried", {
-          previousSegment: r.segment - 1,
+          previousTurnID,
           messageID: message.messageID,
           note: retryNote,
         });
@@ -384,6 +385,7 @@ export class Runs {
           messageID: randomUUID(),
         })),
       ];
+      r.turnID = r.messages.filter((m) => m.role === "user").at(-1)!.messageID;
       r.events = [];
       for (const m of r.messages.slice(1))
         this.ports.records.event(

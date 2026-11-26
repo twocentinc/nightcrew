@@ -84,7 +84,7 @@ test(
     const hook = path.join(home, "deliver.js");
     await writeFile(
       hook,
-      `#!${process.execPath}\nimport {mkdir,writeFile,readFile} from 'node:fs/promises';let s='';for await(const c of process.stdin)s+=c;const e=JSON.parse(s);const f=${JSON.stringify(home)}+'/reports/'+e.runID+'-'+e.segment+'.md';await mkdir(${JSON.stringify(home)}+'/reports',{recursive:true});const text=e.result+'\\n';try{await writeFile(f,text,{flag:'wx',mode:0o600});}catch(x){if(x.code!=='EEXIST'||await readFile(f,'utf8')!==text)throw x;}\n`,
+      `#!${process.execPath}\nimport {mkdir,writeFile,readFile} from 'node:fs/promises';let s='';for await(const c of process.stdin)s+=c;const e=JSON.parse(s);const f=${JSON.stringify(home)}+'/reports/'+e.runID+'-'+e.turnID+'.md';await mkdir(${JSON.stringify(home)}+'/reports',{recursive:true});const text=e.result+'\\n';try{await writeFile(f,text,{flag:'wx',mode:0o600});}catch(x){if(x.code!=='EEXIST'||await readFile(f,'utf8')!==text)throw x;}\n`,
     );
     await chmod(hook, 0o700);
     const initial = storeSchema.parse({
@@ -352,7 +352,7 @@ test(
           r.state === "running" &&
           r.attempts.some(
             (a?: any) =>
-              a.segment === r.segment &&
+              a.turnID === r.turnID &&
               a.status === "running" &&
               a.text.length > 10,
           )
@@ -363,12 +363,12 @@ test(
       done = await complete(done.runID);
       assert.ok(
         done.attempts.some(
-          (a?: any) => a.segment === done.segment && a.status === "interrupted",
+          (a?: any) => a.turnID === done.turnID && a.status === "interrupted",
         ),
       );
       await record("restart_resumed_same_run", {
         runID: done.runID,
-        segment: done.segment,
+        turnID: done.turnID,
       });
     } else {
       assert.ok(
@@ -515,7 +515,7 @@ test(
       assert.ok(r.hookReceipts.some((h?: any) => h.status === "succeeded"));
       assert.equal(
         await readFile(
-          path.join(home, "reports", id + "-" + r.segment + ".md"),
+          path.join(home, "reports", id + "-" + r.turnID + ".md"),
           "utf8",
         ),
         r.result + "\n",

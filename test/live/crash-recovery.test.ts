@@ -1,6 +1,10 @@
 // Opt-in real inference. Stop the production daemon before running this fixture.
 import test from "node:test";
-import { decodeRun, runSchema } from "../../dist/schemas/run.js";
+import { decodeRun } from "../../dist/schemas/run.js";
+import {
+  projectDocument,
+  runDocumentSchema,
+} from "../../dist/storage/runDocument.js";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, chmod } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -195,7 +199,9 @@ test(
     const read = (id: string) =>
       readFile(`${home}/runs/${id}/state.json`, "utf8")
         .then(JSON.parse)
-        .then((value) => decodeRun(runSchema.parse(value)));
+        .then((value) =>
+          decodeRun(projectDocument(runDocumentSchema.parse(value))),
+        );
     const complete = (id: string) =>
       until(async () => {
         const r = await read(id);

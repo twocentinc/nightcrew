@@ -1,6 +1,6 @@
 # Nightcrew specification
 
-Status: release 0.44.0, protocol 1, schema 45.
+Status: release 0.45.0, protocol 1, schema 46.
 See [compatibility.md](compatibility.md) for stable surfaces and change policy.
 Runtime schemas and registered procedures are authoritative; this document
 explains behavior rather than maintaining another endpoint inventory.
@@ -34,7 +34,7 @@ Components declare narrow dependencies and keep their state with its owner.
 
 | Folder/module                | Ownership                                                                                      |
 | ---------------------------- | ---------------------------------------------------------------------------------------------- |
-| `engine/runs/submissions.ts` | Submission, replies and persistent segments                                                    |
+| `engine/runs/submissions.ts` | Submission, replies and persistent turns                                                       |
 | `engine/runs/controls.ts`    | Pause, resume, cancellation, retries and capability refresh                                    |
 | `engine/runs/triggers.ts`    | Trigger admission, deduplication and pending-input activation                                  |
 | `engine/execution/`          | Runner, context, request, inference, response, tools, completion and bounded process execution |
@@ -180,7 +180,7 @@ Single-turn agents retain their existing tool-free contract.
 ## Runs and messages
 
 A fresh agent starts a new run with its system prompt. A persistent agent retains
-one run ID and full transcript across invocations. Each invocation has a segment
+one run ID and full transcript across invocations. Each invocation has a turn
 and active-time budget. Replies and timer submissions enter that same durable
 history; pending inputs are recorded rather than stored in a separate queue DB.
 
@@ -193,7 +193,7 @@ Single-turn agents finish after one model response. Agent-loop agents execute
 allowed tool calls until a final response or limit. Active time counts against
 the agent timeout; paused time does not. Interruption preserves the run for
 resumption. Completed and cancelled runs can receive replies. A reply to a
-cancelled run starts a new segment in the same transcript, clears its scheduling
+cancelled run starts a new turn in the same transcript, clears its scheduling
 hold, and does not resume the cancelled turn or its pending inputs. Failed and
 timed-out fresh runs still require explicit recovery. Run state and event history
 remain authoritative over daemon logs.
@@ -314,7 +314,7 @@ Instant request compaction and automatic multi-stage chunking remain deferred.
 
 Configured notification events are run.completed, run.failed, run.timedOut,
 run.cancelled and run.storageLimit. Each executable receives one JSON line on
-stdin with version, event, runID, agentID, segment, state, result, error and
+stdin with version, event, runID, agentID, turnID, state, result, error and
 eventSequence, eventID, hookID and receiptID. Storage-limit notifications
 additionally include storage.previousState and storage.limit with resource, used
 and maximum captured at the boundary.
@@ -425,7 +425,7 @@ correct or delivered. Without a validator the task is `unverified`. `validated`
 means only the configured validator passed. Failed execution, invalid output,
 exhausted recovery, failed/uncertain hooks, and context/storage holds need review.
 Historical runs are not retroactively validated. Persistent runs report the
-current segment; prior validation records and hook receipts remain inspectable.
+current turn; prior validation records and hook receipts remain inspectable.
 
 Agents may configure `outputValidation` (null by default):
 
@@ -445,7 +445,7 @@ Agents may configure `outputValidation` (null by default):
 
 Alternatively the validator is `{type:"hook", executablePath, argv, timeoutMs}`.
 It is a trusted, side-effect-free executable using the existing bounded tool
-runner. JSON stdin contains runID, segment and text; stdout must be
+runner. JSON stdin contains runID, turnID and text; stdout must be
 `{"valid":true,"reason":"what was checked"}` (or valid:false). It gets the
 normal limited tool environment, no shell, at most 1 MB stdout, and a bounded
 100–60000 ms deadline. Infrastructure errors do not trigger model repair or
@@ -494,7 +494,7 @@ daemon for current runtime state. It shows each configured agent, its schedules,
 latest run activity/outcome, active run count, attention count and recorded active
 milliseconds, plus current presence/cooldown, model/slot status and the newest
 100 runs needing attention. Totals cover all retained run summaries; active time
-for persistent runs is the current segment's stored counter, not lifetime CPU
+for persistent runs is the current turn's stored counter, not lifetime CPU
 usage. No new index, queue database, or inferred memory/token telemetry is stored.
 
 Context preparation failures (template rendering, tokenization or unavailable
@@ -510,7 +510,7 @@ context; model templates need not support later system messages.
 `runs resume` shares runs resume semantics. `runs retry` takes expectedRevision,
 a new client messageID UUID and note; it requires a terminal non-compactor run
 without pending inputs and repeats the last user input, attachments and thinking
-override in a new segment of the same transcript. It uses ordinary reply snapshot
+override in a new turn of the same transcript. It uses ordinary reply snapshot
 rules. Previous messages and attempts remain visible. Retry requires explicit confirmation (`--yes` in CLI); mutations support dry-run.
 
 ## Optional review agents
@@ -557,7 +557,7 @@ and requests continuation. Text uses llama.cpp native assistant prefill (`contin
 one assistant message only after generation stops normally. JSON validation and
 completion/delivery hooks run on the assembled answer, never on a partial chunk.
 
-Continuation is derived from unresolved attempts in the current segment and
+Continuation is derived from unresolved attempts in the current turn and
 survives daemon restarts, preemption, and compaction. Saved response text is kept
 outside the compactor's source history and reinjected exactly, subject to actual
 context counting and output reservation. Incomplete tool calls are never executed;
@@ -647,7 +647,7 @@ operation also exposes this behavior to authenticated HTTP clients.
 ### Measured run context usage
 
 Run details include a nullable `contextUsage` snapshot: inputTokens, outputTokens,
-capacityTokens, measuredAt and segment. Prompt preparation records the actual
+capacityTokens, measuredAt and turnID. Prompt preparation records the actual
 templated token count including tool definitions, system/skill instructions and
 retained context; accepted compaction replaces it with the reduced prompt count.
 Generation completion records that inference's reported input/output usage, not
@@ -729,23 +729,33 @@ Instant inference uses `instant create`, `instant get`, and `instant delete`. De
 
 There is no manual annotation/review workflow or public hook retry command. Run outcomes retain execution, validation and delivery evidence; `needsAttention`, status `issues` and `issuesTruncated` are derived rather than manually acknowledged.
 
-## Run records (schema 43)
+## Run records (schema 46)
 
-- One state.json per run remains the durable source. No transcript split or
-  separate run database is introduced. Stored version is 3.
-- `execution` replaces state, held, pauseReason and error at the top level:
-  queued/running/completed carry only state; failed/cancelled/timedOut may carry
-  error; paused carries reason and resume (`automatic` or `manual`), optional
-  error, and limit evidence when reason is storage_limit. Context/runtime/storage
-  errors and manualStop require manual resumption.
-- Messages, attempts and events remain separate evidence collections. Every event
-  has eventID, sequence, timestamp, segment and a validated type-specific payload.
-  Sequence remains the transcript cursor; stable IDs link receipts to events.
-- Receipts have stable IDs and retryOfReceiptID links, start/finish timestamps,
-  status and diagnostics. Historical missing timestamps and ambiguous hook-result
-  receipt links remain null. Internal explicit retry logic uses IDs; no public
-  hook retry command is restored.
-- Configured tools and all run tool snapshots use the same typed executable schema.
-  Persistence validates event/receipt uniqueness and reference integrity.
-- The scheduler retains a mutable internal working representation until an atomic
-  commit; CLI/HTTP and files expose only the discriminated execution record.
+- Each run owns only `<home>/runs/<runID>/state.json` (stored format 4).
+  Metadata, messages and events are replaced in one atomic file write using the
+  existing shared storage queue. There is no journal, transcript partition or
+  cross-file transaction. Unsaved progress may be lost when the daemon crashes.
+- Metadata contains version, runID, revision, createdAt, updatedAt, turnID,
+  configurationID, execution, activeMs and optional inFlight references.
+  `turnID` is the originating user message UUID, replacing the numeric segment.
+  `revision` still provides optimistic concurrency for administrative mutations.
+- Configuration snapshots, generation checkpoints, queued turns, compaction,
+  output validation, eval grading and hook invocations live in events. Messages
+  hold conversation content and per-message attachments. Queued messages do not
+  enter model context until activated. `configurationID` selects the snapshotted
+  agent, tools and skills from configuration events in this same file.
+- Result text is derived from the accepted completion's assistant message; it is
+  not stored a second time. CLI/API detail and exports expose convenient derived
+  fields, including result, attempts, pending inputs and delivery receipts.
+- Generation events update their partial checkpoint instead of adding an event
+  for every token. Lifecycle history retains stable event UUIDs and transcript
+  sequence cursors. Hook invocations preserve stable receipt IDs and uncertain
+  outcomes, not just success/failure messages.
+- Tool start and hook start are saved before external execution. Restart skips
+  calls with recorded results and holds unresolved started calls for review;
+  it does not guess whether their side effects happened. Generation resumes from
+  the last saved state, and compaction retains its linked child/checkpoint.
+- Stop the daemon before upgrading existing runs. Preview or apply the explicit
+  offline migration with `node dist/storage/migrate.js --home ABSOLUTE_HOME`
+  and optional `--apply`. Original run directories remain in the reported backup.
+  Normal reads accept only format 4; the migration does not replay tools/hooks.
