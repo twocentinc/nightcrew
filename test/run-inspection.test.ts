@@ -31,7 +31,7 @@ async function fixture(t: import("node:test").TestContext) {
       host: "127.0.0.1",
       port: 6970,
       models: [],
-      slots: [],
+
       hooks: [],
     }),
   );
@@ -72,7 +72,7 @@ async function fixture(t: import("node:test").TestContext) {
           systemPrompt: "Test",
           mode: "single-turn",
           modelID: "test",
-          slotID: "background",
+          executionClass: "background",
           skillIDs: [],
           toolIDs: [],
           timeoutMs: 1000,
@@ -184,23 +184,21 @@ test("run inspection pages are stable, filtered, replayable and query-bound", as
   assert.equal(page.items[0].sequence, 1);
   assert.ok(page.nextCursor);
   const search = await manage(service, {
-    command: "runs search",
-    resourceID: "attachment needle",
-    request: { state: "queued" },
+    command: "runs list",
+    request: { query: "attachment needle", state: "queued" },
   });
   assert.deepEqual(
     search.items.map((x?: any) => x.runID),
     ["c"],
   );
   const result = await manage(service, {
-    command: "runs search",
-    resourceID: "result needle",
-    request: { limit: 1 },
+    command: "runs list",
+    request: { query: "result needle", limit: 1 },
   });
   assert.equal(result.items[0].eventSequence, 2);
   assert.ok(result.nextCursor);
   await assert.rejects(
-    manage(service, { command: "runs search", resourceID: "", request: {} }),
+    manage(service, { command: "runs list", request: { query: "" } }),
   );
 });
 test("exports preserve committed source, refuse overwrite, verify checksums and work offline", async (t) => {

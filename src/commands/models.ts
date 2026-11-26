@@ -2,7 +2,7 @@ import { z } from "zod";
 import { Service, fail } from "../engine/service.js";
 import { id, resultSchema, revision } from "../schemas/common.js";
 import { configMutation } from "../schemas/config.js";
-import { modelSchema, slotSchema } from "../schemas/model.js";
+import { modelSchema } from "../schemas/model.js";
 import { capabilities, capabilitiesSchema } from "../server/diagnostics.js";
 import { createOperations } from "../utils/commands/definition.js";
 import {
@@ -25,7 +25,6 @@ export const operationInputs = {
   }),
   "models create": z.strictObject({
     model: modelSchema,
-    slots: z.array(slotSchema).max(32).default([]),
   }),
   "models update": z.strictObject({
     expectedRevision: revision,
@@ -34,6 +33,7 @@ export const operationInputs = {
         .unwrap()
         .optional(),
       priority: modelSchema.shape.priority.unwrap().optional(),
+      contextTokens: modelSchema.shape.contextTokens.unwrap().optional(),
       slotSnapshots: modelSchema.shape.slotSnapshots.unwrap().optional(),
     }),
   }),
@@ -75,7 +75,7 @@ export const operations = {
     "required",
     false,
     "daemon",
-    ["prompt"],
+    { prompt: { field: "prompt" } },
   ),
   "models unload": defineOperation(
     "models unload",
@@ -89,7 +89,7 @@ export const operations = {
     "optional",
     false,
     "daemon",
-    ["all"],
+    { all: { field: "all" } },
   ),
   "models list": defineOperation(
     "models list",
@@ -165,15 +165,11 @@ const resourceActions: ResourceActions = {
       if (next.config.models.some((m) => m.modelID === model.modelID))
         fail("already_exists", 409);
       next.config.models.push(model);
-      const slots = z.array(slotSchema).parse(value.slots);
-      if (slots.some((s) => s.modelID !== model.modelID)) fail("invalid_slot");
-      next.config.slots.push(...slots);
     } else {
       const index = next.config.models.findIndex((m) => m.modelID === name);
       if (index < 0) fail("not_found", 404);
       if (action === "delete") {
         next.config.models.splice(index, 1);
-        next.config.slots = next.config.slots.filter((s) => s.modelID !== name);
       } else
         next.config.models[index] = modelSchema.parse({
           ...next.config.models[index],

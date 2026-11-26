@@ -6,7 +6,6 @@ import { handle as instant } from "../../commands/instant.js";
 import { handle as models } from "../../commands/models.js";
 import type { ManagementInput } from "./resources.js";
 import { handle as runs } from "../../commands/runs.js";
-import { handle as scheduler } from "../../commands/scheduler.js";
 import { handle as skills } from "../../commands/skills.js";
 import { handle as statusCommands } from "../../commands/status.js";
 import { handle as tools } from "../../commands/tools.js";
@@ -28,7 +27,6 @@ const handlers: Record<
   models: models,
   skills: skills,
   tools: tools,
-  scheduler: scheduler,
 };
 export function manage(
   service: Service,

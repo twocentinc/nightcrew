@@ -37,7 +37,7 @@ export async function initializeHome(
     );
   const token = randomBytes(32).toString("base64url");
   const store = storeSchema.parse({
-    version: 2,
+    version: 3,
     config: {
       interactionCooldownMs: 300000,
       ...settings,

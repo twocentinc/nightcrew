@@ -6,7 +6,6 @@ import { operationInputs as init } from "../../commands/init.js";
 import { operationInputs as instant } from "../../commands/instant.js";
 import { operationInputs as models } from "../../commands/models.js";
 import { operationInputs as runs } from "../../commands/runs.js";
-import { operationInputs as scheduler } from "../../commands/scheduler.js";
 import { operationInputs as skills } from "../../commands/skills.js";
 import { operationInputs as statusCommands } from "../../commands/status.js";
 import { operationInputs as tools } from "../../commands/tools.js";
@@ -24,6 +23,5 @@ export const operationInputs = {
   ...models,
   ...skills,
   ...tools,
-  ...scheduler,
 };
 export const requestSchemas: Record<string, z.ZodType> = operationInputs;

@@ -60,9 +60,6 @@ export class Dispatch {
       task: Promise<void>;
     }
   >();
-  private get active() {
-    return this.activities.values().next().value;
-  }
   private get settling() {
     return Promise.all([...this.activities.values()].map((a) => a.task));
   }
@@ -80,7 +77,9 @@ export class Dispatch {
     return {
       presence: this.presence,
       cooldownUntil: this.ports.storage.store.cooldownUntil,
-      activeRunID: this.active?.kind === "run" ? this.active.id : null,
+      active: [...this.activities.values()].map(
+        ({ id, kind, slotID, modelID }) => ({ id, kind, slotID, modelID }),
+      ),
       queue: [
         ...Array.from(this.ports.storage.summaries.values())
           .filter((x) => !terminal(x.state))
@@ -100,19 +99,21 @@ export class Dispatch {
           })),
       ],
       models: this.ports.runtime.status(),
-      slots: executionSlots(this.ports.storage.store.config).map((s) => ({
-        ...s,
-        busy: [...this.activities.values()].some((a) => a.slotID === s.slotID),
-        conversationID:
-          this.active?.kind === "chat"
-            ? (this.ports.instant.chats.get(this.active.id)?.input
-                .conversationID ?? null)
-            : null,
-      })),
+      slots: executionSlots(this.ports.storage.store.config).map((slot) => {
+        const activity = [...this.activities.values()].find(
+          (a) => a.slotID === slot.slotID,
+        );
+        return {
+          ...slot,
+          busy: !!activity,
+          conversationID:
+            activity?.kind === "chat"
+              ? (this.ports.instant.chats.get(activity.id)?.input
+                  .conversationID ?? null)
+              : null,
+        };
+      }),
     };
-  }
-  private activeSlot() {
-    return this.active?.slotID;
   }
   interruptBackground(reason: string) {
     for (const a of this.activities.values())
@@ -126,7 +127,7 @@ export class Dispatch {
     return (
       !!run &&
       run.agent.modelID === instantModelID(this.ports.storage.store.config) &&
-      (run.interactive ?? this.instantSlot(run.agent.slotID))
+      (run.interactive ?? run.agent.executionClass === "instant")
     );
   }
   capacity() {
@@ -268,9 +269,6 @@ export class Dispatch {
   schedulerStatus() {
     return {
       instantModelID: instantModelID(this.ports.storage.store.config),
-      active: [...this.activities.values()].map(
-        ({ id, kind, slotID, modelID }) => ({ id, kind, slotID, modelID }),
-      ),
       residentModelID: this.residentModelID,
       lastDecision: this.lastDecision,
     };
@@ -388,11 +386,6 @@ export class Dispatch {
     } finally {
       this.pumping = false;
     }
-  }
-  instantSlot(slotID: string | undefined) {
-    return executionSlots(this.ports.storage.store.config).some(
-      (s) => s.slotID === slotID && s.instant,
-    );
   }
   async recordInteraction() {
     const next = structuredClone(this.ports.storage.store);

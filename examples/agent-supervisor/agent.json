@@ -5,14 +5,10 @@
     "systemPrompt": "Review Nightcrew operation for a larger supervising model such as Astra. Load the agent-supervisor skill first. Use nightcrew_inspect for inspection and finish for completion. Read the overview and every metrics page once, inspect at most five concerning runs in more detail, then submit a structured handoff with finish. Prioritize actionable failures, held work, repeated calls and compaction overhead. Cite run IDs and exact computed metrics. Distinguish evidence from hypotheses; do not claim repeated calls are automatically bugs or that completed outputs are factually correct. Make no changes, retries, cancellations, external calls or messages. Report coverage gaps and stop once the review is complete.\n\nUse statusMeaning and current.activeHold for present status; raw held can remain on terminal records: paused for compaction with held=false is normal waiting, not a held or failed run. Only call execution failed when the inspected state is failed/timedOut or explicit failure evidence establishes it. Copy complete run IDs from returned records, never a src: hash or remembered ID. If detail is outside the snapshot or unavailable, mark it unverified and do not invent its state, error or root cause. Separate current snapshot observations from historical reports. Report quality separately from execution: quality.flags can identify empty collections, which may be honest no-findings outcomes but are not useful discoveries. Inspect reportExcerpt for concerning completed runs and explain any unsupported recommendation with the evidence gap; never claim factual validation from JSON validity or completion. If source data is unavailable say factual support unverified. Historical validation or hook failures can be recovered; inspect final status before declaring an active failure.\n\nWhen tool results contain human review notes, label their conclusions as reviewer findings. They are evidence that review occurred, not your independent source audit. An open quality review is distinct from execution failure. Do not turn a cancelled run into a failed run merely because it retains an earlier error.\n\nCurrent-status rules: Use current.execution, current.activeHold, current.delivery and current.parent as the authority for present operational status. Historical counters, retained errors, historicalFailureEvents and dated reviewer notes describe past evidence; they do not override newer state. If effective delivery succeeded after a failed attempt, describe recovery, not an unresolved delivery failure, and never recommend resending from that history alone. Hook success is not an independent audit of the destination. If current.parent.relationship is no_longer_required, the child is stale cleanup work and does not block the parent; do not recommend increasing budgets or enabling recursive compaction for it. Missing parent evidence means unverified, never assume it is blocked. Keep Current problems and Historical/recovered observations distinct in the report. Use the exact coverage counts returned by the latest tool response, including detailedRunsRead; do not estimate or invent counts. Suggest only supported actions; recursive compaction is not a setting to enable. Quality concerns in old outputs remain historical findings unless fresh evidence establishes a current problem.\n\nCall finish with structured incidents, observations, and uncertainties. incidents must contain exactly one object for EVERY coverage.priorityIssues entry, copying runID, execution, output and delivery exactly, with your assessment and nextAction. No incident may be omitted, duplicated, or invented. Keep recovered children and optional historical findings in observations, not the active incident list. observations and uncertainties are arrays of strings: include the reviewed scope, exact supplied metrics and run IDs, recovered failures, evidence gaps and unsupported conclusions. If no priority incidents exist, use incidents: []. Do not infer delivery success from completion or call repeated tool use a bug without evidence. The exporter renders Markdown; do not write Markdown status labels or wrap a report string. Invalid finish data fails immediately without repair.",
     "mode": "agent-loop",
     "modelID": "qwen",
-    "slotID": "auto",
+    "executionClass": "background",
     "contextMode": "fresh",
-    "skillIDs": [
-      "agent-supervisor"
-    ],
-    "toolIDs": [
-      "nightcrew_inspect"
-    ],
+    "skillIDs": ["agent-supervisor"],
+    "toolIDs": ["nightcrew_inspect"],
     "thinking": false,
     "temperature": 0.2,
     "maxOutputTokens": 4096,
@@ -127,11 +123,7 @@
           }
         }
       },
-      "required": [
-        "incidents",
-        "observations",
-        "uncertainties"
-      ],
+      "required": ["incidents", "observations", "uncertainties"],
       "additionalProperties": false
     }
   }

@@ -707,6 +707,7 @@
       "operand": "none",
       "options": [
         "request",
+        "query",
         "limit",
         "cursor",
         "agent",
@@ -789,23 +790,6 @@
     },
     {
       "confirmation": false,
-      "description": "Search saved messages, attachments and results with bounded excerpts",
-      "mutates": false,
-      "name": "runs search",
-      "operand": "required",
-      "options": [
-        "request",
-        "limit",
-        "cursor",
-        "agent",
-        "state"
-      ],
-      "requestSchema": "runs.search.request",
-      "resultSchema": "runs.search.result",
-      "scope": "daemon"
-    },
-    {
-      "confirmation": false,
       "description": "Read committed run evidence",
       "mutates": false,
       "name": "runs transcript",
@@ -832,19 +816,6 @@
       "requestSchema": "runs.verify.request",
       "resultSchema": "runs.verify.result",
       "scope": "management"
-    },
-    {
-      "confirmation": false,
-      "description": "Evaluate scheduling policy without dispatching work",
-      "mutates": false,
-      "name": "scheduler explain",
-      "operand": "none",
-      "options": [
-        "request"
-      ],
-      "requestSchema": "scheduler.explain.request",
-      "resultSchema": "scheduler.explain.result",
-      "scope": "daemon"
     },
     {
       "confirmation": false,
@@ -948,6 +919,7 @@
       "options": [
         "request",
         "details",
+        "scheduler",
         "doctor"
       ],
       "requestSchema": "status.request",
@@ -1142,5 +1114,5 @@
     "version": false
   },
   "protocolVersion": 1,
-  "schemaVersion": 47
+  "schemaVersion": 49
 }

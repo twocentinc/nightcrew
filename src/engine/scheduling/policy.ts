@@ -6,7 +6,6 @@ import { runExecutable } from "../execution/process.js";
 export const schedulerSchema = z.strictObject({
   instantModelID: z.string().min(1).max(128).nullable().default(null),
   maxConcurrent: z.number().int().min(1).max(16).default(1),
-  contextTokens: z.number().int().min(1024).max(262144).default(4096),
   snapshotBudgetMB: z.number().int().min(0).max(1048576).default(1024),
   minResidencyMs: z.number().int().min(0).max(3600000).default(60000),
   maxWaitMs: z.number().int().min(1000).max(86400000).default(900000),
@@ -76,50 +75,28 @@ export const policyResultSchema = z.object({
 export const schedulerStatusSchema = z.object({
   instantModelID: z.string().nullable(),
   residentModelID: z.string().nullable(),
-  active: z.array(
-    z.object({
-      id: z.string(),
-      kind: z.enum(["run", "chat"]),
-      slotID: z.string(),
-      modelID: z.string(),
-    }),
-  ),
   lastDecision: policyResultSchema.extend({ at: z.string() }).nullable(),
 });
 export type Plan = z.infer<typeof planSchema>;
 export function instantModelID(config: Config): string | null {
   return (
-    config.scheduler?.instantModelID ??
-    config.slots.find(
-      (s) =>
-        s.instant &&
-        config.models.some((m) => m.modelID === s.modelID && m.kind === "chat"),
-    )?.modelID ??
+    config.scheduler.instantModelID ??
     config.models.find((m) => m.kind === "chat")?.modelID ??
     null
   );
 }
 export function executionSlots(config: Config) {
-  if (!config.scheduler) return config.slots;
   return config.models.flatMap((model) => {
-    const legacy = config.slots.filter((s) => s.modelID === model.modelID);
-    const contextTokens =
-      legacy[0]?.contextTokens ?? config.scheduler.contextTokens;
     const instant = model.modelID === instantModelID(config);
-    const instantIndex = legacy.find((s) => s.instant)?.index ?? 0;
-    const count = Math.max(
-      legacy.length,
+    const count =
       (model.kind === "audio" ? 1 : config.scheduler.maxConcurrent) +
-        Number(instant),
-    );
+      Number(instant);
     return Array.from({ length: count }, (_, index) => ({
-      ...(legacy[index] ?? {
-        slotID: `pool-${createHash("sha256").update(model.modelID).digest("hex").slice(0, 16)}-${index}`,
-        modelID: model.modelID,
-        index,
-        contextTokens,
-      }),
-      instant: instant && index === instantIndex,
+      slotID: `pool-${createHash("sha256").update(model.modelID).digest("hex").slice(0, 16)}-${index}`,
+      modelID: model.modelID,
+      index,
+      contextTokens: model.contextTokens,
+      instant: instant && index === 0,
     }));
   });
 }

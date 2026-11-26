@@ -179,11 +179,7 @@ export class Instant {
       }
       const slot =
         executionSlots(this.ports.storage.store.config).find(
-          (s) =>
-            (s.slotID === input.slotID ||
-              (input.slotID === "instant" && s.instant)) &&
-            s.instant &&
-            s.modelID === input.modelID,
+          (s) => s.instant && s.modelID === input.modelID,
         ) ?? fail("invalid_slot");
       if (
         this.ports.storage.store.config.models.find(

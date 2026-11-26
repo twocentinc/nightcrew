@@ -1,3 +1,4 @@
+import type { OptionBindings } from "./definition.js";
 import path from "node:path";
 import { z } from "zod";
 import {
@@ -45,6 +46,7 @@ export type Definition = {
   mutates: boolean;
   confirmation: boolean;
   options: string[];
+  bindings: OptionBindings;
   request: z.ZodType;
   result: z.ZodType;
   handler: (context: CommandContext) => Promise<unknown>;
@@ -75,6 +77,7 @@ function define(
     confirmation?: boolean;
     options?: string[];
     request?: z.ZodType;
+    bindings?: OptionBindings;
   } = {},
 ) {
   const request = extras.request ?? requestSchemas[name] ?? empty;
@@ -91,6 +94,7 @@ function define(
       ...(extras.confirmation ? ["yes"] : []),
       ...(extras.options ?? []),
     ],
+    bindings: extras.bindings ?? {},
     request,
     result,
     handler,
@@ -198,6 +202,7 @@ for (const operation of operationDefinitions) {
     (c) => management(c, name, scope),
     {
       confirmation,
+      bindings: operation.bindings,
       options: [
         ...options,
         ...(["agents run", "evals run", "instant create"].includes(name)
@@ -215,7 +220,7 @@ export const getCommand = (name: string) =>
   definitions.find((d) => d.name === name);
 export const commandCatalog = () =>
   definitions
-    .map(({ handler, request, result, ...d }) => ({
+    .map(({ handler, request, result, bindings, ...d }) => ({
       ...d,
       requestSchema: d.name.replaceAll(" ", ".") + ".request",
       resultSchema: d.name.replaceAll(" ", ".") + ".result",
@@ -228,7 +233,6 @@ export const advancedCommands = new Set([
   "config token rotate",
   "presence sample",
   "config reload",
-  "scheduler explain",
 ]);
 export function help(scope = "", advanced = false) {
   const catalog = commandCatalog().filter((d) =>

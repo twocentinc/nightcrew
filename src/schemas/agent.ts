@@ -37,7 +37,7 @@ export const agentSchema = z.strictObject({
   systemPrompt: z.string().max(64000),
   mode: z.enum(["single-turn", "agent-loop"]),
   modelID: id,
-  slotID: id.default("auto"),
+  executionClass: z.enum(["background", "instant"]).default("background"),
   skillIDs: z.array(id).max(40),
   toolIDs: z.array(toolID).max(64),
   thinking: z.boolean().default(true),

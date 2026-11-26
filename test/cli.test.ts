@@ -71,7 +71,11 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
     instant: true,
   };
   assert.equal(
-    (await call(home, ["models", "create"], { model, slots: [slot] })).ok,
+    (
+      await call(home, ["models", "create"], {
+        model: { ...model, contextTokens: slot.contextTokens },
+      })
+    ).ok,
     true,
   );
   assert.equal(
@@ -115,7 +119,7 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
     systemPrompt: "Review.",
     mode: "agent-loop",
     modelID: "qwen",
-    slotID: "instant",
+    executionClass: "instant",
     skillIDs: ["review"],
     toolIDs: ["inspect"],
     enabled: true,
@@ -389,7 +393,7 @@ test("CLI-only daemon serves local CRUD without an HTTP listener and shuts down 
   assert.deepEqual(listed.result, { items: [], nextCursor: null });
   const searched = await call(
     home,
-    ["runs", "search", "hello world", "--limit", "1"],
+    ["runs", "list", "--query", "hello world", "--limit", "1"],
     undefined,
     env,
   );
@@ -708,4 +712,97 @@ test("tool schema edits invalidate cached argument validation", async () => {
   assert.deepEqual(await executeExternalTool(tool, { value: 42 }, signal), {
     value: 42,
   });
+});
+
+test("declarative eval flags decode files, map UUIDs and reject duplicate request fields", async (t) => {
+  const home = await mkdtemp(path.join(tmpdir(), "nc-cli-bindings-"));
+  t.after(() => rm(home, { recursive: true, force: true }));
+  assert.equal((await call(home, ["init"])).ok, true);
+  const file = path.join(home, "input.json"),
+    output = path.join(home, "output.json");
+  await writeFile(
+    file,
+    JSON.stringify({
+      evalID: "flags",
+      agentID: "worker",
+      messages: [{ role: "user", content: "hello" }],
+    }),
+  );
+  let result = await call(home, ["evals", "create", "--file", file]);
+  assert.equal(result.ok, true, JSON.stringify(result.error));
+  await writeFile(file, JSON.stringify({ page: 2 }));
+  await writeFile(output, JSON.stringify({ rows: [1, 2] }));
+  result = await call(home, [
+    "evals",
+    "tools",
+    "set",
+    "flags",
+    "--tool",
+    "read",
+    "--input",
+    file,
+    "--output",
+    output,
+  ]);
+  assert.equal(result.ok, true, JSON.stringify(result.error));
+  assert.deepEqual(result.result.item.definition.tools, [
+    { tool: "read", input: { page: 2 }, output: { rows: [1, 2] } },
+  ]);
+  assert.equal(
+    (
+      await call(
+        home,
+        [
+          "evals",
+          "tools",
+          "set",
+          "flags",
+          "--tool",
+          "read",
+          "--output",
+          output,
+        ],
+        { tool: "duplicate" },
+      )
+    ).ok,
+    false,
+  );
+  await writeFile(
+    file,
+    JSON.stringify({ role: "user", content: "replacement" }),
+  );
+  result = await call(home, [
+    "evals",
+    "transcript",
+    "set",
+    "flags",
+    "--file",
+    file,
+  ]);
+  assert.equal(result.ok, true, JSON.stringify(result.error));
+  const id = result.result.item.definition.messages[0].messageID;
+  assert.equal(result.result.item.definition.messages.length, 1);
+  await writeFile(file, JSON.stringify({ role: "user", content: "updated" }));
+  result = await call(home, [
+    "evals",
+    "transcript",
+    "update",
+    "flags",
+    "--message",
+    id,
+    "--file",
+    file,
+  ]);
+  assert.equal(result.ok, true, JSON.stringify(result.error));
+  assert.equal(result.result.item.definition.messages[0].content, "updated");
+  result = await call(home, [
+    "evals",
+    "transcript",
+    "delete",
+    "flags",
+    "--message",
+    id,
+  ]);
+  assert.equal(result.ok, true, JSON.stringify(result.error));
+  assert.deepEqual(result.result.item.definition.messages, []);
 });

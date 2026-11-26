@@ -43,7 +43,6 @@ export const chatInputSchema = z.strictObject({
   skillIDs: z.array(id).max(40).default([]),
   conversationID: id,
   modelID: id.optional(),
-  slotID: id.default("instant"),
   messages: z.array(messageSchema).min(1).max(1000),
   tools: z.array(functionToolSchema).max(64).default([]),
   timeoutMs: z.number().int().min(1000).max(600000).default(120000),

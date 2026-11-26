@@ -9,7 +9,6 @@ import { operations as instant } from "../../commands/instant.js";
 import { type ManagementInput } from "./management.js";
 import { operations as models } from "../../commands/models.js";
 import { operations as runs } from "../../commands/runs.js";
-import { operations as scheduler } from "../../commands/scheduler.js";
 import { operations as skills } from "../../commands/skills.js";
 import { operations as statusCommands } from "../../commands/status.js";
 import { operations as tools } from "../../commands/tools.js";
@@ -27,7 +26,6 @@ export const operations = {
   ...models,
   ...skills,
   ...tools,
-  ...scheduler,
 };
 export const operationDefinitions = Object.values(operations);
 export const getOperation = (name: string) =>

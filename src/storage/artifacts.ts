@@ -18,6 +18,7 @@ import { invalidInput, NightcrewError } from "../engine/protocol.js";
 import { type Service } from "../engine/service.js";
 import { agentSchema, skillSchema } from "../schemas/agent.js";
 import {
+  validateTranscript,
   encodeRun,
   decodeRun,
   runProjectionSchema,
@@ -89,30 +90,7 @@ function validate(run: Run, runID: string) {
       })),
     ].map((m) => [m.messageID, m]),
   );
-  if (messages.size !== run.messages.length + run.pendingInputs.length)
-    throw Error("Duplicate message UUID");
-  const calls = new Set<string>(),
-    results = new Set<string>();
-  for (const message of run.messages) {
-    if (message.attachments.length && message.role !== "user")
-      throw Error("Attachments must belong to user messages");
-    if (message.toolCalls.length && message.role !== "assistant")
-      throw Error("Invalid tool call role");
-    for (const call of message.toolCalls) {
-      if (calls.has(call.callID)) throw Error("Duplicate tool call");
-      calls.add(call.callID);
-    }
-    if (message.role === "tool") {
-      if (
-        !message.toolCallID ||
-        !calls.has(message.toolCallID) ||
-        results.has(message.toolCallID)
-      )
-        throw Error("Invalid tool result reference");
-      results.add(message.toolCallID);
-    } else if (message.toolCallID)
-      throw Error("Unexpected tool result reference");
-  }
+  validateTranscript(run);
   const attemptIDs = new Set<string>();
   for (const attempt of run.attempts) {
     if (
@@ -138,9 +116,8 @@ function validate(run: Run, runID: string) {
       throw Error("Attempt has no transcript event");
   }
   const referenced = new Set<string>();
-  for (const [i, event] of run.events.entries()) {
+  for (const event of run.events) {
     if (
-      event.sequence !== i + 1 ||
       !run.messages.some(
         (m) => m.messageID === event.turnID && m.role === "user",
       )

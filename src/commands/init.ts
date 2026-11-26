@@ -13,7 +13,6 @@ export const operationInputs = {
       interactionCooldownMs:
         configSchema.shape.interactionCooldownMs.default(300000),
       models: configSchema.shape.models.default([]),
-      slots: configSchema.shape.slots.default([]),
       hooks: configSchema.shape.hooks.default([]),
     }),
 };

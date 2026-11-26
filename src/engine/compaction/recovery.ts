@@ -107,7 +107,9 @@ export class CompactionRecovery {
             const interactiveCompaction =
               this.ports.dependencies.dispatch.runInteractive(parent) &&
               agent.modelID === parent.agent.modelID;
-            agent.slotID = interactiveCompaction ? parent.agent.slotID : "auto";
+            agent.executionClass = interactiveCompaction
+              ? "instant"
+              : "background";
             // Thinking shares the generation budget with the visible summary.
             // Keep its configured allowance; context admission still checks that
             // the complete input and reserved output fit the model slot.

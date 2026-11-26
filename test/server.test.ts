@@ -18,13 +18,12 @@ const message = (content = "hello") => ({
 const chat = (m = message()) => ({
   conversationID: randomUUID(),
   modelID: "qwen",
-  slotID: "instant",
   messages: [{ ...m, role: "user" as const, toolCalls: [], toolCallID: null }],
 });
 async function fixture(t: import("node:test").TestContext, generate?: any) {
   const home = await mkdtemp(path.join(tmpdir(), "nightcrew-test-"));
   const initial = {
-    version: 2,
+    version: 3,
     config: {
       revision: 1,
       host: "127.0.0.1",
@@ -33,6 +32,7 @@ async function fixture(t: import("node:test").TestContext, generate?: any) {
       rootTokenHash: tokenHash(token),
       models: [
         {
+          contextTokens: 1024,
           modelID: "qwen",
           kind: "chat" as const,
           weightsPath: "/unused/test.gguf",
@@ -40,22 +40,7 @@ async function fixture(t: import("node:test").TestContext, generate?: any) {
           idleUnloadMs: 1000,
         },
       ],
-      slots: [
-        {
-          slotID: "background",
-          modelID: "qwen",
-          index: 0,
-          contextTokens: 1024,
-          instant: false,
-        },
-        {
-          slotID: "instant",
-          modelID: "qwen",
-          index: 1,
-          contextTokens: 1024,
-          instant: true,
-        },
-      ],
+
       hooks: [],
     },
     agents: [],
@@ -117,7 +102,7 @@ async function fixture(t: import("node:test").TestContext, generate?: any) {
     systemPrompt: "Research.",
     mode: "single-turn",
     modelID: "qwen",
-    slotID: "background",
+    executionClass: "background",
     skillIDs: [],
     toolIDs: [],
     enabled: true,
@@ -228,10 +213,7 @@ test("durable UUID deduplication, dry runs, per-message attachments and restart 
       .replayed,
     true,
   );
-  assert.equal(
-    (await q("GET", "/v1/runs/search?query=needle")).body.items.length,
-    1,
-  );
+  assert.equal((await q("GET", "/v1/runs?query=needle")).body.items.length, 1);
   assert.equal(
     (await q("POST", `/v1/runs/${first.body.runID}/cancel`, {})).body.status,
     "cancelled",
@@ -265,8 +247,8 @@ test("instant work waits for compute release before starting; managed work pause
   const calls: any[] = [];
   let released = false;
   const f = await fixture(t, async (input?: any, signal?: any) => {
-    calls.push(input.slotID);
-    if (input.slotID === "background")
+    calls.push(input.slotID.endsWith("-1") ? "background" : "instant");
+    if (input.slotID.endsWith("-1"))
       await new Promise<void>((resolve) =>
         signal.addEventListener(
           "abort",
@@ -356,7 +338,7 @@ test("completed replies preserve snapshots, attachments and stable transcript cu
   assert.equal(detail.turnID, followup.messageID);
   assert.equal(detail.agent.systemPrompt, "Research.");
   assert.equal(
-    (await q("GET", "/v1/runs/search?query=searchable")).body.items.length,
+    (await q("GET", "/v1/runs?query=searchable")).body.items.length,
     1,
   );
   const page = (await q("GET", `/v1/runs/${first.runID}/transcript?limit=1`))
@@ -452,7 +434,7 @@ test("managed llama router provisions from PATH and parses streamed completions"
   await writeFile(weights, "test");
   await writeFile(
     binary,
-    `#!${process.execPath}\nconst http=require('node:http');if(process.argv.includes('--help')){console.log('--models-preset --parallel --slots --kv-unified-per-slot');process.exit(0);}const port=Number(process.argv[process.argv.indexOf('--port')+1]);const server=http.createServer((req,res)=>{if(req.url==='/health'){res.end('{}');return;}if(req.url.startsWith('/slots')){res.end('[{"is_processing":false}]');return;}let body='';req.on('data',c=>body+=c);req.on('end',()=>{const input=JSON.parse(body);if(input.id_slot!==1||input.model!=='qwen'||input.chat_template_kwargs?.enable_thinking!==false||input.max_tokens!==32||input.top_p!==0.95||input.top_k!==20||input.min_p!==0||input.presence_penalty!==1.5||input.repeat_penalty!==1||input.parallel_tool_calls!==false){res.writeHead(400);res.end();return;}res.setHeader('Content-Type','text/event-stream');res.write('data: '+JSON.stringify({choices:[{index:0,delta:{content:'hello'},finish_reason:null}]})+'\\n\\n');res.write('data: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'stop'}],usage:{prompt_tokens:2,completion_tokens:1}})+'\\n\\n');res.end('data: [DONE]\\n\\n');});});server.listen(port,'127.0.0.1');`,
+    `#!${process.execPath}\nconst http=require('node:http');if(process.argv.includes('--help')){console.log('--models-preset --parallel --slots --kv-unified-per-slot');process.exit(0);}const port=Number(process.argv[process.argv.indexOf('--port')+1]);const server=http.createServer((req,res)=>{if(req.url==='/health'){res.end('{}');return;}if(req.url.startsWith('/slots')){res.end('[{"is_processing":false}]');return;}let body='';req.on('data',c=>body+=c);req.on('end',()=>{const input=JSON.parse(body);if(input.id_slot!==0||input.model!=='qwen'||input.chat_template_kwargs?.enable_thinking!==false||input.max_tokens!==32||input.top_p!==0.95||input.top_k!==20||input.min_p!==0||input.presence_penalty!==1.5||input.repeat_penalty!==1||input.parallel_tool_calls!==false){res.writeHead(400);res.end();return;}res.setHeader('Content-Type','text/event-stream');res.write('data: '+JSON.stringify({choices:[{index:0,delta:{content:'hello'},finish_reason:null}]})+'\\n\\n');res.write('data: '+JSON.stringify({choices:[{index:0,delta:{},finish_reason:'stop'}],usage:{prompt_tokens:2,completion_tokens:1}})+'\\n\\n');res.end('data: [DONE]\\n\\n');});});server.listen(port,'127.0.0.1');`,
   );
   await chmod(binary, 0o700);
   const previous = process.env.PATH;
@@ -461,27 +443,12 @@ test("managed llama router provisions from PATH and parses streamed completions"
     runtimeConfig({
       models: [
         {
+          contextTokens: 1024,
           modelID: "qwen",
           kind: "chat" as const,
           weightsPath: weights,
           projectorPath: null,
           idleUnloadMs: 300000,
-        },
-      ],
-      slots: [
-        {
-          slotID: "background",
-          modelID: "qwen",
-          index: 0,
-          contextTokens: 1024,
-          instant: false,
-        },
-        {
-          slotID: "instant",
-          modelID: "qwen",
-          index: 1,
-          contextTokens: 1024,
-          instant: true,
         },
       ],
     }),
@@ -496,6 +463,7 @@ test("managed llama router provisions from PATH and parses streamed completions"
   const result = await runtime.generate(
     {
       ...chat(),
+      slotID: runtime.config().slots.find((s) => s.instant)!.slotID,
       tools: [],
       thinking: false,
       temperature: 0.7,
@@ -633,7 +601,7 @@ test("custom executable tools run with snapshotted definitions and appear in dis
       await readFile(path.join(f.home, "runs", r.runID, "state.json"), "utf8")
     ).toString(),
   );
-  assert.equal(original.version, 4);
+  assert.equal(original.version, 7);
   assert.equal(
     original.events.find((e: any) => e.type === "configurationChanged").data
       .configuration.tools[0].toolID,
@@ -784,7 +752,7 @@ test("instant agents bypass presence and cooldown, extend cooldown, and preempt 
   let releaseBackground: any;
   let backgroundSignal: any;
   const f = await fixture(t, async (input?: any, signal?: any) => {
-    if (input.slotID === "background") {
+    if (input.slotID.endsWith("-1")) {
       order.push("background-start");
       backgroundSignal = signal;
       await new Promise<any>((resolve) => {
@@ -807,7 +775,7 @@ test("instant agents bypass presence and cooldown, extend cooldown, and preempt 
       systemPrompt: "hello",
       mode: "single-turn",
       modelID: "qwen",
-      slotID: "instant",
+      executionClass: "instant",
       skillIDs: [],
       toolIDs: [],
       thinking: false,
@@ -919,20 +887,12 @@ test("audio adapter sends output settings and the WAV attachment to transcriptio
       runtimeConfig({
         models: [
           {
+            contextTokens: 8192,
             modelID: "audio",
             kind: "audio" as const,
             weightsPath: weights,
             projectorPath: null,
             idleUnloadMs: 300000,
-          },
-        ],
-        slots: [
-          {
-            slotID: "audio",
-            modelID: "audio",
-            index: 0,
-            contextTokens: 8192,
-            instant: false,
           },
         ],
       }),
@@ -946,7 +906,7 @@ test("audio adapter sends output settings and the WAV attachment to transcriptio
   const result = await runtime.generate(
     {
       modelID: "audio",
-      slotID: "audio",
+      slotID: runtime.config().slots[0]!.slotID,
       messages: [
         {
           ...message("transcribe exactly"),
@@ -973,9 +933,7 @@ test("audio adapter sends output settings and the WAV attachment to transcriptio
 
 test("stream parser separates thinking from answers and tool calls across byte chunks", async () => {
   const { LlamaRuntime } = await import("../dist/engine/models/runtime.js");
-  const runtime = new LlamaRuntime(() =>
-    runtimeConfig({ models: [], slots: [] }),
-  );
+  const runtime = new LlamaRuntime(() => runtimeConfig({ models: [] }));
   const chunks: any[] = [
     { reasoning_content: "Check " },
     { reasoning_content: "π first." },
@@ -2004,7 +1962,7 @@ test("instant completion is published only after its cooldown is durable", async
 test("runtime reports loading and unloading until their operations settle", async () => {
   const { LlamaRuntime } = await import("../dist/engine/models/runtime.js");
   const runtime = new LlamaRuntime(() =>
-    runtimeConfig({ models: [{ modelID: "q", kind: "chat" }], slots: [] }),
+    runtimeConfig({ models: [{ modelID: "q", kind: "chat" }] }),
   );
   let releaseLoad: any;
   runtime["server"]["start"] = () =>

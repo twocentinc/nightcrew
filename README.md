@@ -5,7 +5,7 @@
 - Prioritize interactive requests; pause background work until the interaction cooldown expires.
 - Manage everything through a JSON-first CLI or the optional HTTP API.
 - Keep transcripts, configuration and caches in your runtime home, separate from this repository.
-- Current release: **0.46.0**, protocol **1**, schema **47**. See the [compatibility policy](docs/compatibility.md) before upgrading or changing public contracts.
+- Current release: **0.49.0**, protocol **1**, schema **49**. See the [compatibility policy](docs/compatibility.md) before upgrading or changing public contracts.
 
 ## Get started
 
@@ -99,7 +99,7 @@
 - `nightcrew runs list --agent AGENT_ID --state completed --limit 20` — filter runs.
 - `nightcrew runs get RUN_ID` — inspect state, outcome and recovery evidence.
 - `nightcrew runs transcript RUN_ID --tail` — follow committed transcript events.
-- `nightcrew runs search "search phrase" --agent AGENT_ID` — search recorded text.
+- `nightcrew runs list --query "search phrase" --agent AGENT_ID` — search recorded text.
 - `nightcrew runs reply RUN_ID --request turn.json` — add another turn.
 - Add `--wait` to `agents run` or `instant create` to observe completion after submitting once.
 - A wait timeout, Ctrl+C or closed CLI **does not cancel accepted work**. Inspect the returned `acceptedID`; do not resubmit blindly.
@@ -130,7 +130,7 @@
 - Completion refreshes the interaction cooldown; its default is five minutes and is configurable.
 - Only one model is resident at a time. Compatible background agents can run concurrently on separate slots when `maxConcurrent` permits it.
 - Model/agent priority, residency preference and wait aging guide the default scheduler.
-- `nightcrew scheduler explain` inspects its decision without dispatching work.
+- `nightcrew status --scheduler` inspects its decision without dispatching work.
 - An optional executable scheduler hook can propose a plan; Nightcrew still enforces presence, cooldown, capacity and model safety.
 - See [scheduling and triggers](docs/spec.md#scheduling-triggers-and-interactive-work) for configuration and hook details.
 

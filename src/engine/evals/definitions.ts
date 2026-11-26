@@ -79,11 +79,6 @@ export function evaluationAgent(
   const value = agentSchema.parse({
     ...agent,
     ...definition.overrides,
-    slotID:
-      definition.overrides.modelID &&
-      definition.overrides.modelID !== agent.modelID
-        ? "auto"
-        : agent.slotID,
   });
   validateConfig({
     ...store,

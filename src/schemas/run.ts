@@ -197,7 +197,14 @@ export const statusSchema = z.object({
     diagnostic: z.string().nullable(),
   }),
   cooldownUntil: timestamp.nullable(),
-  activeRunID: id.nullable(),
+  active: z.array(
+    z.object({
+      id: z.string(),
+      kind: z.enum(["run", "chat"]),
+      slotID: z.string(),
+      modelID: z.string(),
+    }),
+  ),
   queue: z.array(
     z.object({
       resourceID: id,
@@ -289,20 +296,47 @@ function validateRunLinks(run: StoredRun) {
 
 /** Metadata stored alongside messages and events in the single run document. */
 export const runStateRecordSchema = z.strictObject({
-  version: z.literal(4),
+  version: z.literal(7),
   runID: id,
   revision: z.number().int().positive(),
   createdAt: timestamp,
   updatedAt: timestamp,
   turnID: uuid,
-  configurationID: z.string().regex(/^[a-f0-9]{64}$/),
   execution: executionSchema,
   activeMs: z.number().int().nonnegative(),
-  inFlight: z
-    .strictObject({
-      generationID: uuid.optional(),
-      compactionID: uuid.optional(),
-    })
-    .optional(),
 });
 export type RunStateRecord = z.infer<typeof runStateRecordSchema>;
+
+/** Integrity rules shared by persisted reads and exported-bundle verification. */
+export function validateTranscript(
+  run: Pick<StoredRun, "messages" | "pendingInputs" | "events">,
+) {
+  const ids = [...run.messages, ...run.pendingInputs.map((p) => p.message)].map(
+    (m) => m.messageID,
+  );
+  if (new Set(ids).size !== ids.length)
+    throw Error("Duplicate transcript message");
+  if (run.events.some((event, index) => event.sequence !== index + 1))
+    throw Error("Invalid event order");
+  const calls = new Set<string>(),
+    results = new Set<string>();
+  for (const message of run.messages) {
+    if (message.attachments.length && message.role !== "user")
+      throw Error("Invalid attachments");
+    if (message.toolCalls.length && message.role !== "assistant")
+      throw Error("Invalid tool calls");
+    for (const call of message.toolCalls) {
+      if (calls.has(call.callID)) throw Error("Duplicate tool call");
+      calls.add(call.callID);
+    }
+    if (message.role === "tool") {
+      if (
+        !message.toolCallID ||
+        !calls.has(message.toolCallID) ||
+        results.has(message.toolCallID)
+      )
+        throw Error("Invalid tool result reference");
+      results.add(message.toolCallID);
+    } else if (message.toolCallID) throw Error("Invalid tool result reference");
+  }
+}

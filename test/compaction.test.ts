@@ -42,10 +42,11 @@ async function fixture(
       host: "127.0.0.1",
       port: 6970,
       interactionCooldownMs: 0,
-      scheduler: { contextTokens: threshold > 2048 ? 65536 : 2048 },
+
       models: [
         {
           modelID: "q",
+          contextTokens: threshold > 2048 ? 65536 : 2048,
           kind: "chat" as const,
           weightsPath: "/unused",
           projectorPath: null,
@@ -53,7 +54,7 @@ async function fixture(
           compactionThresholdTokens: threshold,
         },
       ],
-      slots: [],
+
       hooks: [],
     }),
   );
@@ -108,7 +109,7 @@ async function fixture(
         name: id,
         systemPrompt: "test",
         modelID: "q",
-        slotID: "auto",
+        executionClass: "background",
         mode: "single-turn",
         skillIDs: [],
         toolIDs: [],
@@ -1198,11 +1199,9 @@ test("interactive same-model compaction runs while the owner is present", async 
   const { executionSlots } =
     await import("../dist/engine/scheduling/policy.js");
   const next = structuredClone(f.service.storage.store);
-  next.config.slots = executionSlots(runtimeConfig(next.config));
   await f.service.storage.exclusive(() => f.service.storage.saveConfig(next));
-  const slotID = next.config.slots.find((s?: any) => s.instant)!.slotID;
   await f.service.patchAgent("worker", f.service.agent("worker").revision, {
-    slotID,
+    executionClass: "instant",
   });
   f.state.away = false;
   await f.service.submit("worker", message("b".repeat(600)));
@@ -1212,7 +1211,7 @@ test("interactive same-model compaction runs while the owner is present", async 
   });
   const child = await f.service.run(done.compactions[0].childRunID);
   assert.equal(child.interactive, true);
-  assert.equal(child.agent.slotID, slotID);
+  assert.equal(child.agent.executionClass, "instant");
   assert.equal(child.state, "completed");
 });
 

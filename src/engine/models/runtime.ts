@@ -7,7 +7,7 @@ import { type Config } from "../../schemas/config.js";
 import type { OperationalLog } from "../../server/logging.js";
 import { executionSignal, remainingTimeout } from "../execution/process.js";
 import { NightcrewError } from "../protocol.js";
-import { executionSlots, schedulerSchema } from "../scheduling/policy.js";
+import { executionSlots } from "../scheduling/policy.js";
 import { ModelCache } from "./cache.js";
 import { ModelClient } from "./client.js";
 import { ModelServer } from "./server.js";
@@ -63,17 +63,17 @@ export class LlamaRuntime implements Runtime {
   readonly server: ModelServer;
   readonly cache: ModelCache;
   readonly client: ModelClient;
+  config: () => Config & { slots: ReturnType<typeof executionSlots> };
   constructor(
-    public config: () => Config,
+    config: () => Config,
     public home = path.join(homedir(), ".nightcrew"),
     public logger?: OperationalLog,
   ) {
-    const source = this.config;
+    const source = config;
     this.config = () => {
       const config = source();
       return {
         ...config,
-        scheduler: config.scheduler ?? schedulerSchema.parse({}),
         slots: executionSlots(config),
       };
     };
@@ -104,7 +104,6 @@ export class LlamaRuntime implements Runtime {
   async initialize() {
     await this.server.resolveBinary();
   }
-  resident = new Map<string, string>();
   idleTimer?: ReturnType<typeof setTimeout>;
   busy = false;
   private warmUntil = 0;
@@ -202,7 +201,7 @@ export class LlamaRuntime implements Runtime {
             ? "loading"
             : this.loadedModel === m.modelID
               ? "ready"
-              : (this.resident.get(m.modelID) ?? "unloaded"),
+              : "unloaded",
     }));
   }
   async release(modelID: string, slotID: string) {

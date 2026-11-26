@@ -1,3 +1,4 @@
+import { executionSlots } from "../dist/engine/scheduling/policy.js";
 import { runtimeConfig } from "./fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -5,7 +6,7 @@ import { mkdtemp, writeFile, readFile, chmod, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { LlamaRuntime } from "../dist/engine/models/runtime.js";
-import {modelSchema} from "../dist/schemas/model.js";
+import { modelSchema } from "../dist/schemas/model.js";
 
 test("slot snapshots survive model switches, use the selected home, and reject stale settings", async (t) => {
   const home = await mkdtemp(path.join(tmpdir(), "nightcrew-slots-"));
@@ -40,18 +41,12 @@ test("slot snapshots survive model switches, use the selected home, and reject s
       weightsPath: weights,
       projectorPath: null,
       idleUnloadMs: 300000,
+      contextTokens: 1024,
       slotSnapshots: { enabled: true },
     }),
   );
   const config = {
     models,
-    slots: models.map((m, i) => ({
-      slotID: m.modelID,
-      modelID: m.modelID,
-      index: 0,
-      contextTokens: 1024,
-      instant: i === 0,
-    })),
   };
   const runtime = new LlamaRuntime(() => runtimeConfig(config), home);
   t.after(async () => {
@@ -63,7 +58,9 @@ test("slot snapshots survive model switches, use the selected home, and reject s
     runtime.generate(
       {
         modelID,
-        slotID: modelID,
+        slotID: executionSlots(runtimeConfig(config)).find(
+          (s) => s.modelID === modelID,
+        )!.slotID,
         messages: [],
         tools: [],
         maxOutputTokens: 10,
@@ -72,16 +69,34 @@ test("slot snapshots survive model switches, use the selected home, and reject s
       new AbortController().signal,
     );
   assert.equal(
-    (await runtime.snapshot("qwen", "save", true)).directory,
+    (
+      await runtime.snapshot(
+        executionSlots(runtimeConfig(config))[0]!.slotID,
+        "save",
+        true,
+      )
+    ).directory,
     path.join(home, "slots", "qwen"),
   );
   await assert.rejects(
-    runtime.snapshot("qwen", "save"),
+    runtime.snapshot(executionSlots(runtimeConfig(config))[0]!.slotID, "save"),
     (e: any) => e.code === "runtime.modelUnloaded",
   );
   await run("qwen");
-  assert.equal((await runtime.snapshot("qwen", "save")).changed, true);
+  assert.equal(
+    (
+      await runtime.snapshot(
+        executionSlots(runtimeConfig(config))[0]!.slotID,
+        "save",
+      )
+    ).changed,
+    true,
+  );
   await run("other");
+  assert.deepEqual(runtime.status(), [
+    { modelID: "qwen", state: "unloaded" },
+    { modelID: "other", state: "ready" },
+  ]);
   await run("qwen");
   const events = (await readFile(log, "utf8"))
     .trim()
@@ -95,22 +110,40 @@ test("slot snapshots survive model switches, use the selected home, and reject s
     (e) => e.model === "other" && e.path === "/models/load",
   );
   assert.ok(save >= 0 && save < loadOther);
-  await runtime.snapshot("qwen", "restore");
-  config.slots[0].contextTokens = 2048;
-  await assert.rejects(runtime.snapshot("qwen", "restore"), /incompatible/);
-  config.slots[0].contextTokens = 1024;
+  await runtime.snapshot(
+    executionSlots(runtimeConfig(config))[0]!.slotID,
+    "restore",
+  );
+  config.models[0].contextTokens = 2048;
+  await assert.rejects(
+    runtime.snapshot(
+      executionSlots(runtimeConfig(config))[0]!.slotID,
+      "restore",
+    ),
+    /incompatible/,
+  );
+  config.models[0].contextTokens = 1024;
   await runtime.close();
+  assert.ok(runtime.status().every((model) => model.state === "unloaded"));
   assert.ok(
     JSON.parse(
       (
-        await readFile(path.join(home, "slots", "qwen", "qwen.json"), "utf8")
+        await readFile(
+          path.join(
+            home,
+            "slots",
+            "qwen",
+            executionSlots(runtimeConfig(config))[0]!.slotID + ".json",
+          ),
+          "utf8",
+        )
       ).toString(),
     ).signature,
   );
   const original = runtime.generate(
     {
       modelID: "qwen",
-      slotID: "qwen",
+      slotID: executionSlots(runtimeConfig(config))[0]!.slotID,
       messages: [],
       tools: [],
       maxOutputTokens: 10,
@@ -119,7 +152,10 @@ test("slot snapshots survive model switches, use the selected home, and reject s
     new AbortController().signal,
   );
   await assert.rejects(
-    runtime.snapshot("qwen", "restore"),
+    runtime.snapshot(
+      executionSlots(runtimeConfig(config))[0]!.slotID,
+      "restore",
+    ),
     (e: any) => e.code === "runtime.busy",
   );
   await original;
@@ -154,9 +190,10 @@ test("named KV contexts move between concurrent live slots and respect the disk 
   await chmod(binary, 0o700);
   const previous = process.env.PATH;
   process.env.PATH = home + path.delimiter + previous;
-  const { schedulerSchema } = await import("../dist/engine/scheduling/policy.js");
+  const { schedulerSchema } =
+    await import("../dist/engine/scheduling/policy.js");
   const config = {
-    scheduler: schedulerSchema.parse({ snapshotBudgetMB: 1 }),
+    scheduler: schedulerSchema.parse({ snapshotBudgetMB: 1, maxConcurrent: 2 }),
     models: [
       modelSchema.parse({
         modelID: "q",
@@ -164,16 +201,10 @@ test("named KV contexts move between concurrent live slots and respect the disk 
         weightsPath: weights,
         projectorPath: null,
         idleUnloadMs: 300000,
+        contextTokens: 1024,
         slotSnapshots: { enabled: true },
       }),
     ],
-    slots: [0, 1, 2].map((index) => ({
-      slotID: "s" + index,
-      modelID: "q",
-      index,
-      instant: index === 0,
-      contextTokens: 1024,
-    })),
   };
   const runtime = new LlamaRuntime(() => runtimeConfig(config), home);
   t.after(async () => {
@@ -190,7 +221,8 @@ test("named KV contexts move between concurrent live slots and respect the disk 
     runtime.generate(
       {
         modelID: "q",
-        slotID,
+        slotID: executionSlots(runtimeConfig(config))[Number(slotID.slice(1))]!
+          .slotID,
         contextID,
         persistContext,
         contextEpoch,
@@ -203,7 +235,7 @@ test("named KV contexts move between concurrent live slots and respect the disk 
     );
   const input = {
     modelID: "q",
-    slotID: "s1",
+    slotID: executionSlots(runtimeConfig(config))[1]!.slotID,
     messages: [
       {
         messageID: "test",

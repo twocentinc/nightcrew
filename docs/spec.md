@@ -1,6 +1,6 @@
 # Nightcrew specification
 
-Status: release 0.46.0, protocol 1, schema 47.
+Status: release 0.49.0, protocol 1, schema 49.
 See [compatibility.md](compatibility.md) for stable surfaces and change policy.
 Runtime schemas and registered procedures are authoritative; this document
 explains behavior rather than maintaining another endpoint inventory.
@@ -252,7 +252,11 @@ minutes). Only after cooldown and away status can background work resume.
 scheduler.instantModelID selects the interactive model. By default one background
 slot and one instant slot exist for that model. maxConcurrent defaults to one;
 additional background capacity is opt-in. Physical slots are scheduler allocations,
-not permanent public resources. Fresh contexts clear on takeover. Persistent
+not permanent public resources. Models own `contextTokens`; configuration stores
+no slot array or scheduler-wide context capacity. Agents select `executionClass`
+(`background` or `instant`), never a physical slot. Timer and eval submissions
+remain background work. Instant priority applies on the configured instant model.
+Fresh contexts clear on takeover. Persistent
 contexts can restore agent-owned checkpoints into a borrowed slot. Missing or
 incompatible checkpoints fall back to transcript reconstruction.
 
@@ -733,21 +737,22 @@ Instant inference uses `instant create`, `instant get`, and `instant delete`. De
 
 There is no manual annotation/review workflow or public hook retry command. Run outcomes retain execution, validation and delivery evidence; `needsAttention`, status `issues` and `issuesTruncated` are derived rather than manually acknowledged.
 
-## Run records (schema 46)
+## Run records (document format 7; public schema 49)
 
-- Each run owns only `<home>/runs/<runID>/state.json` (stored format 4).
+- Each run owns only `<home>/runs/<runID>/state.json` (stored format 7).
   Metadata, messages and events are replaced in one atomic file write using the
   existing shared storage queue. There is no journal, transcript partition or
   cross-file transaction. Unsaved progress may be lost when the daemon crashes.
 - Metadata contains version, runID, revision, createdAt, updatedAt, turnID,
-  configurationID, execution, activeMs and optional inFlight references.
+  execution and activeMs. Active generation and compaction
+  identities are derived from their checkpoint events.
   `turnID` is the originating user message UUID, replacing the numeric segment.
   `revision` still provides optimistic concurrency for administrative mutations.
 - Configuration snapshots, generation checkpoints, queued turns, compaction,
   output validation, eval grading and hook invocations live in events. Messages
   hold conversation content and per-message attachments. Queued messages do not
-  enter model context until activated. `configurationID` selects the snapshotted
-  agent, tools and skills from configuration events in this same file.
+  enter model context until activated. The latest configuration event supplies the snapshotted agent, tools and skills;
+  its fingerprint validates the snapshot without a duplicate top-level pointer.
 - Result text is derived from the accepted completion's assistant message; it is
   not stored a second time. CLI/API detail and exports expose convenient derived
   fields, including result, attempts, pending inputs and delivery receipts.
@@ -762,4 +767,38 @@ There is no manual annotation/review workflow or public hook retry command. Run 
 - Stop the daemon before upgrading existing runs. Preview or apply the explicit
   offline migration with `node dist/storage/migrate.js --home ABSOLUTE_HOME`
   and optional `--apply`. Original run directories remain in the reported backup.
-  Normal reads accept only format 4; the migration does not replay tools/hooks.
+  Normal reads accept only format 7; the migration accepts formats 3, 4, 5 and 6 and
+  does not replay tools/hooks. Public run projections and export bundles retain
+  their version-4 shape.
+- Storage events have typed payloads. Lifecycle events are stored directly, with
+  their original UUIDs; there is no nested lifecycle event envelope. Document
+  sequence counts all events, while public transcript sequence is derived by
+  counting lifecycle events only, preserving existing cursors.
+
+## Consolidated management (schema 49)
+
+- Use `models create/update/delete` for model definitions; `config update` accepts
+  daemon and scheduler settings, not a replacement models array.
+- `runs list --query TEXT` returns the existing matching excerpts, offsets and
+  event references. Without a query it returns run summaries. Both modes support
+  agent/state filters and pagination. The old `runs search` command and separate
+  HTTP search route are removed; HTTP uses `/v1/runs?query=TEXT`.
+- `status --scheduler` evaluates policy without dispatching work, including an
+  installed scheduler hook. Ordinary status never invokes the hook. It cannot be
+  combined with `--doctor`. The scheduler command family is removed.
+- Offline migration upgrades configuration format 2 to 3 alongside run format 7,
+  preserving per-model context capacities and instant-agent classification.
+  Original configuration and runs remain in the backup. Physical slot IDs change;
+  incompatible disposable KV caches rebuild from authoritative transcripts.
+
+## Execution inspection (schema 49)
+
+- `instant create` selects the configured instant slot; callers do not supply
+  slotID. Optional modelID checks the expected instant model, not model selection.
+- Run summaries and details expose execution state only as `execution.state`;
+  outcome describes output validation, delivery, hooks and attention.
+- `status.runtime.active` (and `/v1/status`'s `active`) lists all executions as
+  `{ id, kind, modelID, slotID }`. The array is empty when idle. Scheduler details
+  do not duplicate it. Slot conversation IDs are scoped to their actual owner.
+
+Collection checkpoint events store only their value; identity is derived from the record’s own ID field. Duplicate `data.key` properties are rejected.

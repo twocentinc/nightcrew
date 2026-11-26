@@ -7,7 +7,7 @@ their executable tools outside this repository.
 `src/commands/` contains only one module per top-level CLI command; do not add
 shared helpers or aggregate modules there. Each family owns its
 request/result schemas, metadata and handlers; local-only families register their
-commands there too. Shared infrastructure lives in `src/utils/commands/`: `definition.ts` builds shared authenticated oRPC procedures;
+commands there too. Shared infrastructure lives in `src/utils/commands/`: `definition.ts` builds shared authenticated oRPC procedures and typed CLI flag bindings;
 `operations.ts` aggregates them and `inputs.ts` aggregates their request schemas.
 CLI, control socket and HTTP must invoke those same procedures. `registry.ts`
 owns discovery, registration and offline dispatch. `resources.ts` owns shared
@@ -137,7 +137,7 @@ behavior without an actual model-specific check.
 Real-model tests live under `test/live/`, outside the default suite. Do not run
 them without explicit authorization for inference.
 
-The public contract is frozen at schema 47; follow `docs/compatibility.md`.
+The public contract is frozen at schema 49; follow `docs/compatibility.md`.
 Do not remove or rename public commands, tighten accepted inputs, or change
 execution semantics without explicitly reopening the freeze. Schema increments
 alone do not authorize breaking changes. Keep
@@ -179,6 +179,16 @@ semantics, and eventsource-parser owns SSE framing. Follow their native behavior
 without compatibility exceptions. Nightcrew retains command contracts, scheduler
 admission/no-catch-up policies, generation limits and completion validation.
 
-`src/storage/runDocument.ts` owns the format-4 single-file run document and its derived engine projection. Only state.json is written for run progress. Do not add a journal or multi-file transactions; unsaved progress can be lost on crashes. `src/storage/migrate.ts` is the explicit offline format migration with original-run backups.
+`src/storage/runDocument.ts` owns the format-7 single-file run document and its derived engine projection. `src/storage/runEvents.ts` owns typed document event payloads and field mappings. Lifecycle events are flat; public transcript sequence is derived without changing event UUIDs. `validateTranscript` in `src/schemas/run.ts` owns integrity checks shared by persisted reads and artifact verification. Only state.json is written for run progress. Do not add a journal or multi-file transactions; unsaved progress can be lost on crashes. `src/storage/migrate.ts` is the explicit offline format migration with original-run backups.
 
 `src/engine/models/operations.ts` owns temporary model smoke tests and explicit unloading. Both use Dispatch.withIdleRuntime to exclude scheduler work and competing model commands; shutdown aborts and settles that reservation. Model tests create no runs, hooks or durable contexts and never change instantModelID.
+
+Models own contextTokens. Persist no slot array or scheduler contextTokens; derive
+live slots in executionSlots. Agents use executionClass, not slotID. Only model
+CRUD edits model definitions. Query runs with runs list --query and inspect policy
+with status --scheduler; removed command names have no aliases. The latest
+configurationChanged event selects a run snapshot; no top-level configurationID.
+
+Instant requests never accept slotID. Runtime status owns the active-executions
+array; do not reintroduce activeRunID or a duplicate scheduler.active. Run
+execution state belongs in execution.state, never outcome.execution.

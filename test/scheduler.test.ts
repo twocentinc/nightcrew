@@ -54,7 +54,7 @@ async function setup(
           idleUnloadMs: 300000,
         },
       ],
-      slots: [],
+
       hooks: [],
     }),
   );
@@ -86,7 +86,7 @@ async function setup(
         name: id,
         systemPrompt: "test",
         modelID: "q",
-        slotID: "auto",
+        executionClass: "background",
         mode: "single-turn",
         skillIDs: [],
         toolIDs: [],
@@ -221,6 +221,7 @@ test("two background slots run concurrently and instant work waits for both to r
     max = 0,
     released = 0;
   const seen: any[] = [];
+  let releaseInstant!: () => void;
   const f = await setup(
     t,
     async (input?: any, signal?: any) => {
@@ -230,6 +231,9 @@ test("two background slots run concurrently and instant work waits for both to r
       try {
         if (input.messages.at(-1).content === "instant") {
           assert.equal(released, 2);
+          await new Promise<void>((resolve) => {
+            releaseInstant = resolve;
+          });
           return done;
         }
         await new Promise<any>((resolve, reject) =>
@@ -253,16 +257,26 @@ test("two background slots run concurrently and instant work waits for both to r
   );
   await f.agent("a");
   await f.agent("b");
-  await f.service.submit("a", message("a"));
-  await f.service.submit("b", message("b"));
+  const a = await f.service.submit("a", message("a"));
+  const b = await f.service.submit("b", message("b"));
   await until(() => seen.length === 2);
   assert.equal(max, 2);
   assert.notEqual(seen[0].slotID, seen[1].slotID);
+  const status = f.service.status();
+  assert.deepEqual(
+    new Set(status.active.map((a) => a.id)),
+    new Set([a.runID, b.runID]),
+  );
+  assert.ok(status.active.every((a) => a.kind === "run" && a.modelID === "q"));
+  assert.equal("activeRunID" in status, false);
+  assert.equal("active" in f.service.schedulerStatus(), false);
+  const detail = f.service.detail(await f.service.run(a.runID));
+  assert.equal(detail.execution.state, "running");
+  assert.equal("execution" in detail.outcome, false);
   f.state.away = false;
   const accepted = await f.service.submitChat({
     skillIDs: [],
     conversationID: randomUUID(),
-    slotID: "instant",
     messages: [
       {
         ...message("instant"),
@@ -276,7 +290,23 @@ test("two background slots run concurrently and instant work waits for both to r
     maxOutputTokens: 20,
     temperature: 0,
   });
+  await until(() => !!releaseInstant);
+  const instantStatus = f.service.status();
+  assert.deepEqual(
+    instantStatus.active.map((a) => ({ id: a.id, kind: a.kind })),
+    [{ id: accepted.requestID, kind: "chat" }],
+  );
+  assert.equal(
+    instantStatus.slots.filter((s) => s.conversationID !== null).length,
+    1,
+  );
+  assert.equal(
+    instantStatus.slots.find((s) => s.instant)!.conversationID,
+    f.service.chat(accepted.requestID).input.conversationID,
+  );
+  releaseInstant();
   await until(() => f.service.chat(accepted.requestID).state === "completed");
+  await until(() => f.service.status().active.length === 0);
   assert.equal(max, 2);
 });
 test("persistent agents keep one run across completion, queued input and restart", async (t) => {
@@ -431,7 +461,6 @@ test("cancelling a persistent run does not execute its pending inputs", async (t
 test("scheduler partial updates preserve existing limits and hook configuration", async (t) => {
   const f = await setup(t, async () => done, {
     maxConcurrent: 3,
-    contextTokens: 8192,
     maxWaitMs: 123456,
   });
   const { requestSchemas } = await import("../dist/utils/commands/inputs.js");
@@ -442,7 +471,6 @@ test("scheduler partial updates preserve existing limits and hook configuration"
   assert.deepEqual(request.changes, { scheduler: { timersEnabled: false } });
   const out = await manage(f.service, { command: "config update", request });
   assert.equal(out.config.scheduler.maxConcurrent, 3);
-  assert.equal(out.config.scheduler.contextTokens, 8192);
   assert.equal(out.config.scheduler.maxWaitMs, 123456);
   const config: any = requestSchemas["config update"].parse({
     expectedRevision: 1,
@@ -459,7 +487,7 @@ test("scheduler partial updates preserve existing limits and hook configuration"
 test("only the designated chat model reserves an instant slot", () => {
   const config = {
     scheduler: schedulerSchema.parse({ instantModelID: "b" }),
-    slots: [],
+
     models: [
       { modelID: "a", kind: "chat" as const },
       { modelID: "b", kind: "chat" as const },
@@ -672,12 +700,11 @@ test("models unload rejects interactive work without cancellation, then unloads 
   });
   f.state.away = false;
   const next = structuredClone(f.service.storage.store);
-  next.config.slots = executionSlots(runtimeConfig(next.config));
   await f.service.storage.exclusive(() => f.service.storage.saveConfig(next));
   await f.agent("interactive", {
     enabled: false,
     contextMode: "fresh",
-    slotID: next.config.slots.find((s?: any) => s.instant)!.slotID,
+    executionClass: "instant",
   });
   f.service.runtime.status = () => [
     { modelID: "q", state: resident ? "ready" : "unloaded" },
@@ -839,7 +866,6 @@ test("instant delete settles active work and forgets completed results; dry run 
   const accepted = await f.service.submitChat({
     skillIDs: [],
     conversationID: randomUUID(),
-    slotID: "instant",
     messages: [
       { ...message("hello"), role: "user", toolCalls: [], toolCallID: null },
     ],
@@ -871,7 +897,6 @@ test("instant delete settles active work and forgets completed results; dry run 
   const done = await g.service.submitChat({
     skillIDs: [],
     conversationID: randomUUID(),
-    slotID: "instant",
     messages: [
       { ...message("hello"), role: "user", toolCalls: [], toolCallID: null },
     ],

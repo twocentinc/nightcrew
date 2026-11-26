@@ -76,11 +76,12 @@ test(
     await chmod(hook, 0o700);
     const model = {
       ...settings.qwen,
+      contextTokens: 8192,
       compactionThresholdTokens: 2600,
       slotSnapshots: { enabled: false, directory: null },
     };
     const store = storeSchema.parse({
-      version: 2,
+      version: 3,
       config: {
         revision: 1,
         host: "127.0.0.1",
@@ -88,7 +89,7 @@ test(
         rootTokenHash: tokenHash(token),
         interactionCooldownMs: 0,
         models: [model],
-        slots: [],
+
         hooks: [
           {
             hookID: "test-hook",
@@ -100,7 +101,6 @@ test(
         ],
         scheduler: {
           instantModelID: model.modelID,
-          contextTokens: 8192,
           maxConcurrent: 1,
           minResidencyMs: 0,
           maxWaitMs: 1000,
@@ -223,7 +223,7 @@ test(
         "Follow instructions. Preserve the project facts: code lavender, seven trees, blue gate.",
       modelID: model.modelID,
       mode: "single-turn",
-      slotID: "auto",
+      executionClass: "background",
       contextMode: "persistent",
       skillIDs: [],
       toolIDs: [],

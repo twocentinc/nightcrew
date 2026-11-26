@@ -46,10 +46,7 @@ export async function resourceCommand(
 ): Promise<unknown> {
   const { command, resourceID, dryRun = false, yes = false } = input;
   const [resource, action] = command.split(" ");
-  const name =
-    resourceID === undefined || command === "runs search"
-      ? undefined
-      : id.parse(resourceID);
+  const name = resourceID === undefined ? undefined : id.parse(resourceID);
   const raw = input.request ?? {};
   return service.storage.exclusive(async () => {
     const next = structuredClone(service.storage.store);
@@ -209,7 +206,7 @@ export function configurationChangePolicy(resource: string, value: unknown) {
       : undefined;
   const resizingScheduler =
     !!scheduler &&
-    ["maxConcurrent", "contextTokens", "instantModelID"].some((key) =>
+    ["maxConcurrent", "instantModelID"].some((key) =>
       Object.hasOwn(scheduler, key),
     );
   return {

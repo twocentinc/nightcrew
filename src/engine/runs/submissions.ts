@@ -34,7 +34,6 @@ export interface Dependencies {
     Dispatch,
     | "wake"
     | "capacity"
-    | "instantSlot"
     | "runInteractive"
     | "recordInteraction"
     | "interruptBackground"
@@ -259,7 +258,7 @@ export class Runs {
       interactive:
         !evaluation &&
         source?.admission !== "timer" &&
-        this.ports.dispatch.instantSlot(a.slotID),
+        a.executionClass === "instant",
       pendingInputs: [],
       triggerHistory: [],
       triggerSource: source,
@@ -343,7 +342,7 @@ export class Runs {
       r.interactive =
         !r.evaluation &&
         source?.admission !== "timer" &&
-        this.ports.dispatch.instantSlot(a.slotID);
+        a.executionClass === "instant";
       if (source) r.triggerHistory.push(source);
       r.deliveryExpected = false;
       const previousTurnID = r.turnID;

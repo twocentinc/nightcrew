@@ -212,6 +212,14 @@
           "enabled": {
             "type": "boolean"
           },
+          "executionClass": {
+            "default": "background",
+            "enum": [
+              "background",
+              "instant"
+            ],
+            "type": "string"
+          },
           "finishSchema": {
             "anyOf": [
               {
@@ -403,11 +411,6 @@
             },
             "maxItems": 40,
             "type": "array"
-          },
-          "slotID": {
-            "default": "auto",
-            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-            "type": "string"
           },
           "storageLimitMB": {
             "default": 48,
@@ -640,6 +643,14 @@
           "enabled": {
             "type": "boolean"
           },
+          "executionClass": {
+            "default": "background",
+            "enum": [
+              "background",
+              "instant"
+            ],
+            "type": "string"
+          },
           "finishSchema": {
             "anyOf": [
               {
@@ -843,11 +854,6 @@
             "maxItems": 40,
             "type": "array"
           },
-          "slotID": {
-            "default": "auto",
-            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-            "type": "string"
-          },
           "storageLimitMB": {
             "default": 48,
             "maximum": 48,
@@ -908,7 +914,7 @@
           "systemPrompt",
           "mode",
           "modelID",
-          "slotID",
+          "executionClass",
           "skillIDs",
           "toolIDs",
           "thinking",
@@ -1079,6 +1085,12 @@
                   ],
                   "default": null
                 },
+                "contextTokens": {
+                  "default": 4096,
+                  "maximum": 262144,
+                  "minimum": 1024,
+                  "type": "integer"
+                },
                 "idleUnloadMs": {
                   "maximum": 86400000,
                   "minimum": 0,
@@ -1150,6 +1162,7 @@
               },
               "required": [
                 "modelID",
+                "contextTokens",
                 "compactionThresholdTokens",
                 "priority",
                 "kind",
@@ -1176,7 +1189,6 @@
           "scheduler": {
             "additionalProperties": false,
             "default": {
-              "contextTokens": 4096,
               "hook": null,
               "instantModelID": null,
               "maxConcurrent": 1,
@@ -1186,12 +1198,6 @@
               "timersEnabled": true
             },
             "properties": {
-              "contextTokens": {
-                "default": 4096,
-                "maximum": 262144,
-                "minimum": 1024,
-                "type": "integer"
-              },
               "hook": {
                 "anyOf": [
                   {
@@ -1283,7 +1289,6 @@
             "required": [
               "instantModelID",
               "maxConcurrent",
-              "contextTokens",
               "snapshotBudgetMB",
               "minResidencyMs",
               "maxWaitMs",
@@ -1291,44 +1296,6 @@
               "hook"
             ],
             "type": "object"
-          },
-          "slots": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "contextTokens": {
-                  "maximum": 262144,
-                  "minimum": 1024,
-                  "type": "integer"
-                },
-                "index": {
-                  "maximum": 31,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "instant": {
-                  "type": "boolean"
-                },
-                "modelID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                },
-                "slotID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "slotID",
-                "modelID",
-                "index",
-                "contextTokens",
-                "instant"
-              ],
-              "type": "object"
-            },
-            "maxItems": 32,
-            "type": "array"
           }
         },
         "required": [
@@ -1340,7 +1307,6 @@
           "interactionCooldownMs",
           "logging",
           "models",
-          "slots",
           "hooks"
         ],
         "type": "object"
@@ -1579,6 +1545,14 @@
           "enabled": {
             "type": "boolean"
           },
+          "executionClass": {
+            "default": "background",
+            "enum": [
+              "background",
+              "instant"
+            ],
+            "type": "string"
+          },
           "finishSchema": {
             "anyOf": [
               {
@@ -1782,11 +1756,6 @@
             "maxItems": 40,
             "type": "array"
           },
-          "slotID": {
-            "default": "auto",
-            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-            "type": "string"
-          },
           "storageLimitMB": {
             "default": 48,
             "maximum": 48,
@@ -1847,7 +1816,7 @@
           "systemPrompt",
           "mode",
           "modelID",
-          "slotID",
+          "executionClass",
           "skillIDs",
           "toolIDs",
           "thinking",
@@ -2045,6 +2014,14 @@
             },
             "enabled": {
               "type": "boolean"
+            },
+            "executionClass": {
+              "default": "background",
+              "enum": [
+                "background",
+                "instant"
+              ],
+              "type": "string"
             },
             "finishSchema": {
               "anyOf": [
@@ -2249,11 +2226,6 @@
               "maxItems": 40,
               "type": "array"
             },
-            "slotID": {
-              "default": "auto",
-              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-              "type": "string"
-            },
             "storageLimitMB": {
               "default": 48,
               "maximum": 48,
@@ -2314,7 +2286,7 @@
             "systemPrompt",
             "mode",
             "modelID",
-            "slotID",
+            "executionClass",
             "skillIDs",
             "toolIDs",
             "thinking",
@@ -2700,6 +2672,14 @@
                   "enabled": {
                     "type": "boolean"
                   },
+                  "executionClass": {
+                    "default": "background",
+                    "enum": [
+                      "background",
+                      "instant"
+                    ],
+                    "type": "string"
+                  },
                   "finishSchema": {
                     "anyOf": [
                       {
@@ -2903,11 +2883,6 @@
                     "maxItems": 40,
                     "type": "array"
                   },
-                  "slotID": {
-                    "default": "auto",
-                    "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                    "type": "string"
-                  },
                   "storageLimitMB": {
                     "default": 48,
                     "maximum": 48,
@@ -2968,7 +2943,7 @@
                   "systemPrompt",
                   "mode",
                   "modelID",
-                  "slotID",
+                  "executionClass",
                   "skillIDs",
                   "toolIDs",
                   "thinking",
@@ -4483,18 +4458,6 @@
                     ],
                     "type": "string"
                   },
-                  "execution": {
-                    "enum": [
-                      "queued",
-                      "running",
-                      "paused",
-                      "completed",
-                      "failed",
-                      "cancelled",
-                      "timedOut"
-                    ],
-                    "type": "string"
-                  },
                   "hooks": {
                     "enum": [
                       "none",
@@ -4541,7 +4504,6 @@
                   }
                 },
                 "required": [
-                  "execution",
                   "output",
                   "task",
                   "delivery",
@@ -4672,6 +4634,14 @@
                         },
                         "enabled": {
                           "type": "boolean"
+                        },
+                        "executionClass": {
+                          "default": "background",
+                          "enum": [
+                            "background",
+                            "instant"
+                          ],
+                          "type": "string"
                         },
                         "finishSchema": {
                           "anyOf": [
@@ -4876,11 +4846,6 @@
                           "maxItems": 40,
                           "type": "array"
                         },
-                        "slotID": {
-                          "default": "auto",
-                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                          "type": "string"
-                        },
                         "storageLimitMB": {
                           "default": 48,
                           "maximum": 48,
@@ -4941,7 +4906,7 @@
                         "systemPrompt",
                         "mode",
                         "modelID",
-                        "slotID",
+                        "executionClass",
                         "skillIDs",
                         "toolIDs",
                         "thinking",
@@ -5995,6 +5960,13 @@
           "enabled": {
             "type": "boolean"
           },
+          "executionClass": {
+            "enum": [
+              "background",
+              "instant"
+            ],
+            "type": "string"
+          },
           "finishSchema": {
             "anyOf": [
               {
@@ -6178,10 +6150,6 @@
             },
             "maxItems": 40,
             "type": "array"
-          },
-          "slotID": {
-            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-            "type": "string"
           },
           "storageLimitMB": {
             "maximum": 48,
@@ -6405,6 +6373,14 @@
           "enabled": {
             "type": "boolean"
           },
+          "executionClass": {
+            "default": "background",
+            "enum": [
+              "background",
+              "instant"
+            ],
+            "type": "string"
+          },
           "finishSchema": {
             "anyOf": [
               {
@@ -6608,11 +6584,6 @@
             "maxItems": 40,
             "type": "array"
           },
-          "slotID": {
-            "default": "auto",
-            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-            "type": "string"
-          },
           "storageLimitMB": {
             "default": 48,
             "maximum": 48,
@@ -6673,7 +6644,7 @@
           "systemPrompt",
           "mode",
           "modelID",
-          "slotID",
+          "executionClass",
           "skillIDs",
           "toolIDs",
           "thinking",
@@ -6829,6 +6800,12 @@
                   ],
                   "default": null
                 },
+                "contextTokens": {
+                  "default": 4096,
+                  "maximum": 262144,
+                  "minimum": 1024,
+                  "type": "integer"
+                },
                 "idleUnloadMs": {
                   "maximum": 86400000,
                   "minimum": 0,
@@ -6900,6 +6877,7 @@
               },
               "required": [
                 "modelID",
+                "contextTokens",
                 "compactionThresholdTokens",
                 "priority",
                 "kind",
@@ -6926,7 +6904,6 @@
           "scheduler": {
             "additionalProperties": false,
             "default": {
-              "contextTokens": 4096,
               "hook": null,
               "instantModelID": null,
               "maxConcurrent": 1,
@@ -6936,12 +6913,6 @@
               "timersEnabled": true
             },
             "properties": {
-              "contextTokens": {
-                "default": 4096,
-                "maximum": 262144,
-                "minimum": 1024,
-                "type": "integer"
-              },
               "hook": {
                 "anyOf": [
                   {
@@ -7033,7 +7004,6 @@
             "required": [
               "instantModelID",
               "maxConcurrent",
-              "contextTokens",
               "snapshotBudgetMB",
               "minResidencyMs",
               "maxWaitMs",
@@ -7041,44 +7011,6 @@
               "hook"
             ],
             "type": "object"
-          },
-          "slots": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "contextTokens": {
-                  "maximum": 262144,
-                  "minimum": 1024,
-                  "type": "integer"
-                },
-                "index": {
-                  "maximum": 31,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "instant": {
-                  "type": "boolean"
-                },
-                "modelID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                },
-                "slotID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "slotID",
-                "modelID",
-                "index",
-                "contextTokens",
-                "instant"
-              ],
-              "type": "object"
-            },
-            "maxItems": 32,
-            "type": "array"
           }
         },
         "required": [
@@ -7090,7 +7022,6 @@
           "interactionCooldownMs",
           "logging",
           "models",
-          "slots",
           "hooks"
         ],
         "type": "object"
@@ -7252,100 +7183,6 @@
             },
             "type": "object"
           },
-          "models": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "compactionThresholdTokens": {
-                  "anyOf": [
-                    {
-                      "maximum": 262144,
-                      "minimum": 1,
-                      "type": "integer"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "default": null
-                },
-                "idleUnloadMs": {
-                  "maximum": 86400000,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "kind": {
-                  "enum": [
-                    "chat",
-                    "audio"
-                  ],
-                  "type": "string"
-                },
-                "modelID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                },
-                "priority": {
-                  "default": 0,
-                  "maximum": 100,
-                  "minimum": -100,
-                  "type": "integer"
-                },
-                "projectorPath": {
-                  "anyOf": [
-                    {
-                      "maxLength": 4096,
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "slotSnapshots": {
-                  "additionalProperties": false,
-                  "default": {
-                    "directory": null,
-                    "enabled": false
-                  },
-                  "properties": {
-                    "directory": {
-                      "anyOf": [
-                        {
-                          "maxLength": 4096,
-                          "pattern": "^\\/[^\\r\\n]*$",
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ],
-                      "default": null
-                    },
-                    "enabled": {
-                      "default": false,
-                      "type": "boolean"
-                    }
-                  },
-                  "type": "object"
-                },
-                "weightsPath": {
-                  "maxLength": 4096,
-                  "type": "string"
-                }
-              },
-              "required": [
-                "modelID",
-                "kind",
-                "weightsPath",
-                "projectorPath",
-                "idleUnloadMs"
-              ],
-              "type": "object"
-            },
-            "maxItems": 32,
-            "type": "array"
-          },
           "port": {
             "maximum": 65535,
             "minimum": 1024,
@@ -7354,11 +7191,6 @@
           "scheduler": {
             "additionalProperties": false,
             "properties": {
-              "contextTokens": {
-                "maximum": 262144,
-                "minimum": 1024,
-                "type": "integer"
-              },
               "hook": {
                 "anyOf": [
                   {
@@ -7438,44 +7270,6 @@
               }
             },
             "type": "object"
-          },
-          "slots": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "contextTokens": {
-                  "maximum": 262144,
-                  "minimum": 1024,
-                  "type": "integer"
-                },
-                "index": {
-                  "maximum": 31,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "instant": {
-                  "type": "boolean"
-                },
-                "modelID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                },
-                "slotID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "slotID",
-                "modelID",
-                "index",
-                "contextTokens",
-                "instant"
-              ],
-              "type": "object"
-            },
-            "maxItems": 32,
-            "type": "array"
           }
         },
         "type": "object"
@@ -7625,6 +7419,12 @@
                   ],
                   "default": null
                 },
+                "contextTokens": {
+                  "default": 4096,
+                  "maximum": 262144,
+                  "minimum": 1024,
+                  "type": "integer"
+                },
                 "idleUnloadMs": {
                   "maximum": 86400000,
                   "minimum": 0,
@@ -7696,6 +7496,7 @@
               },
               "required": [
                 "modelID",
+                "contextTokens",
                 "compactionThresholdTokens",
                 "priority",
                 "kind",
@@ -7722,7 +7523,6 @@
           "scheduler": {
             "additionalProperties": false,
             "default": {
-              "contextTokens": 4096,
               "hook": null,
               "instantModelID": null,
               "maxConcurrent": 1,
@@ -7732,12 +7532,6 @@
               "timersEnabled": true
             },
             "properties": {
-              "contextTokens": {
-                "default": 4096,
-                "maximum": 262144,
-                "minimum": 1024,
-                "type": "integer"
-              },
               "hook": {
                 "anyOf": [
                   {
@@ -7829,7 +7623,6 @@
             "required": [
               "instantModelID",
               "maxConcurrent",
-              "contextTokens",
               "snapshotBudgetMB",
               "minResidencyMs",
               "maxWaitMs",
@@ -7837,44 +7630,6 @@
               "hook"
             ],
             "type": "object"
-          },
-          "slots": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "contextTokens": {
-                  "maximum": 262144,
-                  "minimum": 1024,
-                  "type": "integer"
-                },
-                "index": {
-                  "maximum": 31,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "instant": {
-                  "type": "boolean"
-                },
-                "modelID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                },
-                "slotID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "slotID",
-                "modelID",
-                "index",
-                "contextTokens",
-                "instant"
-              ],
-              "type": "object"
-            },
-            "maxItems": 32,
-            "type": "array"
           }
         },
         "required": [
@@ -7886,7 +7641,6 @@
           "interactionCooldownMs",
           "logging",
           "models",
-          "slots",
           "hooks"
         ],
         "type": "object"
@@ -10571,6 +10325,14 @@
                   "enabled": {
                     "type": "boolean"
                   },
+                  "executionClass": {
+                    "default": "background",
+                    "enum": [
+                      "background",
+                      "instant"
+                    ],
+                    "type": "string"
+                  },
                   "finishSchema": {
                     "anyOf": [
                       {
@@ -10774,11 +10536,6 @@
                     "maxItems": 40,
                     "type": "array"
                   },
-                  "slotID": {
-                    "default": "auto",
-                    "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                    "type": "string"
-                  },
                   "storageLimitMB": {
                     "default": 48,
                     "maximum": 48,
@@ -10839,7 +10596,7 @@
                   "systemPrompt",
                   "mode",
                   "modelID",
-                  "slotID",
+                  "executionClass",
                   "skillIDs",
                   "toolIDs",
                   "thinking",
@@ -12354,18 +12111,6 @@
                     ],
                     "type": "string"
                   },
-                  "execution": {
-                    "enum": [
-                      "queued",
-                      "running",
-                      "paused",
-                      "completed",
-                      "failed",
-                      "cancelled",
-                      "timedOut"
-                    ],
-                    "type": "string"
-                  },
                   "hooks": {
                     "enum": [
                       "none",
@@ -12412,7 +12157,6 @@
                   }
                 },
                 "required": [
-                  "execution",
                   "output",
                   "task",
                   "delivery",
@@ -12543,6 +12287,14 @@
                         },
                         "enabled": {
                           "type": "boolean"
+                        },
+                        "executionClass": {
+                          "default": "background",
+                          "enum": [
+                            "background",
+                            "instant"
+                          ],
+                          "type": "string"
                         },
                         "finishSchema": {
                           "anyOf": [
@@ -12747,11 +12499,6 @@
                           "maxItems": 40,
                           "type": "array"
                         },
-                        "slotID": {
-                          "default": "auto",
-                          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                          "type": "string"
-                        },
                         "storageLimitMB": {
                           "default": 48,
                           "maximum": 48,
@@ -12812,7 +12559,7 @@
                         "systemPrompt",
                         "mode",
                         "modelID",
-                        "slotID",
+                        "executionClass",
                         "skillIDs",
                         "toolIDs",
                         "thinking",
@@ -18237,6 +17984,12 @@
               ],
               "default": null
             },
+            "contextTokens": {
+              "default": 4096,
+              "maximum": 262144,
+              "minimum": 1024,
+              "type": "integer"
+            },
             "idleUnloadMs": {
               "maximum": 86400000,
               "minimum": 0,
@@ -18323,7 +18076,6 @@
       "scheduler": {
         "additionalProperties": false,
         "default": {
-          "contextTokens": 4096,
           "hook": null,
           "instantModelID": null,
           "maxConcurrent": 1,
@@ -18333,12 +18085,6 @@
           "timersEnabled": true
         },
         "properties": {
-          "contextTokens": {
-            "default": 4096,
-            "maximum": 262144,
-            "minimum": 1024,
-            "type": "integer"
-          },
           "hook": {
             "anyOf": [
               {
@@ -18425,45 +18171,6 @@
           }
         },
         "type": "object"
-      },
-      "slots": {
-        "default": [],
-        "items": {
-          "additionalProperties": false,
-          "properties": {
-            "contextTokens": {
-              "maximum": 262144,
-              "minimum": 1024,
-              "type": "integer"
-            },
-            "index": {
-              "maximum": 31,
-              "minimum": 0,
-              "type": "integer"
-            },
-            "instant": {
-              "type": "boolean"
-            },
-            "modelID": {
-              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-              "type": "string"
-            },
-            "slotID": {
-              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-              "type": "string"
-            }
-          },
-          "required": [
-            "slotID",
-            "modelID",
-            "index",
-            "contextTokens",
-            "instant"
-          ],
-          "type": "object"
-        },
-        "maxItems": 32,
-        "type": "array"
       }
     },
     "type": "object"
@@ -18625,6 +18332,12 @@
                       ],
                       "default": null
                     },
+                    "contextTokens": {
+                      "default": 4096,
+                      "maximum": 262144,
+                      "minimum": 1024,
+                      "type": "integer"
+                    },
                     "idleUnloadMs": {
                       "maximum": 86400000,
                       "minimum": 0,
@@ -18696,6 +18409,7 @@
                   },
                   "required": [
                     "modelID",
+                    "contextTokens",
                     "compactionThresholdTokens",
                     "priority",
                     "kind",
@@ -18717,7 +18431,6 @@
               "scheduler": {
                 "additionalProperties": false,
                 "default": {
-                  "contextTokens": 4096,
                   "hook": null,
                   "instantModelID": null,
                   "maxConcurrent": 1,
@@ -18727,12 +18440,6 @@
                   "timersEnabled": true
                 },
                 "properties": {
-                  "contextTokens": {
-                    "default": 4096,
-                    "maximum": 262144,
-                    "minimum": 1024,
-                    "type": "integer"
-                  },
                   "hook": {
                     "anyOf": [
                       {
@@ -18824,7 +18531,6 @@
                 "required": [
                   "instantModelID",
                   "maxConcurrent",
-                  "contextTokens",
                   "snapshotBudgetMB",
                   "minResidencyMs",
                   "maxWaitMs",
@@ -18832,44 +18538,6 @@
                   "hook"
                 ],
                 "type": "object"
-              },
-              "slots": {
-                "items": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "contextTokens": {
-                      "maximum": 262144,
-                      "minimum": 1024,
-                      "type": "integer"
-                    },
-                    "index": {
-                      "maximum": 31,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
-                    "instant": {
-                      "type": "boolean"
-                    },
-                    "modelID": {
-                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                      "type": "string"
-                    },
-                    "slotID": {
-                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "slotID",
-                    "modelID",
-                    "index",
-                    "contextTokens",
-                    "instant"
-                  ],
-                  "type": "object"
-                },
-                "maxItems": 32,
-                "type": "array"
               }
             },
             "required": [
@@ -18880,7 +18548,6 @@
               "interactionCooldownMs",
               "logging",
               "models",
-              "slots",
               "hooks"
             ],
             "type": "object"
@@ -19068,11 +18735,6 @@
         },
         "maxItems": 40,
         "type": "array"
-      },
-      "slotID": {
-        "default": "instant",
-        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-        "type": "string"
       },
       "temperature": {
         "default": 0.7,
@@ -19337,11 +18999,6 @@
                     "maxItems": 40,
                     "type": "array"
                   },
-                  "slotID": {
-                    "default": "instant",
-                    "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                    "type": "string"
-                  },
                   "temperature": {
                     "default": 0.7,
                     "maximum": 2,
@@ -19392,7 +19049,6 @@
                 "required": [
                   "skillIDs",
                   "conversationID",
-                  "slotID",
                   "messages",
                   "tools",
                   "timeoutMs",
@@ -19962,6 +19618,12 @@
             ],
             "default": null
           },
+          "contextTokens": {
+            "default": 4096,
+            "maximum": 262144,
+            "minimum": 1024,
+            "type": "integer"
+          },
           "idleUnloadMs": {
             "maximum": 86400000,
             "minimum": 0,
@@ -20035,45 +19697,6 @@
           "idleUnloadMs"
         ],
         "type": "object"
-      },
-      "slots": {
-        "default": [],
-        "items": {
-          "additionalProperties": false,
-          "properties": {
-            "contextTokens": {
-              "maximum": 262144,
-              "minimum": 1024,
-              "type": "integer"
-            },
-            "index": {
-              "maximum": 31,
-              "minimum": 0,
-              "type": "integer"
-            },
-            "instant": {
-              "type": "boolean"
-            },
-            "modelID": {
-              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-              "type": "string"
-            },
-            "slotID": {
-              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-              "type": "string"
-            }
-          },
-          "required": [
-            "slotID",
-            "modelID",
-            "index",
-            "contextTokens",
-            "instant"
-          ],
-          "type": "object"
-        },
-        "maxItems": 32,
-        "type": "array"
       }
     },
     "required": [
@@ -20214,6 +19837,12 @@
                   ],
                   "default": null
                 },
+                "contextTokens": {
+                  "default": 4096,
+                  "maximum": 262144,
+                  "minimum": 1024,
+                  "type": "integer"
+                },
                 "idleUnloadMs": {
                   "maximum": 86400000,
                   "minimum": 0,
@@ -20285,6 +19914,7 @@
               },
               "required": [
                 "modelID",
+                "contextTokens",
                 "compactionThresholdTokens",
                 "priority",
                 "kind",
@@ -20311,7 +19941,6 @@
           "scheduler": {
             "additionalProperties": false,
             "default": {
-              "contextTokens": 4096,
               "hook": null,
               "instantModelID": null,
               "maxConcurrent": 1,
@@ -20321,12 +19950,6 @@
               "timersEnabled": true
             },
             "properties": {
-              "contextTokens": {
-                "default": 4096,
-                "maximum": 262144,
-                "minimum": 1024,
-                "type": "integer"
-              },
               "hook": {
                 "anyOf": [
                   {
@@ -20418,7 +20041,6 @@
             "required": [
               "instantModelID",
               "maxConcurrent",
-              "contextTokens",
               "snapshotBudgetMB",
               "minResidencyMs",
               "maxWaitMs",
@@ -20426,44 +20048,6 @@
               "hook"
             ],
             "type": "object"
-          },
-          "slots": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "contextTokens": {
-                  "maximum": 262144,
-                  "minimum": 1024,
-                  "type": "integer"
-                },
-                "index": {
-                  "maximum": 31,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "instant": {
-                  "type": "boolean"
-                },
-                "modelID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                },
-                "slotID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "slotID",
-                "modelID",
-                "index",
-                "contextTokens",
-                "instant"
-              ],
-              "type": "object"
-            },
-            "maxItems": 32,
-            "type": "array"
           }
         },
         "required": [
@@ -20475,7 +20059,6 @@
           "interactionCooldownMs",
           "logging",
           "models",
-          "slots",
           "hooks"
         ],
         "type": "object"
@@ -20639,6 +20222,12 @@
                   ],
                   "default": null
                 },
+                "contextTokens": {
+                  "default": 4096,
+                  "maximum": 262144,
+                  "minimum": 1024,
+                  "type": "integer"
+                },
                 "idleUnloadMs": {
                   "maximum": 86400000,
                   "minimum": 0,
@@ -20710,6 +20299,7 @@
               },
               "required": [
                 "modelID",
+                "contextTokens",
                 "compactionThresholdTokens",
                 "priority",
                 "kind",
@@ -20736,7 +20326,6 @@
           "scheduler": {
             "additionalProperties": false,
             "default": {
-              "contextTokens": 4096,
               "hook": null,
               "instantModelID": null,
               "maxConcurrent": 1,
@@ -20746,12 +20335,6 @@
               "timersEnabled": true
             },
             "properties": {
-              "contextTokens": {
-                "default": 4096,
-                "maximum": 262144,
-                "minimum": 1024,
-                "type": "integer"
-              },
               "hook": {
                 "anyOf": [
                   {
@@ -20843,7 +20426,6 @@
             "required": [
               "instantModelID",
               "maxConcurrent",
-              "contextTokens",
               "snapshotBudgetMB",
               "minResidencyMs",
               "maxWaitMs",
@@ -20851,44 +20433,6 @@
               "hook"
             ],
             "type": "object"
-          },
-          "slots": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "contextTokens": {
-                  "maximum": 262144,
-                  "minimum": 1024,
-                  "type": "integer"
-                },
-                "index": {
-                  "maximum": 31,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "instant": {
-                  "type": "boolean"
-                },
-                "modelID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                },
-                "slotID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "slotID",
-                "modelID",
-                "index",
-                "contextTokens",
-                "instant"
-              ],
-              "type": "object"
-            },
-            "maxItems": 32,
-            "type": "array"
           }
         },
         "required": [
@@ -20900,7 +20444,6 @@
           "interactionCooldownMs",
           "logging",
           "models",
-          "slots",
           "hooks"
         ],
         "type": "object"
@@ -21039,6 +20582,12 @@
             ],
             "default": null
           },
+          "contextTokens": {
+            "default": 4096,
+            "maximum": 262144,
+            "minimum": 1024,
+            "type": "integer"
+          },
           "idleUnloadMs": {
             "maximum": 86400000,
             "minimum": 0,
@@ -21110,6 +20659,7 @@
         },
         "required": [
           "modelID",
+          "contextTokens",
           "compactionThresholdTokens",
           "priority",
           "kind",
@@ -21153,6 +20703,12 @@
                 }
               ],
               "default": null
+            },
+            "contextTokens": {
+              "default": 4096,
+              "maximum": 262144,
+              "minimum": 1024,
+              "type": "integer"
             },
             "idleUnloadMs": {
               "maximum": 86400000,
@@ -21225,6 +20781,7 @@
           },
           "required": [
             "modelID",
+            "contextTokens",
             "compactionThresholdTokens",
             "priority",
             "kind",
@@ -21432,6 +20989,11 @@
               }
             ]
           },
+          "contextTokens": {
+            "maximum": 262144,
+            "minimum": 1024,
+            "type": "integer"
+          },
           "idleUnloadMs": {
             "maximum": 86400000,
             "minimum": 0,
@@ -21635,6 +21197,12 @@
                   ],
                   "default": null
                 },
+                "contextTokens": {
+                  "default": 4096,
+                  "maximum": 262144,
+                  "minimum": 1024,
+                  "type": "integer"
+                },
                 "idleUnloadMs": {
                   "maximum": 86400000,
                   "minimum": 0,
@@ -21706,6 +21274,7 @@
               },
               "required": [
                 "modelID",
+                "contextTokens",
                 "compactionThresholdTokens",
                 "priority",
                 "kind",
@@ -21732,7 +21301,6 @@
           "scheduler": {
             "additionalProperties": false,
             "default": {
-              "contextTokens": 4096,
               "hook": null,
               "instantModelID": null,
               "maxConcurrent": 1,
@@ -21742,12 +21310,6 @@
               "timersEnabled": true
             },
             "properties": {
-              "contextTokens": {
-                "default": 4096,
-                "maximum": 262144,
-                "minimum": 1024,
-                "type": "integer"
-              },
               "hook": {
                 "anyOf": [
                   {
@@ -21839,7 +21401,6 @@
             "required": [
               "instantModelID",
               "maxConcurrent",
-              "contextTokens",
               "snapshotBudgetMB",
               "minResidencyMs",
               "maxWaitMs",
@@ -21847,44 +21408,6 @@
               "hook"
             ],
             "type": "object"
-          },
-          "slots": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "contextTokens": {
-                  "maximum": 262144,
-                  "minimum": 1024,
-                  "type": "integer"
-                },
-                "index": {
-                  "maximum": 31,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "instant": {
-                  "type": "boolean"
-                },
-                "modelID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                },
-                "slotID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                }
-              },
-              "required": [
-                "slotID",
-                "modelID",
-                "index",
-                "contextTokens",
-                "instant"
-              ],
-              "type": "object"
-            },
-            "maxItems": 32,
-            "type": "array"
           }
         },
         "required": [
@@ -21896,7 +21419,6 @@
           "interactionCooldownMs",
           "logging",
           "models",
-          "slots",
           "hooks"
         ],
         "type": "object"
@@ -22306,6 +21828,14 @@
               "enabled": {
                 "type": "boolean"
               },
+              "executionClass": {
+                "default": "background",
+                "enum": [
+                  "background",
+                  "instant"
+                ],
+                "type": "string"
+              },
               "finishSchema": {
                 "anyOf": [
                   {
@@ -22509,11 +22039,6 @@
                 "maxItems": 40,
                 "type": "array"
               },
-              "slotID": {
-                "default": "auto",
-                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                "type": "string"
-              },
               "storageLimitMB": {
                 "default": 48,
                 "maximum": 48,
@@ -22574,7 +22099,7 @@
               "systemPrompt",
               "mode",
               "modelID",
-              "slotID",
+              "executionClass",
               "skillIDs",
               "toolIDs",
               "thinking",
@@ -24089,18 +23614,6 @@
                 ],
                 "type": "string"
               },
-              "execution": {
-                "enum": [
-                  "queued",
-                  "running",
-                  "paused",
-                  "completed",
-                  "failed",
-                  "cancelled",
-                  "timedOut"
-                ],
-                "type": "string"
-              },
               "hooks": {
                 "enum": [
                   "none",
@@ -24147,7 +23660,6 @@
               }
             },
             "required": [
-              "execution",
               "output",
               "task",
               "delivery",
@@ -24278,6 +23790,14 @@
                     },
                     "enabled": {
                       "type": "boolean"
+                    },
+                    "executionClass": {
+                      "default": "background",
+                      "enum": [
+                        "background",
+                        "instant"
+                      ],
+                      "type": "string"
                     },
                     "finishSchema": {
                       "anyOf": [
@@ -24482,11 +24002,6 @@
                       "maxItems": 40,
                       "type": "array"
                     },
-                    "slotID": {
-                      "default": "auto",
-                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                      "type": "string"
-                    },
                     "storageLimitMB": {
                       "default": 48,
                       "maximum": 48,
@@ -24547,7 +24062,7 @@
                     "systemPrompt",
                     "mode",
                     "modelID",
-                    "slotID",
+                    "executionClass",
                     "skillIDs",
                     "toolIDs",
                     "thinking",
@@ -25459,6 +24974,11 @@
         "minimum": 1,
         "type": "integer"
       },
+      "query": {
+        "maxLength": 1000,
+        "minLength": 1,
+        "type": "string"
+      },
       "state": {
         "enum": [
           "queued",
@@ -25479,372 +24999,402 @@
     "additionalProperties": false,
     "properties": {
       "items": {
-        "items": {
-          "additionalProperties": false,
-          "properties": {
-            "activeMs": {
-              "maximum": 86400000,
-              "minimum": 0,
-              "type": "integer"
-            },
-            "agentID": {
-              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-              "type": "string"
-            },
-            "createdAt": {
-              "format": "date-time",
-              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
-              "type": "string"
-            },
-            "execution": {
-              "oneOf": [
-                {
-                  "additionalProperties": false,
-                  "properties": {
-                    "state": {
-                      "const": "queued",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "state"
-                  ],
-                  "type": "object"
-                },
-                {
-                  "additionalProperties": false,
-                  "properties": {
-                    "state": {
-                      "const": "running",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "state"
-                  ],
-                  "type": "object"
-                },
-                {
-                  "additionalProperties": false,
-                  "properties": {
-                    "error": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "code": {
-                          "maxLength": 128,
-                          "type": "string"
-                        },
-                        "message": {
-                          "maxLength": 2000,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ],
-                      "type": "object"
-                    },
-                    "limit": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "maximum": {
-                          "exclusiveMinimum": 0,
-                          "maximum": 9007199254740991,
-                          "type": "integer"
-                        },
-                        "resource": {
-                          "enum": [
-                            "bytes",
-                            "messages",
-                            "events",
-                            "attempts",
-                            "hookReceipts",
-                            "compactions",
-                            "pendingInputs",
-                            "triggerHistory",
-                            "validations",
-                            "capabilityRefreshes"
-                          ],
-                          "type": "string"
-                        },
-                        "used": {
-                          "maximum": 9007199254740991,
-                          "minimum": 0,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "resource",
-                        "used",
-                        "maximum"
-                      ],
-                      "type": "object"
-                    },
-                    "reason": {
-                      "enum": [
-                        "presence",
-                        "cooldown",
-                        "instant",
-                        "restart",
-                        "manualStop",
-                        "timeSlice",
-                        "scheduler",
-                        "compaction",
-                        "context_full",
-                        "runtime_error",
-                        "storage_limit"
-                      ],
-                      "type": "string"
-                    },
-                    "resume": {
-                      "enum": [
-                        "automatic",
-                        "manual"
-                      ],
-                      "type": "string"
-                    },
-                    "state": {
-                      "const": "paused",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "state",
-                    "reason",
-                    "resume"
-                  ],
-                  "type": "object"
-                },
-                {
-                  "additionalProperties": false,
-                  "properties": {
-                    "state": {
-                      "const": "completed",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "state"
-                  ],
-                  "type": "object"
-                },
-                {
-                  "additionalProperties": false,
-                  "properties": {
-                    "error": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "code": {
-                          "maxLength": 128,
-                          "type": "string"
-                        },
-                        "message": {
-                          "maxLength": 2000,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ],
-                      "type": "object"
-                    },
-                    "state": {
-                      "const": "failed",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "state"
-                  ],
-                  "type": "object"
-                },
-                {
-                  "additionalProperties": false,
-                  "properties": {
-                    "error": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "code": {
-                          "maxLength": 128,
-                          "type": "string"
-                        },
-                        "message": {
-                          "maxLength": 2000,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ],
-                      "type": "object"
-                    },
-                    "state": {
-                      "const": "cancelled",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "state"
-                  ],
-                  "type": "object"
-                },
-                {
-                  "additionalProperties": false,
-                  "properties": {
-                    "error": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "code": {
-                          "maxLength": 128,
-                          "type": "string"
-                        },
-                        "message": {
-                          "maxLength": 2000,
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ],
-                      "type": "object"
-                    },
-                    "state": {
-                      "const": "timedOut",
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "state"
-                  ],
-                  "type": "object"
-                }
-              ]
-            },
-            "outcome": {
+        "anyOf": [
+          {
+            "items": {
               "additionalProperties": false,
               "properties": {
-                "delivery": {
-                  "enum": [
-                    "notConfigured",
-                    "pending",
-                    "succeeded",
-                    "failed",
-                    "unknown"
-                  ],
+                "activeMs": {
+                  "maximum": 86400000,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "agentID": {
+                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+                  "type": "string"
+                },
+                "createdAt": {
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
                   "type": "string"
                 },
                 "execution": {
-                  "enum": [
-                    "queued",
-                    "running",
-                    "paused",
-                    "completed",
-                    "failed",
-                    "cancelled",
-                    "timedOut"
-                  ],
-                  "type": "string"
-                },
-                "hooks": {
-                  "enum": [
-                    "none",
-                    "pending",
-                    "succeeded",
-                    "failed",
-                    "unknown"
-                  ],
-                  "type": "string"
-                },
-                "needsAttention": {
-                  "type": "boolean"
-                },
-                "nextAction": {
-                  "type": [
-                    "string",
-                    "null"
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "state": {
+                          "const": "queued",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "state"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "state": {
+                          "const": "running",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "state"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "error": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "maxLength": 128,
+                              "type": "string"
+                            },
+                            "message": {
+                              "maxLength": 2000,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "message"
+                          ],
+                          "type": "object"
+                        },
+                        "limit": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "maximum": {
+                              "exclusiveMinimum": 0,
+                              "maximum": 9007199254740991,
+                              "type": "integer"
+                            },
+                            "resource": {
+                              "enum": [
+                                "bytes",
+                                "messages",
+                                "events",
+                                "attempts",
+                                "hookReceipts",
+                                "compactions",
+                                "pendingInputs",
+                                "triggerHistory",
+                                "validations",
+                                "capabilityRefreshes"
+                              ],
+                              "type": "string"
+                            },
+                            "used": {
+                              "maximum": 9007199254740991,
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "resource",
+                            "used",
+                            "maximum"
+                          ],
+                          "type": "object"
+                        },
+                        "reason": {
+                          "enum": [
+                            "presence",
+                            "cooldown",
+                            "instant",
+                            "restart",
+                            "manualStop",
+                            "timeSlice",
+                            "scheduler",
+                            "compaction",
+                            "context_full",
+                            "runtime_error",
+                            "storage_limit"
+                          ],
+                          "type": "string"
+                        },
+                        "resume": {
+                          "enum": [
+                            "automatic",
+                            "manual"
+                          ],
+                          "type": "string"
+                        },
+                        "state": {
+                          "const": "paused",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "state",
+                        "reason",
+                        "resume"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "state": {
+                          "const": "completed",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "state"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "error": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "maxLength": 128,
+                              "type": "string"
+                            },
+                            "message": {
+                              "maxLength": 2000,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "message"
+                          ],
+                          "type": "object"
+                        },
+                        "state": {
+                          "const": "failed",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "state"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "error": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "maxLength": 128,
+                              "type": "string"
+                            },
+                            "message": {
+                              "maxLength": 2000,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "message"
+                          ],
+                          "type": "object"
+                        },
+                        "state": {
+                          "const": "cancelled",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "state"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "error": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "code": {
+                              "maxLength": 128,
+                              "type": "string"
+                            },
+                            "message": {
+                              "maxLength": 2000,
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "code",
+                            "message"
+                          ],
+                          "type": "object"
+                        },
+                        "state": {
+                          "const": "timedOut",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "state"
+                      ],
+                      "type": "object"
+                    }
                   ]
                 },
-                "output": {
-                  "enum": [
-                    "pending",
-                    "notConfigured",
-                    "passed",
-                    "failed",
-                    "error"
+                "outcome": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "delivery": {
+                      "enum": [
+                        "notConfigured",
+                        "pending",
+                        "succeeded",
+                        "failed",
+                        "unknown"
+                      ],
+                      "type": "string"
+                    },
+                    "hooks": {
+                      "enum": [
+                        "none",
+                        "pending",
+                        "succeeded",
+                        "failed",
+                        "unknown"
+                      ],
+                      "type": "string"
+                    },
+                    "needsAttention": {
+                      "type": "boolean"
+                    },
+                    "nextAction": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "output": {
+                      "enum": [
+                        "pending",
+                        "notConfigured",
+                        "passed",
+                        "failed",
+                        "error"
+                      ],
+                      "type": "string"
+                    },
+                    "reasons": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "task": {
+                      "enum": [
+                        "pending",
+                        "unverified",
+                        "validated",
+                        "needsAttention"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "output",
+                    "task",
+                    "delivery",
+                    "hooks",
+                    "needsAttention",
+                    "reasons",
+                    "nextAction"
                   ],
+                  "type": "object"
+                },
+                "remainingMs": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "revision": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 2147483647,
+                  "type": "integer"
+                },
+                "runID": {
+                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
                   "type": "string"
                 },
-                "reasons": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
                 },
-                "task": {
-                  "enum": [
-                    "pending",
-                    "unverified",
-                    "validated",
-                    "needsAttention"
-                  ],
+                "updatedAt": {
+                  "format": "date-time",
+                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
                   "type": "string"
                 }
               },
               "required": [
+                "runID",
+                "revision",
+                "createdAt",
+                "updatedAt",
                 "execution",
-                "output",
-                "task",
-                "delivery",
-                "hooks",
-                "needsAttention",
-                "reasons",
-                "nextAction"
+                "turnID",
+                "activeMs",
+                "agentID",
+                "remainingMs",
+                "outcome"
               ],
               "type": "object"
             },
-            "remainingMs": {
-              "minimum": 0,
-              "type": "number"
-            },
-            "revision": {
-              "exclusiveMinimum": 0,
-              "maximum": 2147483647,
-              "type": "integer"
-            },
-            "runID": {
-              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-              "type": "string"
-            },
-            "turnID": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            },
-            "updatedAt": {
-              "format": "date-time",
-              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
-              "type": "string"
-            }
+            "type": "array"
           },
-          "required": [
-            "runID",
-            "revision",
-            "createdAt",
-            "updatedAt",
-            "execution",
-            "turnID",
-            "activeMs",
-            "agentID",
-            "remainingMs",
-            "outcome"
-          ],
-          "type": "object"
-        },
-        "type": "array"
+          {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "eventSequence": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "excerpt": {
+                  "maxLength": 1000,
+                  "type": "string"
+                },
+                "matchOffset": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "runID": {
+                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+                  "type": "string"
+                },
+                "turnID": {
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "runID",
+                "eventSequence",
+                "turnID",
+                "excerpt",
+                "matchOffset"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        ]
       },
       "nextCursor": {
         "type": [
@@ -26150,6 +25700,14 @@
               "enabled": {
                 "type": "boolean"
               },
+              "executionClass": {
+                "default": "background",
+                "enum": [
+                  "background",
+                  "instant"
+                ],
+                "type": "string"
+              },
               "finishSchema": {
                 "anyOf": [
                   {
@@ -26353,11 +25911,6 @@
                 "maxItems": 40,
                 "type": "array"
               },
-              "slotID": {
-                "default": "auto",
-                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                "type": "string"
-              },
               "storageLimitMB": {
                 "default": 48,
                 "maximum": 48,
@@ -26418,7 +25971,7 @@
               "systemPrompt",
               "mode",
               "modelID",
-              "slotID",
+              "executionClass",
               "skillIDs",
               "toolIDs",
               "thinking",
@@ -27933,18 +27486,6 @@
                 ],
                 "type": "string"
               },
-              "execution": {
-                "enum": [
-                  "queued",
-                  "running",
-                  "paused",
-                  "completed",
-                  "failed",
-                  "cancelled",
-                  "timedOut"
-                ],
-                "type": "string"
-              },
               "hooks": {
                 "enum": [
                   "none",
@@ -27991,7 +27532,6 @@
               }
             },
             "required": [
-              "execution",
               "output",
               "task",
               "delivery",
@@ -28122,6 +27662,14 @@
                     },
                     "enabled": {
                       "type": "boolean"
+                    },
+                    "executionClass": {
+                      "default": "background",
+                      "enum": [
+                        "background",
+                        "instant"
+                      ],
+                      "type": "string"
                     },
                     "finishSchema": {
                       "anyOf": [
@@ -28326,11 +27874,6 @@
                       "maxItems": 40,
                       "type": "array"
                     },
-                    "slotID": {
-                      "default": "auto",
-                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                      "type": "string"
-                    },
                     "storageLimitMB": {
                       "default": 48,
                       "maximum": 48,
@@ -28391,7 +27934,7 @@
                     "systemPrompt",
                     "mode",
                     "modelID",
-                    "slotID",
+                    "executionClass",
                     "skillIDs",
                     "toolIDs",
                     "thinking",
@@ -29720,6 +29263,14 @@
               "enabled": {
                 "type": "boolean"
               },
+              "executionClass": {
+                "default": "background",
+                "enum": [
+                  "background",
+                  "instant"
+                ],
+                "type": "string"
+              },
               "finishSchema": {
                 "anyOf": [
                   {
@@ -29923,11 +29474,6 @@
                 "maxItems": 40,
                 "type": "array"
               },
-              "slotID": {
-                "default": "auto",
-                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                "type": "string"
-              },
               "storageLimitMB": {
                 "default": 48,
                 "maximum": 48,
@@ -29988,7 +29534,7 @@
               "systemPrompt",
               "mode",
               "modelID",
-              "slotID",
+              "executionClass",
               "skillIDs",
               "toolIDs",
               "thinking",
@@ -31503,18 +31049,6 @@
                 ],
                 "type": "string"
               },
-              "execution": {
-                "enum": [
-                  "queued",
-                  "running",
-                  "paused",
-                  "completed",
-                  "failed",
-                  "cancelled",
-                  "timedOut"
-                ],
-                "type": "string"
-              },
               "hooks": {
                 "enum": [
                   "none",
@@ -31561,7 +31095,6 @@
               }
             },
             "required": [
-              "execution",
               "output",
               "task",
               "delivery",
@@ -31692,6 +31225,14 @@
                     },
                     "enabled": {
                       "type": "boolean"
+                    },
+                    "executionClass": {
+                      "default": "background",
+                      "enum": [
+                        "background",
+                        "instant"
+                      ],
+                      "type": "string"
                     },
                     "finishSchema": {
                       "anyOf": [
@@ -31896,11 +31437,6 @@
                       "maxItems": 40,
                       "type": "array"
                     },
-                    "slotID": {
-                      "default": "auto",
-                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                      "type": "string"
-                    },
                     "storageLimitMB": {
                       "default": 48,
                       "maximum": 48,
@@ -31961,7 +31497,7 @@
                     "systemPrompt",
                     "mode",
                     "modelID",
-                    "slotID",
+                    "executionClass",
                     "skillIDs",
                     "toolIDs",
                     "thinking",
@@ -32906,95 +32442,6 @@
       "status",
       "eventsURL",
       "replayed"
-    ],
-    "type": "object"
-  },
-  "runs.search.request": {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "additionalProperties": false,
-    "properties": {
-      "agentID": {
-        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-        "type": "string"
-      },
-      "cursor": {
-        "maxLength": 512,
-        "type": "string"
-      },
-      "limit": {
-        "default": 50,
-        "maximum": 100,
-        "minimum": 1,
-        "type": "integer"
-      },
-      "state": {
-        "enum": [
-          "queued",
-          "running",
-          "paused",
-          "completed",
-          "failed",
-          "cancelled",
-          "timedOut"
-        ],
-        "type": "string"
-      }
-    },
-    "type": "object"
-  },
-  "runs.search.result": {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "additionalProperties": false,
-    "properties": {
-      "items": {
-        "items": {
-          "additionalProperties": false,
-          "properties": {
-            "eventSequence": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "excerpt": {
-              "maxLength": 1000,
-              "type": "string"
-            },
-            "matchOffset": {
-              "maximum": 9007199254740991,
-              "minimum": 0,
-              "type": "integer"
-            },
-            "runID": {
-              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-              "type": "string"
-            },
-            "turnID": {
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
-              "type": "string"
-            }
-          },
-          "required": [
-            "runID",
-            "eventSequence",
-            "turnID",
-            "excerpt",
-            "matchOffset"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "nextCursor": {
-        "type": [
-          "string",
-          "null"
-        ]
-      }
-    },
-    "required": [
-      "items",
-      "nextCursor"
     ],
     "type": "object"
   },
@@ -41712,302 +41159,6 @@
     ],
     "type": "object"
   },
-  "scheduler.explain.request": {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "additionalProperties": false,
-    "properties": {},
-    "type": "object"
-  },
-  "scheduler.explain.result": {
-    "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "additionalProperties": false,
-    "properties": {
-      "diagnostic": {
-        "type": [
-          "string",
-          "null"
-        ]
-      },
-      "plan": {
-        "additionalProperties": false,
-        "properties": {
-          "pause": {
-            "items": {
-              "type": "string"
-            },
-            "maxItems": 16,
-            "type": "array"
-          },
-          "reason": {
-            "maxLength": 1000,
-            "type": "string"
-          },
-          "start": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "runID": {
-                  "type": "string"
-                },
-                "slotID": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "runID",
-                "slotID"
-              ],
-              "type": "object"
-            },
-            "maxItems": 16,
-            "type": "array"
-          }
-        },
-        "required": [
-          "start",
-          "pause",
-          "reason"
-        ],
-        "type": "object"
-      },
-      "snapshot": {
-        "additionalProperties": false,
-        "properties": {
-          "active": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "modelID": {
-                  "type": "string"
-                },
-                "runID": {
-                  "type": "string"
-                },
-                "slotID": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "runID",
-                "modelID",
-                "slotID"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "blockers": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "eligible": {
-            "type": "boolean"
-          },
-          "now": {
-            "type": "number"
-          },
-          "pending": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "modelID": {
-                  "type": "string"
-                },
-                "modelPriority": {
-                  "type": "number"
-                },
-                "priority": {
-                  "type": "number"
-                },
-                "runID": {
-                  "type": "string"
-                },
-                "waitingSince": {
-                  "type": "number"
-                }
-              },
-              "required": [
-                "runID",
-                "modelID",
-                "priority",
-                "modelPriority",
-                "waitingSince"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "residentModelID": {
-            "type": [
-              "string",
-              "null"
-            ]
-          },
-          "residentSince": {
-            "type": "number"
-          },
-          "settings": {
-            "additionalProperties": false,
-            "properties": {
-              "contextTokens": {
-                "default": 4096,
-                "maximum": 262144,
-                "minimum": 1024,
-                "type": "integer"
-              },
-              "hook": {
-                "anyOf": [
-                  {
-                    "additionalProperties": false,
-                    "properties": {
-                      "arguments": {
-                        "default": [],
-                        "items": {
-                          "type": "string"
-                        },
-                        "maxItems": 64,
-                        "type": "array"
-                      },
-                      "executablePath": {
-                        "pattern": "^\\/",
-                        "type": "string"
-                      },
-                      "failurePolicy": {
-                        "default": "builtin",
-                        "enum": [
-                          "builtin",
-                          "hold"
-                        ],
-                        "type": "string"
-                      },
-                      "timeoutMs": {
-                        "default": 2000,
-                        "maximum": 30000,
-                        "minimum": 100,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "executablePath",
-                      "arguments",
-                      "timeoutMs",
-                      "failurePolicy"
-                    ],
-                    "type": "object"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null
-              },
-              "instantModelID": {
-                "anyOf": [
-                  {
-                    "maxLength": 128,
-                    "minLength": 1,
-                    "type": "string"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null
-              },
-              "maxConcurrent": {
-                "default": 1,
-                "maximum": 16,
-                "minimum": 1,
-                "type": "integer"
-              },
-              "maxWaitMs": {
-                "default": 900000,
-                "maximum": 86400000,
-                "minimum": 1000,
-                "type": "integer"
-              },
-              "minResidencyMs": {
-                "default": 60000,
-                "maximum": 3600000,
-                "minimum": 0,
-                "type": "integer"
-              },
-              "snapshotBudgetMB": {
-                "default": 1024,
-                "maximum": 1048576,
-                "minimum": 0,
-                "type": "integer"
-              },
-              "timersEnabled": {
-                "default": true,
-                "type": "boolean"
-              }
-            },
-            "required": [
-              "instantModelID",
-              "maxConcurrent",
-              "contextTokens",
-              "snapshotBudgetMB",
-              "minResidencyMs",
-              "maxWaitMs",
-              "timersEnabled",
-              "hook"
-            ],
-            "type": "object"
-          },
-          "slots": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "modelID": {
-                  "type": "string"
-                },
-                "slotID": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "slotID",
-                "modelID"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "now",
-          "eligible",
-          "blockers",
-          "residentModelID",
-          "residentSince",
-          "settings",
-          "pending",
-          "active",
-          "slots"
-        ],
-        "type": "object"
-      },
-      "source": {
-        "enum": [
-          "builtin",
-          "hook",
-          "hold",
-          "fallback"
-        ],
-        "type": "string"
-      }
-    },
-    "required": [
-      "plan",
-      "source",
-      "diagnostic",
-      "snapshot"
-    ],
-    "type": "object"
-  },
   "schema.get.request": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
@@ -42920,6 +42071,10 @@
       "doctor": {
         "default": false,
         "type": "boolean"
+      },
+      "scheduler": {
+        "default": false,
+        "type": "boolean"
       }
     },
     "type": "object"
@@ -43193,6 +42348,288 @@
           "checks",
           "capabilities",
           "agents"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "diagnostic": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "plan": {
+            "additionalProperties": false,
+            "properties": {
+              "pause": {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 16,
+                "type": "array"
+              },
+              "reason": {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              "start": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "runID": {
+                      "type": "string"
+                    },
+                    "slotID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "runID",
+                    "slotID"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 16,
+                "type": "array"
+              }
+            },
+            "required": [
+              "start",
+              "pause",
+              "reason"
+            ],
+            "type": "object"
+          },
+          "snapshot": {
+            "additionalProperties": false,
+            "properties": {
+              "active": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "modelID": {
+                      "type": "string"
+                    },
+                    "runID": {
+                      "type": "string"
+                    },
+                    "slotID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "runID",
+                    "modelID",
+                    "slotID"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "blockers": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "eligible": {
+                "type": "boolean"
+              },
+              "now": {
+                "type": "number"
+              },
+              "pending": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "modelID": {
+                      "type": "string"
+                    },
+                    "modelPriority": {
+                      "type": "number"
+                    },
+                    "priority": {
+                      "type": "number"
+                    },
+                    "runID": {
+                      "type": "string"
+                    },
+                    "waitingSince": {
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "runID",
+                    "modelID",
+                    "priority",
+                    "modelPriority",
+                    "waitingSince"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "residentModelID": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "residentSince": {
+                "type": "number"
+              },
+              "settings": {
+                "additionalProperties": false,
+                "properties": {
+                  "hook": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "arguments": {
+                            "default": [],
+                            "items": {
+                              "type": "string"
+                            },
+                            "maxItems": 64,
+                            "type": "array"
+                          },
+                          "executablePath": {
+                            "pattern": "^\\/",
+                            "type": "string"
+                          },
+                          "failurePolicy": {
+                            "default": "builtin",
+                            "enum": [
+                              "builtin",
+                              "hold"
+                            ],
+                            "type": "string"
+                          },
+                          "timeoutMs": {
+                            "default": 2000,
+                            "maximum": 30000,
+                            "minimum": 100,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "executablePath",
+                          "arguments",
+                          "timeoutMs",
+                          "failurePolicy"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
+                  },
+                  "instantModelID": {
+                    "anyOf": [
+                      {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
+                  },
+                  "maxConcurrent": {
+                    "default": 1,
+                    "maximum": 16,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "maxWaitMs": {
+                    "default": 900000,
+                    "maximum": 86400000,
+                    "minimum": 1000,
+                    "type": "integer"
+                  },
+                  "minResidencyMs": {
+                    "default": 60000,
+                    "maximum": 3600000,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "snapshotBudgetMB": {
+                    "default": 1024,
+                    "maximum": 1048576,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "timersEnabled": {
+                    "default": true,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "instantModelID",
+                  "maxConcurrent",
+                  "snapshotBudgetMB",
+                  "minResidencyMs",
+                  "maxWaitMs",
+                  "timersEnabled",
+                  "hook"
+                ],
+                "type": "object"
+              },
+              "slots": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "modelID": {
+                      "type": "string"
+                    },
+                    "slotID": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "slotID",
+                    "modelID"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "now",
+              "eligible",
+              "blockers",
+              "residentModelID",
+              "residentSince",
+              "settings",
+              "pending",
+              "active",
+              "slots"
+            ],
+            "type": "object"
+          },
+          "source": {
+            "enum": [
+              "builtin",
+              "hook",
+              "hold",
+              "fallback"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "plan",
+          "source",
+          "diagnostic",
+          "snapshot"
         ],
         "type": "object"
       },
@@ -43475,18 +42912,6 @@
                               ],
                               "type": "string"
                             },
-                            "execution": {
-                              "enum": [
-                                "queued",
-                                "running",
-                                "paused",
-                                "completed",
-                                "failed",
-                                "cancelled",
-                                "timedOut"
-                              ],
-                              "type": "string"
-                            },
                             "hooks": {
                               "enum": [
                                 "none",
@@ -43533,7 +42958,6 @@
                             }
                           },
                           "required": [
-                            "execution",
                             "output",
                             "task",
                             "delivery",
@@ -44071,18 +43495,6 @@
                       ],
                       "type": "string"
                     },
-                    "execution": {
-                      "enum": [
-                        "queued",
-                        "running",
-                        "paused",
-                        "completed",
-                        "failed",
-                        "cancelled",
-                        "timedOut"
-                      ],
-                      "type": "string"
-                    },
                     "hooks": {
                       "enum": [
                         "none",
@@ -44129,7 +43541,6 @@
                     }
                   },
                   "required": [
-                    "execution",
                     "output",
                     "task",
                     "delivery",
@@ -44192,16 +43603,36 @@
           "runtime": {
             "additionalProperties": false,
             "properties": {
-              "activeRunID": {
-                "anyOf": [
-                  {
-                    "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                    "type": "string"
+              "active": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "run",
+                        "chat"
+                      ],
+                      "type": "string"
+                    },
+                    "modelID": {
+                      "type": "string"
+                    },
+                    "slotID": {
+                      "type": "string"
+                    }
                   },
-                  {
-                    "type": "null"
-                  }
-                ]
+                  "required": [
+                    "id",
+                    "kind",
+                    "slotID",
+                    "modelID"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
               },
               "cooldownUntil": {
                 "anyOf": [
@@ -44360,7 +43791,7 @@
             "required": [
               "presence",
               "cooldownUntil",
-              "activeRunID",
+              "active",
               "queue",
               "models",
               "slots"
@@ -44370,37 +43801,6 @@
           "scheduler": {
             "additionalProperties": false,
             "properties": {
-              "active": {
-                "items": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "kind": {
-                      "enum": [
-                        "run",
-                        "chat"
-                      ],
-                      "type": "string"
-                    },
-                    "modelID": {
-                      "type": "string"
-                    },
-                    "slotID": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "kind",
-                    "slotID",
-                    "modelID"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
-              },
               "instantModelID": {
                 "type": [
                   "string",
@@ -44496,7 +43896,6 @@
             "required": [
               "instantModelID",
               "residentModelID",
-              "active",
               "lastDecision"
             ],
             "type": "object"

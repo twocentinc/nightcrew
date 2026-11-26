@@ -31,7 +31,7 @@ async function setup(t: import("node:test").TestContext) {
         projectorPath: null,
         idleUnloadMs: 300000,
       })),
-      slots: [],
+
       hooks: [],
     }),
   );
@@ -197,7 +197,6 @@ test("test reservation blocks competing unloads and lets instant work run after 
         toolCallID: null,
       },
     ],
-    slotID: "instant",
     skillIDs: [],
     tools: [],
     timeoutMs: 30000,
@@ -272,4 +271,114 @@ test("shutdown aborts and settles transient inference before closing the runtime
   };
   await f.service.close();
   await rejected;
+});
+
+test("consolidated commands reject retired surfaces and evaluate policy only on request", async (t) => {
+  const f = await setup(t);
+  const { requestSchemas } = await import("../dist/utils/commands/inputs.js");
+  const { configSchema } = await import("../dist/schemas/config.js");
+  const { executionSlots } =
+    await import("../dist/engine/scheduling/policy.js");
+  for (const words of [
+    ["scheduler", "explain"],
+    ["runs", "search", "hello"],
+  ])
+    assert.throws(() => parseCLI(words));
+  for (const changes of [
+    { models: [] },
+    { slots: [] },
+    { scheduler: { contextTokens: 8192 } },
+  ])
+    assert.equal(
+      requestSchemas["config update"].safeParse({
+        expectedRevision: 1,
+        changes,
+      }).success,
+      false,
+    );
+  assert.equal(
+    configSchema.safeParse({ ...f.service.storage.store.config, slots: [] })
+      .success,
+    false,
+  );
+  const config = structuredClone(f.service.storage.store.config);
+  config.models[0]!.contextTokens = 8192;
+  config.models[1]!.contextTokens = 16384;
+  config.scheduler.maxConcurrent = 3;
+  const slots = executionSlots(config);
+  assert.equal(slots.filter((s) => s.modelID === "instant").length, 4);
+  assert.equal(slots.filter((s) => s.modelID === "candidate").length, 3);
+  assert.equal(slots.filter((s) => s.instant).length, 1);
+  assert.ok(
+    slots.every(
+      (s) => s.contextTokens === (s.modelID === "instant" ? 8192 : 16384),
+    ),
+  );
+  const original = f.service.explainScheduler.bind(f.service);
+  let evaluated = 0;
+  f.service.explainScheduler = async () => {
+    evaluated++;
+    return original();
+  };
+  await f.invoke("status");
+  await f.invoke("status", undefined, { details: true });
+  assert.equal(evaluated, 0);
+  const result = (await f.invoke("status", undefined, {
+    scheduler: true,
+  })) as any;
+  assert.equal(evaluated, 1);
+  assert.ok(result.plan && result.snapshot);
+  await assert.rejects(
+    f.invoke("status", undefined, { doctor: true, scheduler: true }),
+  );
+  assert.equal(evaluated, 1);
+});
+
+test("instant inputs reject slot selection and admit requests through the designated slot", async (t) => {
+  const f = await setup(t);
+  const { requestSchemas } = await import("../dist/utils/commands/inputs.js");
+  const request = {
+    conversationID: randomUUID(),
+    messages: [
+      {
+        messageID: randomUUID(),
+        role: "user",
+        content: "hello",
+        attachments: [],
+        toolCalls: [],
+        toolCallID: null,
+      },
+    ],
+    tools: [],
+  };
+  assert.equal(
+    requestSchemas["instant create"].safeParse(request).success,
+    true,
+  );
+  assert.equal(
+    requestSchemas["instant create"].safeParse({
+      ...request,
+      slotID: "instant",
+    }).success,
+    false,
+  );
+  const accepted = (await f.invoke(
+    "instant create",
+    undefined,
+    request,
+  )) as any;
+  for (
+    let i = 0;
+    i < 200 && f.service.chat(accepted.requestID).state !== "completed";
+    i++
+  )
+    await delay(10);
+  assert.equal(f.service.chat(accepted.requestID).state, "completed");
+  const { executionSlots } =
+    await import("../dist/engine/scheduling/policy.js");
+  assert.equal(
+    f.calls[0]!.slotID,
+    executionSlots(f.service.storage.store.config).find((s) => s.instant)!
+      .slotID,
+  );
 });

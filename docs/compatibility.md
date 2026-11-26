@@ -1,7 +1,7 @@
 # Public contract and compatibility
 
-The current frozen public contract is protocol 1, schema 47, introduced in
-0.46.0 through owner-approved transient model testing and explicit unloading. The freeze began at schema 34;
+The current frozen public contract is protocol 1, schema 49, introduced in
+0.49.0 through owner-approved instant-input and status cleanup. The freeze began at schema 34;
 owner-approved changes since then are recorded below. This is the baseline for
 the upcoming 1.0 release, not a claim that acceptance work is complete.
 
@@ -195,3 +195,51 @@ Generated `/v1/operations/...` routes are the complete remote management surface
 - `models unload MODEL_ID` or `models unload --all` replaces the implicit instant-model target. No selector, or both selectors, is invalid. It returns `{modelIDs, unloadedModelIDs, changed}`.
 - Unloading now refuses active work rather than cancelling instant work. There is no compatibility alias for the old destructive behavior.
 - Both commands use the shared authenticated oRPC contracts and require the daemon. CLI operands now support the declared optional-ID contract used by `models unload`; JSON flags reject duplicate fields.
+
+## 0.47.0 storage simplification
+
+- The CLI/oRPC contract remains at schema 47. Flag mappings now live beside each
+  command definition; flags, duplicate-input handling and requests are unchanged.
+- Run documents use format 5: typed event payloads, flat lifecycle events and no
+  redundant `inFlight` pointers. Public run projections and exported bundles
+  retain their version-4 shape, event UUIDs and transcript sequence cursors.
+- Stop the daemon and run `node dist/storage/migrate.js --home ABSOLUTE_HOME`
+  to preview the offline upgrade, then add `--apply`. Formats 3 and 4 are
+  supported migration inputs; original run directories are backed up. The normal
+  reader accepts only format 5. Migration never executes tools or delivery hooks.
+
+## 0.48.0 / schema 48 consolidation
+
+- Models own `contextTokens`; remove configuration `slots`, scheduler
+  `contextTokens`, model-create `slots`, and agent `slotID`. Agents use
+  `executionClass: background|instant`. Slot allocation is derived from models,
+  `maxConcurrent` and the selected instant model.
+- `config update` and its HTTP adapter no longer accept models, slots or
+  `modelIdlePolicies`. Model CRUD is the sole public model-editing surface.
+- Replace `runs search TEXT` with `runs list --query TEXT`, preserving search
+  evidence. HTTP uses `/v1/runs?query=TEXT`; the old search route is removed.
+- Replace `scheduler explain` with `status --scheduler`. Policy hooks execute only
+  on explicit scheduler inspection or ordinary scheduling, never plain status.
+- Configuration format 3 and run document format 6 require the offline migration
+  described above. The latest configuration event replaces the document's
+  top-level `configurationID`. Original files are backed up. Retain transcripts;
+  stale slot caches are disposable and may rebuild after this upgrade.
+- This is an owner-approved breaking pre-1.0 change; removed inputs and commands
+  are rejected rather than retained as compatibility aliases.
+
+## 0.49.0 / schema 49 field cleanup
+
+- Instant requests no longer accept `slotID`; the daemon selects its designated
+  instant slot. The optional `modelID` remains an expected-model check.
+- Run outcomes no longer repeat execution state. Read `run.execution.state`.
+- Runtime status replaces `activeRunID` with `active`, an array of
+  `{ id, kind, modelID, slotID }` for all current run/chat executions. Detailed
+  scheduler status no longer repeats that array. Each slot's conversationID
+  describes only the chat actually using that slot.
+- These approved removals have no aliases. Run document format 6 and configuration
+  format 3 are unchanged; no durable-data migration is required.
+
+### Run document format 7
+
+- Collection events derive identity from their value instead of duplicating it in `data.key`.
+- Normal reads accept only format 7. The offline migration upgrades existing runs with backups; public schema 49 is unchanged.

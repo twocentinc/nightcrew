@@ -3,15 +3,11 @@ import { now } from "../schemas/common.js";
 import { validateConfig, type Config } from "../schemas/config.js";
 import { Storage } from "../storage/store.js";
 import type { AgentRegistry } from "./capabilities/registry.js";
-import type { Runtime } from "./models/types.js";
 import { fail } from "./protocol.js";
-import type { Dispatch } from "./scheduling/dispatch.js";
 
 interface Dependencies {
   readonly storage: Storage;
   readonly registry: Pick<AgentRegistry, "validateAgent">;
-  readonly dispatch: Pick<Dispatch, "status">;
-  readonly runtime: Runtime;
 }
 export class Configuration {
   constructor(private readonly ports: Dependencies) {}
@@ -106,45 +102,6 @@ export class Configuration {
       this.valid(next);
       if (!dryRun) await this.ports.storage.saveConfig(next);
       return { agent, changed: !dryRun };
-    });
-  }
-  async patchConfig(
-    expectedRevision: number,
-    changes: {
-      logging?: Config["logging"];
-      interactionCooldownMs?: number;
-      slots?: Config["slots"];
-      modelIdlePolicies?: { modelID: string; idleUnloadMs: number }[];
-    },
-    dryRun = false,
-  ) {
-    return this.ports.storage.exclusive(async () => {
-      const next = structuredClone(this.ports.storage.store);
-      if (next.config.revision !== expectedRevision)
-        fail("revision_conflict", 409);
-      if (changes.slots && this.ports.dispatch.status().queue.length)
-        fail("runtime_busy", 409);
-      if (changes.logging !== undefined) next.config.logging = changes.logging;
-      if (changes.interactionCooldownMs !== undefined)
-        next.config.interactionCooldownMs = changes.interactionCooldownMs;
-      if (changes.slots) next.config.slots = changes.slots;
-      for (const p of changes.modelIdlePolicies ?? []) {
-        const model =
-          next.config.models.find((m) => m.modelID === p.modelID) ??
-          fail("unknown_model");
-        model.idleUnloadMs = p.idleUnloadMs;
-      }
-      next.config.revision++;
-      this.valid(next);
-      if (!dryRun) {
-        if (changes.slots) await this.ports.runtime.close();
-        await this.ports.storage.saveConfig(next);
-      }
-      return {
-        config: this.publicConfig(next.config),
-        changed: !dryRun,
-        restartRequired: !!changes.slots,
-      };
     });
   }
 }

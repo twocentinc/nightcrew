@@ -10,6 +10,7 @@ export const slotSchema = z.strictObject({
 });
 export const modelSchema = z.strictObject({
   modelID: id,
+  contextTokens: z.number().int().min(1024).max(262144).default(4096),
   compactionThresholdTokens: z
     .number()
     .int()

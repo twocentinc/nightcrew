@@ -8,8 +8,8 @@ import { randomUUID } from "node:crypto";
 import { setTimeout as delay } from "node:timers/promises";
 import { startServer } from "../../dist/server/http.js";
 import { tokenHash } from "../../dist/storage/config.js";
-import {modelSchema} from "../../dist/schemas/model.js";
-import {storeSchema} from "../../dist/schemas/config.js";
+import { modelSchema } from "../../dist/schemas/model.js";
+import { storeSchema } from "../../dist/schemas/config.js";
 
 test(
   "real models: thinking, persistent restart, compaction and optional audio",
@@ -25,16 +25,16 @@ test(
     const settings = JSON.parse(
       (await readFile(process.env.NIGHTCREW_LIVE_CONFIG!, "utf8")).toString(),
     );
-    const qwen = modelSchema.parse(settings.qwen);
+    const qwen = modelSchema.parse({ ...settings.qwen, contextTokens: 8192 });
     const granite = settings.granite
-      ? modelSchema.parse(settings.granite)
+      ? modelSchema.parse({ ...settings.granite, contextTokens: 8192 })
       : null;
     assert.equal(qwen.kind, "chat");
     const home = await mkdtemp(path.join(tmpdir(), "nightcrew-live-"));
     t.diagnostic("Retained validation transcripts: " + home);
     const token = randomUUID();
     const store = storeSchema.parse({
-      version: 2,
+      version: 3,
       config: {
         revision: 1,
         host: "127.0.0.1",
@@ -42,11 +42,10 @@ test(
         interactionCooldownMs: 0,
         rootTokenHash: tokenHash(token),
         models: [qwen, ...(granite ? [granite] : [])],
-        slots: [],
+
         hooks: [],
         scheduler: {
           instantModelID: qwen.modelID,
-          contextTokens: 8192,
           timersEnabled: false,
         },
       },
@@ -112,7 +111,7 @@ test(
       systemPrompt: "Follow the user request concisely.",
       mode: "single-turn",
       modelID: qwen.modelID,
-      slotID: "auto",
+      executionClass: "background",
       skillIDs: [],
       toolIDs: [],
       enabled: true,

@@ -24,7 +24,6 @@ import {
   userMessageSchema,
 } from "../schemas/common.js";
 import { publicConfigSchema } from "../schemas/config.js";
-import { slotSchema } from "../schemas/model.js";
 import {
   acceptanceSchema,
   chatAcceptanceSchema,
@@ -36,7 +35,6 @@ import {
   transcriptEntrySchema,
 } from "../schemas/run.js";
 import type { RouteBuilders } from "./http.js";
-import { loggingSchema } from "./logging.js";
 import type { createEventStream } from "./streams.js";
 
 const dryRun = z.boolean().default(false);
@@ -53,10 +51,7 @@ export function resourceRoutes(
 ) {
   const api = managementClient(service);
   const noResource = { resourceID: undefined, request: {} };
-  const runFilter = pageSchema.extend({
-    agentID: id.optional(),
-    state: runState.optional(),
-  });
+  const runFilter = operationInputs["runs list"];
   const page = <T>(
     key: string,
     input: { limit: number; cursor?: string },
@@ -102,33 +97,7 @@ export function resourceRoutes(
       })),
     configPatch: protectedRoute
       .route({ method: "PATCH", path: "/v1/config" })
-      .input(
-        z.strictObject({
-          expectedRevision: revision,
-          changes: z
-            .strictObject({
-              logging: loggingSchema.optional(),
-              interactionCooldownMs: z
-                .number()
-                .int()
-                .min(0)
-                .max(3600000)
-                .optional(),
-              slots: z.array(slotSchema).max(32).optional(),
-              modelIdlePolicies: z
-                .array(
-                  z.strictObject({
-                    modelID: id,
-                    idleUnloadMs: z.number().int().min(0).max(86400000),
-                  }),
-                )
-                .max(32)
-                .optional(),
-            })
-            .refine((x) => Object.keys(x).length > 0),
-          dryRun,
-        }),
-      )
+      .input(operationInputs["config update"].extend({ dryRun }))
       .output(
         z.object({
           config: publicConfigSchema,
@@ -137,20 +106,11 @@ export function resourceRoutes(
         }),
       )
       .handler(async ({ input }) => {
-        const { modelIdlePolicies, ...changes } = input.changes;
-        const models = modelIdlePolicies
-          ? service.storage.store.config.models.map((model) => ({
-              ...model,
-              idleUnloadMs:
-                modelIdlePolicies.find((p) => p.modelID === model.modelID)
-                  ?.idleUnloadMs ?? model.idleUnloadMs,
-            }))
-          : undefined;
         const result = await api["config update"]({
           resourceID: undefined,
           request: {
             expectedRevision: input.expectedRevision,
-            changes: { ...changes, ...(models ? { models } : {}) },
+            changes: input.changes,
           },
           dryRun: input.dryRun,
         });
@@ -231,24 +191,17 @@ export function resourceRoutes(
     runsList: protectedRoute
       .route({ method: "GET", path: "/v1/runs" })
       .input(runFilter)
-      .output(pageOutput(runSummarySchema))
+      .output(
+        z.object({
+          items: z.union([
+            z.array(runSummarySchema),
+            z.array(searchMatchSchema),
+          ]),
+          nextCursor: z.string().nullable(),
+        }),
+      )
       .handler(({ input }) =>
         api["runs list"]({ resourceID: undefined, request: input }),
-      ),
-    runsSearch: protectedRoute
-      .route({ method: "GET", path: "/v1/runs/search" })
-      .input(runFilter.extend({ query: z.string().min(1).max(200) }))
-      .output(pageOutput(searchMatchSchema))
-      .handler(({ input }) =>
-        api["runs search"]({
-          resourceID: input.query,
-          request: {
-            limit: input.limit,
-            cursor: input.cursor,
-            agentID: input.agentID,
-            state: input.state,
-          },
-        }),
       ),
     runGet: protectedRoute
       .route({ method: "GET", path: "/v1/runs/{runID}" })

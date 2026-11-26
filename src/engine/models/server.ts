@@ -28,7 +28,7 @@ const exec = promisify(execFile);
 interface Dependencies {
   readonly main: Pick<
     LlamaRuntime,
-    "config" | "logger" | "idleTimer" | "loadedModel" | "resident"
+    "config" | "logger" | "idleTimer" | "loadedModel"
   >;
   readonly cache: Pick<
     ModelCache,
@@ -243,7 +243,6 @@ export class ModelServer {
         if ((e as NodeJS.ErrnoException).code !== "ESRCH") throw e;
       }
     }
-    this.ports.main.resident.clear();
     if (this.directory) {
       await rm(this.directory, { recursive: true, force: true });
       this.directory = undefined;

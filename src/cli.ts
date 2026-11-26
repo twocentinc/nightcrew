@@ -49,6 +49,8 @@ const optionTypes: Record<string, string | false> = {
   agent: "agentID",
   state: "state",
   doctor: false,
+  scheduler: false,
+  query: "text",
   prompt: "text",
   all: false,
   details: false,
@@ -256,53 +258,20 @@ export async function main(argv = process.argv.slice(2)) {
         args.values.request as string | undefined,
         execution,
       );
-      if (command.startsWith("evals ")) {
-        const set = (field: string, value: unknown) => {
-          if (!raw || typeof raw !== "object" || Array.isArray(raw))
-            throw invalidInput("Request must be an object");
-          if (raw[field] !== undefined)
-            throw invalidInput("Duplicate request field " + field);
-          raw[field] = value;
-        };
-        if (args.values.file) {
-          const data = await inputJSON(String(args.values.file), execution);
-          if (command === "evals create") set("eval", data);
-          else if (command === "evals transcript update") set("message", data);
-          else set("messages", Array.isArray(data) ? data : [data]);
-        }
-        for (const field of ["input", "output"])
-          if (args.values[field])
-            set(field, await inputJSON(String(args.values[field]), execution));
-        if (args.values.tool) set("tool", args.values.tool);
-        if (args.values.message) set("messageID", args.values.message);
-      }
-      if (command.startsWith("runs ") || command.startsWith("queue ")) {
-        for (const [flag, field] of [
-          ["limit", "limit"],
-          ["cursor", "cursor"],
-          ["agent", "agentID"],
-          ["state", "state"],
-        ]) {
-          if (args.values[flag!] !== undefined) {
-            if (!raw || typeof raw !== "object" || Array.isArray(raw))
-              throw invalidInput("Request must be an object");
-            if (raw[field!] !== undefined)
-              throw invalidInput("Duplicate request field " + field);
-            raw[field!] = args.values[flag!];
-          }
-        }
-      }
-      if (command === "status") {
-        if (args.values.details) raw.details = true;
-        if (args.values.doctor) raw.doctor = true;
-      }
-      if (command === "models test" || command === "models unload") {
-        for (const field of ["prompt", "all"])
-          if (args.values[field] !== undefined) {
-            if (raw[field] !== undefined)
-              throw invalidInput("Duplicate request field " + field);
-            raw[field] = args.values[field];
-          }
+      for (const [flag, binding] of Object.entries(args.definition.bindings)) {
+        const value = args.values[flag];
+        if (value === undefined) continue;
+        if (!raw || typeof raw !== "object" || Array.isArray(raw))
+          throw invalidInput("Request must be an object");
+        if (!binding.overwrite && raw[binding.field] !== undefined)
+          throw invalidInput("Duplicate request field " + binding.field);
+        const decoded = binding.input
+          ? await inputJSON(String(value), execution)
+          : value;
+        raw[binding.field] =
+          binding.input === "messages" && !Array.isArray(decoded)
+            ? [decoded]
+            : decoded;
       }
       context.request = args.definition.request.parse(raw);
       execution.check();

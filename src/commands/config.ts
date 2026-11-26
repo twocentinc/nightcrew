@@ -14,7 +14,6 @@ import {
   configurationChangePolicy,
   exposeConfig,
   resourceCommand,
-  verifyModels,
   type ManagementInput,
   type ResourceActions,
   type ResourceContext,
@@ -24,7 +23,7 @@ export const operationInputs = {
   "config update": z.strictObject({
     expectedRevision: revision,
     changes: configSchema
-      .omit({ rootTokenHash: true, revision: true })
+      .omit({ rootTokenHash: true, revision: true, models: true })
       .partial()
       .extend({
         httpEnabled: configSchema.shape.httpEnabled.unwrap().optional(),
@@ -114,23 +113,13 @@ const resourceActions: ResourceActions = {
     if (changes.scheduler) {
       if (
         policy.resizingScheduler &&
-        (service.schedulerStatus().active.length ||
+        (service.status().active.length ||
           [...service.chats.values()].some((c) => c.state === "queued"))
       )
         fail("runtime_busy", 409);
-      if (changes.scheduler.contextTokens !== undefined)
-        next.config.slots = next.config.slots.map((slot) => ({
-          ...slot,
-          contextTokens: changes.scheduler!.contextTokens!,
-        }));
       changes.scheduler = { ...next.config.scheduler, ...changes.scheduler };
     }
     next.config = { ...next.config, ...changes };
     next.config.revision++;
-    if (
-      resource !== "config" ||
-      (value.changes as Record<string, unknown>).models !== undefined
-    )
-      await verifyModels(next);
   },
 };

@@ -74,10 +74,6 @@ export class Service {
     this.configuration = configuration = new Configuration({
       storage,
       registry,
-      get dispatch() {
-        return dispatch;
-      },
-      runtime,
     });
     this.runs = runs = new Runs({
       storage,
@@ -239,18 +235,6 @@ export class Service {
       changes,
       dryRun,
     );
-  }
-  patchConfig(
-    expectedRevision: number,
-    changes: {
-      logging?: Config["logging"];
-      interactionCooldownMs?: number;
-      slots?: Config["slots"];
-      modelIdlePolicies?: { modelID: string; idleUnloadMs: number }[];
-    },
-    dryRun = false,
-  ) {
-    return this.configuration.patchConfig(expectedRevision, changes, dryRun);
   }
   page<T>(
     key: string,

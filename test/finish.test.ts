@@ -62,6 +62,7 @@ async function fixture(
       interactionCooldownMs: 0,
       models: [
         {
+          contextTokens: 4096,
           modelID: "q",
           kind: "chat" as const,
           weightsPath: "/unused",
@@ -69,15 +70,7 @@ async function fixture(
           idleUnloadMs: 0,
         },
       ],
-      slots: [
-        {
-          slotID: "instant",
-          modelID: "q",
-          index: 0,
-          contextTokens: 4096,
-          instant: true,
-        },
-      ],
+
       hooks,
     }),
   );
@@ -126,7 +119,7 @@ async function fixture(
       systemPrompt: "Return the requested result.",
       mode: "single-turn",
       modelID: "q",
-      slotID: "instant",
+      executionClass: "instant",
       skillIDs: [],
       toolIDs: [],
       enabled: true,

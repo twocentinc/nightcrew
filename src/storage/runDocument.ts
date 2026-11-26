@@ -10,41 +10,40 @@ import {
 import { atomicJSON, claimJSON, readJSON } from "./files.js";
 import { fingerprint } from "../utils/json.js";
 
-const documentEvent = z.strictObject({
-  eventID: z.uuid(),
-  sequence: z.number().int().positive(),
-  at: z.iso.datetime(),
-  turnID: z.uuid(),
-  type: z.string(),
-  data: z.record(z.string(), z.json()),
-});
+import {
+  documentEventSchema,
+  documentMessageSchema,
+  scalarEvents,
+  collectionEvents,
+  isLifecycleEvent,
+  type DocumentEvent,
+  type QueuedTurn,
+  type Configuration,
+} from "./runEvents.js";
+import { messageSchema, userMessageSchema } from "../schemas/common.js";
+
 export const runDocumentSchema = runStateRecordSchema.extend({
-  messages: z.array(z.record(z.string(), z.json())),
-  events: z.array(documentEvent),
+  messages: z.array(documentMessageSchema),
+  events: z.array(documentEventSchema),
 });
 export type RunDocument = z.infer<typeof runDocumentSchema>;
 const same = (a: unknown, b: unknown) =>
   JSON.stringify(a) === JSON.stringify(b);
-const scalarEvents: Record<string, string> = {
-  interactive: "turnPriorityChanged",
-  parentRunID: "parentLinked",
-  triggerSource: "triggerSubmitted",
-  contextUsage: "contextMeasured",
-  recovery: "toolLoopLimited",
-  deliveryExpected: "deliveryExpected",
-  evaluation: "evalStateChanged",
-  compaction: "compactionChanged",
-};
-const arrays: Record<string, { key: string; event: string }> = {
-  attempts: { key: "attemptID", event: "generationCheckpointed" },
-  compactions: { key: "checkpointID", event: "compactionCommitted" },
-  hookReceipts: { key: "receiptID", event: "hookInvocationChanged" },
-  validations: { key: "messageID", event: "outputValidated" },
-  capabilityRefreshes: { key: "at", event: "capabilitiesRefreshed" },
-};
+const scalarFields = new Map<string, keyof typeof scalarEvents>(
+  Object.entries(scalarEvents).map(([key, type]) => [
+    type,
+    key as keyof typeof scalarEvents,
+  ]),
+);
+const collectionFields = new Map<string, keyof typeof collectionEvents>(
+  Object.entries(collectionEvents).map(([key, definition]) => [
+    definition.event,
+    key as keyof typeof collectionEvents,
+  ]),
+);
 /** Engine arrays are projections. The single document owns messages and recorded events. */
 export function projectDocument(document: RunDocument): StoredRun {
-  const projection: any = {
+  const projection: Partial<StoredRun> = {
     version: 4,
     messages: [],
     events: [],
@@ -57,7 +56,7 @@ export function projectDocument(document: RunDocument): StoredRun {
     capabilityRefreshes: [],
     result: null,
   };
-  const messages = new Map(document.messages.map((m: any) => [m.messageID, m]));
+  const messages = new Map(document.messages.map((m) => [m.messageID, m]));
   if (messages.size !== document.messages.length)
     throw Error("Duplicate document message");
   if (
@@ -67,46 +66,58 @@ export function projectDocument(document: RunDocument): StoredRun {
     throw Error("Duplicate document event");
   if (
     !document.messages.some(
-      (m) => m.messageID === document.turnID && m.role === "user",
+      (m) =>
+        m.messageID === document.turnID && "role" in m && m.role === "user",
     )
   )
     throw Error("Turn must reference a user message");
   const active = new Set<string>(),
-    pending = new Map<string, any>(),
-    configurations = new Map<string, any>();
-  const records = new Map<string, Map<string, any>>(
-    Object.keys(arrays).map((k) => [k, new Map()]),
+    pending = new Map<string, QueuedTurn>();
+  let configuration:
+    | { configurationID: string; configuration: Configuration }
+    | undefined;
+  const records = new Map<string, Map<string, unknown>>(
+    Object.keys(collectionEvents).map((k) => [k, new Map()]),
   );
   for (const [index, event] of document.events.entries()) {
-    const d: any = event.data;
     if (event.sequence !== index + 1)
       throw Error("Invalid document event order");
-    if (event.type === "configurationChanged")
-      configurations.set(d.configurationID, d.configuration);
-    else if (event.type === "messageRecorded") active.add(d.messageID);
-    else if (event.type === "turnQueued") pending.set(d.messageID, d);
-    else if (event.type === "turnDequeued") pending.delete(d.messageID);
-    else if (event.type === "lifecycleRecorded")
-      projection.events.push(d.event);
+    if (isLifecycleEvent(event)) {
+      // Public transcript cursors count lifecycle events, independently of storage events.
+      projection.events!.push({
+        ...event,
+        sequence: projection.events!.length + 1,
+      });
+    } else if (event.type === "configurationChanged")
+      configuration = event.data;
+    else if (event.type === "messageRecorded") active.add(event.data.messageID);
+    else if (event.type === "turnQueued")
+      pending.set(event.data.messageID, event.data);
+    else if (event.type === "turnDequeued")
+      pending.delete(event.data.messageID);
     else if (event.type === "triggerHistoryRecorded")
-      projection.triggerHistory.push(d.source);
-    else if (Object.values(scalarEvents).includes(event.type)) {
-      const field = Object.keys(scalarEvents).find(
-        (k) => scalarEvents[k] === event.type,
-      )!;
-      if (field === "evaluation" && d.value === null)
-        delete projection.evaluation;
-      else projection[field] = d.value;
-    } else {
-      const field = Object.keys(arrays).find(
-        (k) => arrays[k]!.event === event.type,
-      );
-      if (!field) throw Error("Unknown run event: " + event.type);
-      records.get(field)!.set(d.key, d.value);
+      projection.triggerHistory!.push(event.data.source);
+    else {
+      const field = scalarFields.get(event.type);
+      if (field) {
+        if (!("value" in event.data)) throw Error("Missing scalar value");
+        if (field === "evaluation" && event.data.value === null)
+          delete projection.evaluation;
+        else Object.assign(projection, { [field]: event.data.value });
+      } else {
+        const field = collectionFields.get(event.type);
+        if (!field || !("value" in event.data))
+          throw Error("Unknown run event: " + event.type);
+        const key = String(
+          (event.data.value as Record<string, unknown>)[collectionEvents[field].key],
+        );
+        records.get(field)!.set(key, event.data.value);
+      }
     }
   }
-  const config = configurations.get(document.configurationID);
-  if (!config || fingerprint(config) !== document.configurationID)
+
+  const config = configuration?.configuration;
+  if (!config || fingerprint(config) !== configuration?.configurationID)
     throw Error("Invalid configuration snapshot");
   Object.assign(projection, {
     agent: config.agent,
@@ -119,9 +130,11 @@ export function projectDocument(document: RunDocument): StoredRun {
     const { turnID: _turnID, ...value } = m;
     return value;
   };
-  projection.messages = [...active].map(message);
+  projection.messages = [...active].map((id) =>
+    messageSchema.parse(message(id)),
+  );
   projection.pendingInputs = [...pending.values()].map((p) => ({
-    message: message(p.messageID),
+    message: userMessageSchema.parse(message(p.messageID)),
     source: p.source,
     cancelled: p.cancelled,
     ...(p.configuration
@@ -132,23 +145,26 @@ export function projectDocument(document: RunDocument): StoredRun {
         }
       : {}),
   }));
-  for (const [key, values] of records) projection[key] = [...values.values()];
+  for (const [key, values] of records)
+    Object.assign(projection, { [key]: [...values.values()] });
   const {
-    configurationID: _configurationID,
-    inFlight: _inFlight,
+    version: _version,
     messages: _messages,
     events: _events,
     ...metadata
   } = document;
   Object.assign(projection, metadata);
-  const completed = [...projection.events]
+  const completed = [...projection.events!]
     .reverse()
     .find((e) => e.type === "completed" && e.turnID === document.turnID);
+  const messageID =
+    completed && "messageID" in completed.data
+      ? completed.data.messageID
+      : undefined;
   projection.result =
-    document.execution.state === "completed" && completed?.data.messageID
-      ? (projection.messages.find(
-          (m: any) => m.messageID === completed.data.messageID,
-        )?.content ?? null)
+    document.execution.state === "completed" && messageID
+      ? (projection.messages.find((m) => m.messageID === messageID)?.content ??
+        null)
       : null;
   return runProjectionSchema.parse(projection);
 }
@@ -158,18 +174,20 @@ export function recordDocument(
 ): RunDocument {
   const prior = previous ? projectDocument(previous) : undefined;
   const events = structuredClone(previous?.events ?? []);
-  const messages = new Map<string, any>(
-    (previous?.messages ?? []).map((m: any) => [m.messageID, m]),
+  const messages = new Map<string, RunDocument["messages"][number]>(
+    (previous?.messages ?? []).map((m) => [m.messageID, m]),
   );
-  const add = (type: string, data: any) =>
-    events.push({
-      eventID: randomUUID(),
-      sequence: events.length + 1,
-      at: record.updatedAt,
-      turnID: record.turnID,
-      type,
-      data: JSON.parse(JSON.stringify(data)),
-    });
+  const add = (type: DocumentEvent["type"], data: unknown) =>
+    events.push(
+      documentEventSchema.parse({
+        eventID: randomUUID(),
+        sequence: events.length + 1,
+        at: record.updatedAt,
+        turnID: record.turnID,
+        type,
+        data: JSON.parse(JSON.stringify(data)),
+      }),
+    );
   const config = JSON.parse(
     JSON.stringify({
       agent: record.agent,
@@ -178,7 +196,15 @@ export function recordDocument(
     }),
   );
   const configurationID = fingerprint(config);
-  if (configurationID !== previous?.configurationID)
+  if (
+    !prior ||
+    configurationID !==
+      fingerprint({
+        agent: prior.agent,
+        skills: prior.skills,
+        tools: prior.toolSnapshots,
+      })
+  )
     add("configurationChanged", { configurationID, configuration: config });
   const turns = new Map<string, string>();
   for (const e of record.events)
@@ -218,32 +244,39 @@ export function recordDocument(
       )
     )
       add("turnDequeued", { messageID: p.message.messageID });
-  for (const [field, type] of Object.entries(scalarEvents)) {
-    const value = (record as any)[field] ?? null;
-    if (!prior || !same(value, (prior as any)[field] ?? null))
-      add(type, { value });
+  for (const field of Object.keys(
+    scalarEvents,
+  ) as (keyof typeof scalarEvents)[]) {
+    const type = scalarEvents[field];
+    const value = record[field] ?? null;
+    if (!prior || !same(value, prior[field] ?? null)) add(type, { value });
   }
-  for (const [field, definition] of Object.entries(arrays)) {
+  for (const field of Object.keys(
+    collectionEvents,
+  ) as (keyof typeof collectionEvents)[]) {
+    const definition = collectionEvents[field];
+    const key = (value: object) =>
+      String((value as Record<string, unknown>)[definition.key]);
     const old = new Map<string, unknown>(
-      ((prior as any)?.[field] ?? []).map((v: any) => [v[definition.key], v]),
+      (prior?.[field] ?? []).map((v) => [key(v), v]),
     );
-    for (const value of (record as any)[field])
-      if (!same(value, old.get(value[definition.key]))) {
+    for (const value of record[field])
+      if (!same(value, old.get(key(value)))) {
         // A generation is a mutable checkpoint until settled, not one event per token.
         const existing =
           field === "attempts"
             ? events.find(
                 (e) =>
                   e.type === definition.event &&
-                  e.data.key === value[definition.key],
+                  "value" in e.data &&
+                  key(e.data.value as object) === key(value),
               )
             : undefined;
         if (existing)
           existing.data = {
-            key: value[definition.key],
             value: JSON.parse(JSON.stringify(value)),
           };
-        else add(definition.event, { key: value[definition.key], value });
+        else add(definition.event, { value });
       }
   }
   if (
@@ -256,34 +289,20 @@ export function recordDocument(
   )
     throw Error("Run lifecycle history is append-only");
   for (const event of record.events.slice(prior?.events.length ?? 0))
-    add("lifecycleRecorded", { event });
+    events.push({ ...event, sequence: events.length + 1 });
   for (const source of record.triggerHistory.slice(
     prior?.triggerHistory.length ?? 0,
   ))
     add("triggerHistoryRecorded", { source });
-  const generation = [...record.attempts]
-    .reverse()
-    .find((a) => a.status === "running");
   return runDocumentSchema.parse({
-    version: 4,
+    version: 7,
     runID: record.runID,
     revision: record.revision,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     turnID: record.turnID,
-    configurationID,
     execution: record.execution,
     activeMs: record.activeMs,
-    ...(generation || record.compaction
-      ? {
-          inFlight: {
-            ...(generation ? { generationID: generation.attemptID } : {}),
-            ...(record.compaction
-              ? { compactionID: record.compaction.requestID }
-              : {}),
-          },
-        }
-      : {}),
     messages: [...messages.values()],
     events,
   });

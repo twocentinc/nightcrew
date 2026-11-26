@@ -33,6 +33,7 @@ export const operationInputs = {
   "runs reply": z.strictObject({ message: userMessageSchema }),
   "runs pause": z.strictObject({ expectedRevision: revision }),
   "runs list": pageSchema.extend({
+    query: z.string().min(1).max(1000).optional(),
     agentID: id.optional(),
     state: runState.optional(),
   }),
@@ -47,10 +48,6 @@ export const operationInputs = {
         !(v.recent && v.afterSequence !== undefined),
       "Cannot combine cursor, recent and afterSequence",
     ),
-  "runs search": pageSchema.extend({
-    agentID: id.optional(),
-    state: runState.optional(),
-  }),
   "runs export": z.strictObject({ destination: z.string().min(1).max(4096) }),
   "runs verify": z.strictObject({
     bundle: z.string().min(1).max(4096).optional(),
@@ -63,10 +60,7 @@ export async function handle(
 ): Promise<unknown> {
   const { command, resourceID, dryRun = false } = input;
   const [resource, action] = command.split(" ");
-  const name =
-    resourceID === undefined || command === "runs search"
-      ? undefined
-      : id.parse(resourceID);
+  const name = resourceID === undefined ? undefined : id.parse(resourceID);
   const raw = input.request ?? {};
   if (command === "runs refresh")
     return service.refreshRunCapabilities(
@@ -122,33 +116,32 @@ export async function handle(
         return { items, nextCursor: null };
       }
     }
-    if (action === "list" || action === "transcript" || action === "search") {
+    if (action === "list" || action === "transcript") {
       const input = requestSchemas[command]!.parse(raw) as {
         limit: number;
         cursor?: string;
+        query?: string;
         agentID?: string;
         state?: string;
       };
-      const query =
-        action === "search"
-          ? z.string().min(1).max(1000).parse(resourceID)
-          : undefined;
+      const query = input.query;
       const key =
         "cli:" +
         command +
         ":" +
         canonical([
           resourceID ?? null,
+          query ?? null,
           input.agentID ?? null,
           input.state ?? null,
         ]);
       return service.page<unknown>(key, input, async () => {
+        if (action === "list" && query !== undefined)
+          return service.search(query, input.agentID, input.state);
         if (action === "list")
           return (await service.listRuns(input.agentID, input.state)).map(
             publicSummary,
           );
-        if (action === "search")
-          return service.search(query!, input.agentID, input.state);
         return service.transcript(
           await service.run(name ?? fail("missing_id")),
         );
@@ -226,14 +219,20 @@ export const operations = {
     "runs list",
     "List durable run summaries",
     z.object({
-      items: z.array(runSummarySchema),
+      items: z.union([z.array(runSummarySchema), z.array(searchMatchSchema)]),
       nextCursor: z.string().nullable(),
     }),
     false,
     "none",
     false,
     "management",
-    ["limit", "cursor", "agent", "state"],
+    {
+      query: { field: "query" },
+      limit: { field: "limit" },
+      cursor: { field: "cursor" },
+      agent: { field: "agentID" },
+      state: { field: "state" },
+    },
   ),
   "runs get": defineOperation(
     "runs get",
@@ -255,20 +254,7 @@ export const operations = {
     "required",
     false,
     "management",
-    ["limit", "cursor"],
-  ),
-  "runs search": defineOperation(
-    "runs search",
-    "Search saved messages, attachments and results with bounded excerpts",
-    z.object({
-      items: z.array(searchMatchSchema),
-      nextCursor: z.string().nullable(),
-    }),
-    false,
-    "required",
-    false,
-    "daemon",
-    ["limit", "cursor", "agent", "state"],
+    { limit: { field: "limit" }, cursor: { field: "cursor" } },
   ),
   "runs export": defineOperation(
     "runs export",

@@ -53,15 +53,6 @@ export function effectiveReceipts(run: Run) {
 }
 
 export const outcomeSchema = z.strictObject({
-  execution: z.enum([
-    "queued",
-    "running",
-    "paused",
-    "completed",
-    "failed",
-    "cancelled",
-    "timedOut",
-  ]),
   output: z.enum(["pending", "notConfigured", "passed", "failed", "error"]),
   task: z.enum(["pending", "unverified", "validated", "needsAttention"]),
   delivery: z.enum([
@@ -126,7 +117,6 @@ export function runOutcome(run: Run): z.infer<typeof outcomeSchema> {
     );
   const needsAttention = reasons.length > 0;
   return {
-    execution: run.state,
     output,
     task: needsAttention
       ? "needsAttention"

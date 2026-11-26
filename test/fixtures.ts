@@ -1,7 +1,7 @@
-import {agentDraftSchema} from "../dist/schemas/agent.js";
-import {configSchema} from "../dist/schemas/config.js";
-import {messageSchema} from "../dist/schemas/common.js";
-import type {CompactionRequest} from "../dist/engine/compaction/format.js";
+import { agentDraftSchema } from "../dist/schemas/agent.js";
+import { configSchema } from "../dist/schemas/config.js";
+import { messageSchema } from "../dist/schemas/common.js";
+import type { CompactionRequest } from "../dist/engine/compaction/format.js";
 
 // Tests author input objects; normalize defaults exactly as runtime admission does.
 export const settings = configSchema
@@ -42,7 +42,7 @@ export function runtimeConfig(input: Record<string, any>) {
     host: "127.0.0.1",
     port: 6970,
     interactionCooldownMs: 0,
-    slots: [],
+
     hooks: [],
     ...input,
     models: (input.models ?? []).map((model: Record<string, unknown>) => ({

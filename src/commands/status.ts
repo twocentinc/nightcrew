@@ -1,7 +1,11 @@
 import { publicSummary } from "../storage/transcript.js";
 import { doctor, doctorSchema } from "../server/diagnostics.js";
 import { z } from "zod";
-import { schedulerStatusSchema } from "../engine/scheduling/policy.js";
+import {
+  schedulerStatusSchema,
+  schedulerSnapshotSchema,
+  policyResultSchema,
+} from "../engine/scheduling/policy.js";
 import type { Service } from "../engine/service.js";
 import { fail } from "../engine/service.js";
 import { triggerSchema } from "../schemas/agent.js";
@@ -12,10 +16,16 @@ import { type ManagementInput } from "../utils/commands/resources.js";
 import { handle as triggerHandler } from "./triggers.js";
 
 export const operationInputs = {
-  status: z.strictObject({
-    details: z.boolean().default(false),
-    doctor: z.boolean().default(false),
-  }),
+  status: z
+    .strictObject({
+      details: z.boolean().default(false),
+      doctor: z.boolean().default(false),
+      scheduler: z.boolean().default(false),
+    })
+    .refine(
+      (v) => !(v.doctor && v.scheduler),
+      "Choose doctor or scheduler diagnostics",
+    ),
 };
 const triggerInfo = triggerSchema.extend({
   nextFireAt: z.string().nullable(),
@@ -30,7 +40,9 @@ export async function handle(
   const [] = command.split(" ");
   const raw = input.request ?? {};
   if (command === "status") {
-    if (operationInputs.status.parse(raw).doctor)
+    const options = operationInputs.status.parse(raw);
+    if (options.scheduler) return service.explainScheduler();
+    if (options.doctor)
       return doctor(service.storage.home, true, async () => ({
         pid: process.pid,
         ...service.status(),
@@ -53,9 +65,7 @@ export async function handle(
     return {
       observedAt: now(),
       pid: process.pid,
-      ...(operationInputs.status.parse(raw).details
-        ? { scheduler: service.schedulerStatus() }
-        : {}),
+      ...(options.details ? { scheduler: service.schedulerStatus() } : {}),
       runtime: service.status(),
       totals: {
         runs: runs.length,
@@ -91,6 +101,7 @@ export const operations = {
     "Inspect agents, schedules, recent outcomes and runs needing attention",
     z.union([
       doctorSchema,
+      policyResultSchema.extend({ snapshot: schedulerSnapshotSchema }),
       z.object({
         observedAt: z.string(),
         pid: z.number(),
@@ -122,6 +133,10 @@ export const operations = {
     "none",
     false,
     "daemon",
-    ["details", "doctor"],
+    {
+      details: { field: "details", overwrite: true },
+      scheduler: { field: "scheduler" },
+      doctor: { field: "doctor", overwrite: true },
+    },
   ),
 };

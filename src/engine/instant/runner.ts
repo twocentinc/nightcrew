@@ -21,10 +21,7 @@ export class InstantRunner {
   constructor(private readonly ports: Dependencies) {}
   private isInstant(c: Chat) {
     return executionSlots(this.ports.dependencies.storage.store.config).some(
-      (s) =>
-        s.modelID === c.input.modelID &&
-        (s.slotID === c.input.slotID || c.input.slotID === "instant") &&
-        s.instant,
+      (s) => s.modelID === c.input.modelID && s.instant,
     );
   }
   async executeChat(c: Chat, slotID: string, controller: AbortController) {

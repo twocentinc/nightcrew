@@ -32,7 +32,7 @@ export const operationInputs = {
         contextMode: z.enum(["fresh", "persistent"]).optional(),
         priority: z.number().int().min(-100).max(100).optional(),
         timeSliceMs: z.number().int().min(100).max(3600000).optional(),
-        slotID: id.optional(),
+        executionClass: agentSchema.shape.executionClass.unwrap().optional(),
         thinking: z.boolean().optional(),
         temperature: z.number().min(0).max(2).optional(),
         maxOutputTokens: z.number().int().min(1).max(32768).optional(),

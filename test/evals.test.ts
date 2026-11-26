@@ -57,7 +57,7 @@ async function fixture(
     settings.parse({
       host: "127.0.0.1",
       port: 6970,
-      slots: [],
+
       scheduler: { instantModelID: "interactive" },
       models: [
         {

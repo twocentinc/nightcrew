@@ -1,12 +1,11 @@
 import { z } from "zod";
 import {
-  executionSlots,
   schedulerSchema,
 } from "../engine/scheduling/policy.js";
 import { loggingSchema } from "../server/logging.js";
 import { agentSchema, triggerSchema } from "./agent.js";
 import { timestamp } from "./common.js";
-import { modelSchema, slotSchema } from "./model.js";
+import { modelSchema } from "./model.js";
 
 import { hookSchema } from "./hook.js";
 export const configSchema = z.strictObject({
@@ -23,11 +22,10 @@ export const configSchema = z.strictObject({
   }),
   rootTokenHash: z.string().regex(/^[a-f0-9]{64}$/),
   models: z.array(modelSchema).max(32),
-  slots: z.array(slotSchema).max(32),
   hooks: z.array(hookSchema).max(16),
 });
 export const storeSchema = z.strictObject({
-  version: z.literal(2),
+  version: z.literal(3),
   config: configSchema,
   agents: z.array(agentSchema).max(1000),
   triggers: z.array(triggerSchema).max(1000).default([]),
@@ -53,38 +51,17 @@ export function validateConfig(store: Store) {
   for (const xs of [
     config.hooks.map((h) => h.hookID),
     config.models.map((x) => x.modelID),
-    config.slots.map((x) => x.slotID),
     agents.map((x) => x.agentID),
   ])
     if (new Set(xs).size !== xs.length) throw new Error("Duplicate identity");
-  if (config.slots.length && config.slots.filter((x) => x.instant).length !== 1)
-    throw new Error("Configure exactly one instant slot");
-  for (const slot of config.slots)
-    if (!config.models.some((x) => x.modelID === slot.modelID))
-      throw new Error("Unknown slot model");
   for (const model of config.models) {
     if (
       model.compactionThresholdTokens &&
       (model.kind !== "chat" ||
-        executionSlots(config).some(
-          (s) =>
-            s.modelID === model.modelID &&
-            model.compactionThresholdTokens! > s.contextTokens,
-        ))
+        model.compactionThresholdTokens > model.contextTokens)
     )
       throw Error(
         "Compaction threshold must fit the chat model context capacity",
-      );
-    const slots = config.slots
-      .filter((x) => x.modelID === model.modelID)
-      .sort((a, b) => a.index - b.index);
-    if (
-      slots.some(
-        (s, i) => s.index !== i || s.contextTokens !== slots[0]?.contextTokens,
-      )
-    )
-      throw new Error(
-        "Slot indices must be contiguous with equal context capacity",
       );
   }
   for (const a of agents) {
@@ -108,13 +85,8 @@ export function validateConfig(store: Store) {
       )
         throw Error("Compactor must reference another single-turn chat agent");
     }
-    const slot = config.slots.find((x) => x.slotID === a.slotID);
     const model = config.models.find((x) => x.modelID === a.modelID);
-    if (
-      !model ||
-      (a.slotID !== "auto" && (!slot || slot.modelID !== a.modelID))
-    )
-      throw new Error("Invalid agent model or slot");
+    if (!model) throw new Error("Invalid agent model");
     if (a.mode === "single-turn" && (a.toolIDs.length || a.skillIDs.length))
       throw new Error("Single-turn agents do not use tools or skills");
     if (model.kind === "audio" && a.mode !== "single-turn")

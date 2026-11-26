@@ -24,9 +24,7 @@ async function readRun(home: string, id: string) {
   return {
     ...detail,
     messages: state.messages.filter((m: any) => m.role),
-    events: state.events
-      .filter((e: any) => e.type === "lifecycleRecorded")
-      .map((e: any) => e.data.event),
+    events: state.events,
     attempts: state.events
       .filter((e: any) => e.type === "generationCheckpointed")
       .map((e: any) => e.data.value),
@@ -76,7 +74,7 @@ async function outcomes(home: string) {
 function recentProblem(r?: any, outcome?: any, since?: any) {
   if (!outcome) return false;
   const bad =
-    ["failed", "timedOut"].includes(outcome.execution) ||
+    ["failed", "timedOut"].includes(r.execution.state) ||
     ["failed", "error"].includes(outcome.output) ||
     ["failed", "unknown"].includes(outcome.delivery) ||
     (terminal(r.execution.state) && outcome.delivery === "pending") ||
@@ -203,7 +201,7 @@ export function metrics(r?: any, parent?: any, outcome?: any) {
   return {
     outcome,
     current: {
-      execution: outcome.execution,
+      execution: r.execution.state,
       activeHold:
         !!(r.execution.state === "paused" && r.execution.resume === "manual") &&
         !terminal(r.execution.state),
@@ -369,7 +367,7 @@ export async function inspect(
             priorities.push({
               runID: r.runID,
               agentID: r.agent.agentID,
-              execution: item.outcome.execution,
+              execution: r.execution.state,
               output: item.outcome.output,
               delivery: item.outcome.delivery,
               reasons: item.outcome.reasons

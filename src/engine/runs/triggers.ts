@@ -216,7 +216,7 @@ export class RunTriggers {
         r.interactive =
           !r.evaluation &&
           pending!.source?.admission !== "timer" &&
-          this.ports.dependencies.dispatch.instantSlot(r.agent.slotID);
+          r.agent.executionClass === "instant";
         if (r.evaluation) r.evaluation.grade = { status: "pending" };
         r.deliveryExpected = false;
         r.turnID = pending!.message.messageID;

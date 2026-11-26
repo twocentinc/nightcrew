@@ -297,5 +297,9 @@ test("online doctor uses the shared status operation", async (t) => {
   assert.deepEqual(response.events[0].result, result);
   assert.equal(f.commands.length, 1);
   assert.equal(f.commands[0].command, "status");
-  assert.deepEqual(f.commands[0].request, { details: false, doctor: true });
+  assert.deepEqual(f.commands[0].request, {
+    details: false,
+    doctor: true,
+    scheduler: false,
+  });
 });

@@ -16,7 +16,6 @@ interface Dependencies {
     | "prepare"
     | "scheduleIdle"
     | "config"
-    | "resident"
     | "release"
     | "loadedModel"
     | "logger"
@@ -214,8 +213,6 @@ export class ModelClient {
           (s) => s.slotID === input.slotID && s.modelID === input.modelID,
         );
       if (!slot) throw Error("Unknown slot");
-      this.ports.main.resident.clear();
-      this.ports.main.resident.set(input.modelID, "ready");
       const model = this.ports.main
         .config()
         .models.find((m) => m.modelID === input.modelID)!;

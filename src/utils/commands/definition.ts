@@ -6,6 +6,13 @@ import type { Service } from "../../engine/service.js";
 import { verifyBearerToken } from "../../storage/config.js";
 import type { ManagementInput } from "./management.js";
 
+export type OptionBinding = {
+  field: string;
+  input?: "json" | "messages";
+  overwrite?: boolean;
+};
+export type OptionBindings = Record<string, OptionBinding>;
+
 type Handler = (service: Service, input: ManagementInput) => Promise<unknown>;
 const empty = z.strictObject({});
 export type OperationContext = {
@@ -93,6 +100,7 @@ export type OperationDefinition = {
   mutates: boolean;
   confirmation: boolean;
   options: string[];
+  bindings: OptionBindings;
   request: z.ZodType;
   result: z.ZodType;
   localOnly: boolean;
@@ -116,7 +124,7 @@ export function createOperations<R extends Record<string, z.ZodType>>(
     operand: "none" | "required" | "optional" = "none",
     confirmation = false,
     scope: "management" | "daemon" = "management",
-    options: string[] = [],
+    options: string[] | OptionBindings = [],
   ) {
     const request = inputFor(name);
     const localOnly = ["runs export", "runs verify"].includes(name);
@@ -137,7 +145,8 @@ export function createOperations<R extends Record<string, z.ZodType>>(
       operand,
       mutates,
       confirmation,
-      options,
+      options: Array.isArray(options) ? options : Object.keys(options),
+      bindings: Array.isArray(options) ? {} : options,
       request: proc["~orpc"].inputSchema!.shape.request,
       result: proc["~orpc"].outputSchema!,
       localOnly,

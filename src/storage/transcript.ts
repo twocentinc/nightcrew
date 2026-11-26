@@ -7,7 +7,7 @@ import { validateCompactionState } from "../engine/compaction/format.js";
 import { NightcrewError } from "../engine/protocol.js";
 import { runOutcome, type outcomeSchema } from "../engine/supervision.js";
 import {
-  runProjectionSchema,
+  validateTranscript,
   encodeRun,
   decodeRun,
   type Run,
@@ -35,7 +35,7 @@ export type Summary = Pick<
   execution: import("../schemas/execution.js").ExecutionState;
 };
 export const summarize = (r: Run): Summary => ({
-  outcome: { ...runOutcome(r), execution: executionRecord(r).state },
+  outcome: runOutcome(r),
   execution: executionRecord(r),
   runID: r.runID,
   agentID: r.agent.agentID,
@@ -84,38 +84,8 @@ export class TranscriptStore {
       throw new Error("Invalid run directory");
     const r = decodeRun(await this.documents.read(runID));
     if (r.runID !== runID) throw new Error("Run identity mismatch");
-    if (
-      new Set([
-        ...r.messages.map((x) => x.messageID),
-        ...r.pendingInputs.map((p) => p.message.messageID),
-      ]).size !==
-      r.messages.length + r.pendingInputs.length
-    )
-      throw new Error("Duplicate transcript message");
-    if (r.events.some((x, i) => x.sequence !== i + 1))
-      throw new Error("Invalid event order");
-    const calls = new Set<string>();
-    const results = new Set<string>();
+    validateTranscript(r);
     validateCompactionState(r);
-    for (const m of r.messages) {
-      if (m.role !== "user" && m.attachments.length)
-        throw new Error("Invalid attachments");
-      if (m.toolCalls.length && m.role !== "assistant")
-        throw new Error("Invalid tool calls");
-      for (const c of m.toolCalls) {
-        if (calls.has(c.callID)) throw new Error("Duplicate tool call");
-        calls.add(c.callID);
-      }
-      if (m.role === "tool") {
-        if (
-          !m.toolCallID ||
-          !calls.has(m.toolCallID) ||
-          results.has(m.toolCallID)
-        )
-          throw new Error("Invalid tool result");
-        results.add(m.toolCallID);
-      } else if (m.toolCallID) throw new Error("Invalid tool result reference");
-    }
     for (const source of [
       r.triggerSource,
       ...r.triggerHistory,

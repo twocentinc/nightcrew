@@ -27,6 +27,7 @@ async function fixture(t: import("node:test").TestContext) {
       interactionCooldownMs: 0,
       models: [
         {
+          contextTokens: 1024,
           modelID: "qwen",
           kind: "chat" as const,
           weightsPath: "/unused",
@@ -34,22 +35,7 @@ async function fixture(t: import("node:test").TestContext) {
           idleUnloadMs: 0,
         },
       ],
-      slots: [
-        {
-          slotID: "instant",
-          modelID: "qwen",
-          index: 0,
-          contextTokens: 1024,
-          instant: true,
-        },
-        {
-          slotID: "background",
-          modelID: "qwen",
-          index: 1,
-          contextTokens: 1024,
-          instant: false,
-        },
-      ],
+
       hooks: [],
     }),
   );
@@ -93,7 +79,7 @@ async function fixture(t: import("node:test").TestContext) {
       systemPrompt: "Review",
       mode: "single-turn",
       modelID: "qwen",
-      slotID: "background",
+      executionClass: "background",
       enabled: true,
       toolIDs: [],
       skillIDs: [],

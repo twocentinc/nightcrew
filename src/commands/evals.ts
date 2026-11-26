@@ -152,7 +152,7 @@ export const operations = {
     "none",
     false,
     "management",
-    ["file"],
+    { file: { field: "eval", input: "json" } },
   ),
   "evals update": define(
     "evals update",
@@ -196,7 +196,11 @@ export const operations = {
     "required",
     false,
     "management",
-    ["tool", "input", "output"],
+    {
+      tool: { field: "tool" },
+      input: { field: "input", input: "json" },
+      output: { field: "output", input: "json" },
+    },
   ),
   "evals tools delete": define(
     "evals tools delete",
@@ -206,7 +210,7 @@ export const operations = {
     "required",
     false,
     "management",
-    ["tool", "input"],
+    { tool: { field: "tool" }, input: { field: "input", input: "json" } },
   ),
   "evals transcript get": define(
     "evals transcript get",
@@ -226,7 +230,7 @@ export const operations = {
     "required",
     false,
     "management",
-    ["file"],
+    { file: { field: "messages", input: "messages" } },
   ),
   "evals transcript append": define(
     "evals transcript append",
@@ -236,7 +240,7 @@ export const operations = {
     "required",
     false,
     "management",
-    ["file"],
+    { file: { field: "messages", input: "messages" } },
   ),
   "evals transcript update": define(
     "evals transcript update",
@@ -246,7 +250,10 @@ export const operations = {
     "required",
     false,
     "management",
-    ["file", "message"],
+    {
+      file: { field: "message", input: "json" },
+      message: { field: "messageID" },
+    },
   ),
   "evals transcript delete": define(
     "evals transcript delete",
@@ -256,7 +263,7 @@ export const operations = {
     "required",
     false,
     "management",
-    ["message"],
+    { message: { field: "messageID" } },
   ),
   "evals transcript clear": define(
     "evals transcript clear",
