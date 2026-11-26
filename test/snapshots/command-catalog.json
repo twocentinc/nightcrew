@@ -394,21 +394,6 @@
       "scope": "management"
     },
     {
-      "confirmation": true,
-      "description": "Clear the starting transcript",
-      "mutates": true,
-      "name": "evals transcript clear",
-      "operand": "required",
-      "options": [
-        "request",
-        "dry-run",
-        "yes"
-      ],
-      "requestSchema": "evals.transcript.clear.request",
-      "resultSchema": "evals.transcript.clear.result",
-      "scope": "management"
-    },
-    {
       "confirmation": false,
       "description": "Delete a message and its paired tool results",
       "mutates": true,
@@ -1114,5 +1099,5 @@
     "version": false
   },
   "protocolVersion": 1,
-  "schemaVersion": 49
+  "schemaVersion": 52
 }

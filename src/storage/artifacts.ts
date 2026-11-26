@@ -11,7 +11,7 @@ import {
 } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import { normalizeStoredTool } from "../engine/capabilities/registry.js";
+import { toolDefinitionSchema } from "../schemas/tool.js";
 import { validateCompactionState } from "../engine/compaction/format.js";
 import { checkpoint } from "../engine/execution/process.js";
 import { invalidInput, NightcrewError } from "../engine/protocol.js";
@@ -157,7 +157,7 @@ function validate(run: Run, runID: string) {
   )
     throw Error("Missing or duplicate skill snapshot");
   if (run.version === 4) {
-    const tools = run.toolSnapshots.map((tool) => normalizeStoredTool(tool));
+    const tools = run.toolSnapshots.map((tool) => toolDefinitionSchema.parse(tool));
     if (
       new Set(tools.map((t) => t.toolID)).size !== tools.length ||
       run.agent.toolIDs.some((id) => !tools.some((t) => t.toolID === id))

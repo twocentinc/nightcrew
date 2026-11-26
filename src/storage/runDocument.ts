@@ -295,7 +295,7 @@ export function recordDocument(
   ))
     add("triggerHistoryRecorded", { source });
   return runDocumentSchema.parse({
-    version: 7,
+    version: 10,
     runID: record.runID,
     revision: record.revision,
     createdAt: record.createdAt,

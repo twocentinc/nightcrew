@@ -37,7 +37,7 @@ function sample() {
       name: "worker",
       revision: 1,
       systemPrompt: "Test",
-      mode: "agent-loop",
+      mode: "agentLoop",
       modelID: "q",
       executionClass: "background",
       skillIDs: [],
@@ -274,10 +274,11 @@ test("killed delivery remains unknown and is not dispatched again", async (t) =>
   const hook = path.join(home, "deliver.js");
   await writeFile(
     hook,
-    `#!${process.execPath}\nimport {appendFile,writeFile} from 'node:fs/promises';await appendFile(${JSON.stringify(home + "/deliveries")},'sent\\n');await writeFile(${JSON.stringify(home + "/ready")},'');setInterval(()=>{},1000);`,
+    `#!${process.execPath}\nimport {appendFile,writeFile} from 'node:fs/promises';if(JSON.stringify(process.argv.slice(2))!==JSON.stringify(['one argument','%literal%']))throw Error('argv changed');await appendFile(${JSON.stringify(home + "/deliveries")},'sent\\n');await writeFile(${JSON.stringify(home + "/ready")},'');setInterval(()=>{},1000);`,
     { mode: 0o700 },
   );
   const definition = {
+    argv: ["one argument", "%literal%"],
     hookID: "delivery",
     purpose: "delivery" as const,
     event: "run.completed" as const,
@@ -352,7 +353,7 @@ test("flat lifecycle events preserve public cursors across saves and format-4 mi
   const home = await fixture(t),
     record = sample();
   const document = recordDocument(record);
-  assert.equal(document.version, 7);
+  assert.equal(document.version, 10);
   assert.equal("inFlight" in document, false);
   const { isLifecycleEvent } = await import("../dist/storage/runEvents.js");
   assert.deepEqual(
@@ -483,7 +484,7 @@ test("format-5 migration moves model capacities and agent priority without losin
   const config = JSON.parse(
     await readFile(path.join(home, "config.json"), "utf8"),
   );
-  assert.equal(config.version, 3);
+  assert.equal(config.version, 5);
   assert.equal(config.config.models[0].contextTokens, 8192);
   assert.equal("slots" in config.config, false);
   assert.equal("contextTokens" in config.config.scheduler, false);
@@ -512,7 +513,6 @@ test("format-6 collection keys migrate to record identities and cannot be writte
   const home = await fixture(t), record = sample();
   record.capabilityRefreshes.push({
     at, turnID: record.turnID, sourceAgentRevision: 1,
-    previousToolIDs: [], previousSkillIDs: [], previousTools: [], previousSkills: [],
   });
   const document = recordDocument(record);
   const checkpoint = document.events.find((e) => e.type === "capabilitiesRefreshed")!;
@@ -526,7 +526,7 @@ test("format-6 collection keys migrate to record identities and cannot be writte
   const { convertDocument } = await import("../dist/storage/migrate.js");
   const { runDocumentSchema } = await import("../dist/storage/runDocument.js");
   assert.deepEqual(convertDocument(legacy), record);
-  assert.equal(runDocumentSchema.safeParse({ ...legacy, version: 7 }).success, false);
+  assert.equal(runDocumentSchema.safeParse({ ...legacy, version: 10 }).success, false);
   event.data.key = "wrong";
   assert.throws(() => convertDocument(legacy), /Mismatched checkpoint identity/);
   event.data.key = at;
@@ -538,6 +538,104 @@ test("format-6 collection keys migrate to record identities and cannot be writte
   const documents = new RunDocuments(path.join(home, "runs"));
   assert.deepEqual(await documents.read(record.runID), record);
   const migrated = await documents.document(record.runID);
-  assert.equal(migrated.version, 7);
+  assert.equal(migrated.version, 10);
   assert.ok(migrated.events.every((e) => !("key" in e.data)));
+});
+
+test("format-7 migration upgrades configuration snapshots and eval definitions without replay", async (t) => {
+  const home = await fixture(t), record = sample();
+  const { mkdir } = await import("node:fs/promises");
+  const { fingerprint } = await import("../dist/utils/json.js");
+  const schema = { type: "object", properties: { answer: { type: "string" } }, required: ["answer"] };
+  const oldAgent: any = structuredClone(record.agent);
+  oldAgent.mode = "agent-loop";
+  oldAgent.temperature = 0.15;
+  oldAgent.sampling = {topK: 20, parallelToolCalls: false};
+  oldAgent.outputValidation = {validator: {type: "json-schema", schema}};
+  delete oldAgent.finishValidator;
+  const document: any = recordDocument(record);
+  document.version = 7;
+  const configEvent = document.events.find((e: any) => e.type === "configurationChanged");
+  configEvent.data.configuration.agent = oldAgent;
+  configEvent.data.configurationID = fingerprint(configEvent.data.configuration);
+  const config = JSON.parse(await readFile(path.join(home, "config.json"), "utf8"));
+  config.version = 3;
+  config.agents = [oldAgent];
+  const bytes = JSON.stringify(document);
+  await mkdir(path.join(home, "runs", record.runID), {recursive: true});
+  await writeFile(path.join(home, "runs", record.runID, "state.json"), bytes);
+  await writeFile(path.join(home, "config.json"), JSON.stringify(config));
+  await mkdir(path.join(home, "evals"));
+  await writeFile(path.join(home, "evals", "test.json"), JSON.stringify({revision: 1, definition: {
+    evalID: "test", agentID: "worker", overrides: {temperature: 0.2},
+    messages: [], tools: [{tool: "read", output: {tool: "unchanged data"}}],
+  }}));
+  const migrated = await migrateHome(home, true);
+  const restored = await new RunDocuments(path.join(home, "runs")).read(record.runID);
+  assert.deepEqual(restored.messages, record.messages);
+  assert.deepEqual(restored.events, record.events);
+  assert.equal(restored.result, record.result);
+  assert.deepEqual(restored.agent.finishSchema, schema);
+  assert.deepEqual(restored.agent.sampling, {temperature: 0.15, topK: 20});
+  assert.equal(restored.agent.parallelToolCalls, false);
+  assert.equal(restored.agent.mode, "agentLoop");
+  assert.equal("outputValidation" in restored.agent, false);
+  const evalRecord = JSON.parse(await readFile(path.join(home, "evals", "test.json"), "utf8"));
+  assert.deepEqual(evalRecord.definition.tools, [{toolID: "read", output: {tool: "unchanged data"}}]);
+  assert.deepEqual(evalRecord.definition.overrides, {sampling: {temperature: 0.2}});
+  assert.equal(await readFile(path.join(migrated.backup, "originals", record.runID, "state.json"), "utf8"), bytes);
+  assert.equal((await migrateHome(home)).runs, 0);
+});
+
+test("format-8 migration removes executable validators but preserves historical validation evidence", async (t) => {
+  const home = await fixture(t), record = sample();
+  const {mkdir} = await import("node:fs/promises");
+  const {fingerprint} = await import("../dist/utils/json.js");
+  record.validations.push({turnID: record.turnID, messageID: record.messages[1]!.messageID, status: "passed", reason: "Historical custom check", at});
+  const old: any = recordDocument(record);
+  old.version = 8;
+  const event = old.events.find((e: any) => e.type === "configurationChanged");
+  event.data.configuration.agent.finishValidator = {executablePath: "/must-not-execute", argv: [], timeoutMs: 100};
+  event.data.configurationID = fingerprint(event.data.configuration);
+  const config = JSON.parse(await readFile(path.join(home, "config.json"), "utf8"));
+  config.version = 4;
+  config.agents = [event.data.configuration.agent];
+  await writeFile(path.join(home, "config.json"), JSON.stringify(config));
+  await mkdir(path.join(home, "runs", record.runID), {recursive: true});
+  await writeFile(path.join(home, "runs", record.runID, "state.json"), JSON.stringify(old));
+  await migrateHome(home, true);
+  const restored = await new RunDocuments(path.join(home, "runs")).read(record.runID);
+  assert.deepEqual(restored, record);
+  const current = JSON.parse(await readFile(path.join(home, "config.json"), "utf8"));
+  assert.equal(current.version, 5);
+  assert.equal("finishValidator" in current.agents[0], false);
+});
+
+test("format-9 cleanup preserves configuration history and receipt evidence", async (t) => {
+  const home = await fixture(t);
+  const record = sample();
+  const first = recordDocument(record);
+  record.agent.systemPrompt = "Updated prompt";
+  record.capabilityRefreshes.push({at, turnID: record.turnID, sourceAgentRevision: 2});
+  const receipt = { receiptID: randomUUID(), hookID: "delivery", eventID: record.events[0]!.eventID,
+    startedAt: at, finishedAt: at, purpose: "delivery" as const, executablePath: "/usr/bin/true",
+    status: "succeeded" as const, diagnostic: null };
+  record.hookReceipts.push(receipt);
+  const old: any = recordDocument(record, first);
+  old.version = 9;
+  const refresh = old.events.find((e: any) => e.type === "capabilitiesRefreshed");
+  Object.assign(refresh.data.value, {previousTools: [], previousSkills: [], previousToolIDs: [], previousSkillIDs: []});
+  const hook = old.events.find((e: any) => e.type === "hookInvocationChanged");
+  Object.assign(hook.data.value, {retryOfReceiptID: null, requestID: null, note: null});
+  const {mkdir} = await import("node:fs/promises");
+  const folder = path.join(home, "runs", record.runID);
+  await mkdir(folder, {recursive: true});
+  await writeFile(path.join(folder, "state.json"), JSON.stringify(old));
+  const migrated = await migrateHome(home, true);
+  const documents = new RunDocuments(path.join(home, "runs"));
+  const result = await documents.document(record.runID);
+  assert.equal(result.version, 10);
+  assert.deepEqual(result.events.filter(e => e.type === "configurationChanged"), old.events.filter((e: any) => e.type === "configurationChanged"));
+  assert.deepEqual(await documents.read(record.runID), record);
+  assert.deepEqual(JSON.parse(await readFile(path.join(migrated.backup, "originals", record.runID, "state.json"), "utf8")), old);
 });

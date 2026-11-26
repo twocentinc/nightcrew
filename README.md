@@ -5,7 +5,7 @@
 - Prioritize interactive requests; pause background work until the interaction cooldown expires.
 - Manage everything through a JSON-first CLI or the optional HTTP API.
 - Keep transcripts, configuration and caches in your runtime home, separate from this repository.
-- Current release: **0.49.0**, protocol **1**, schema **49**. See the [compatibility policy](docs/compatibility.md) before upgrading or changing public contracts.
+- Current release: **0.52.0**, protocol **1**, schema **52**. See the [compatibility policy](docs/compatibility.md) before upgrading or changing public contracts.
 
 ## Get started
 
@@ -54,6 +54,8 @@
 - The LaunchAgent uses absolute Node/CLI paths and an explicit `PATH`; it does not load shell startup files.
 
 ## Configure models and agents
+
+- Start with [understanding Nightcrew files](docs/configuration.md) for minimal definitions, shared field names, and the difference between authoring files and runtime records.
 
 - Agents, models, skills, tools and triggers provide `list`, `get`, `create`, `update` and `delete` commands.
 - Use the generated schemas for exact request fields; for example:

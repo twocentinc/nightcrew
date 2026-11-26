@@ -200,6 +200,7 @@ test("schema 42 exposes only the simplified command names", () => {
     ["runs", "hooks", "retry", "x"],
     ["queue", "list"],
     ["evals", "sample"],
+    ["evals", "transcript", "clear", "x"],
   ])
     assert.throws(() => parseCLI(args), /Unknown command|Unexpected/);
   assert.equal(parseCLI(["status", "--doctor"]).values.doctor, true);

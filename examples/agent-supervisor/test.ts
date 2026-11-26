@@ -12,7 +12,6 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { grade, type Input } from "./grade.ts";
 import {
-  validateReport,
   renderReport,
   parseReport,
   type Report,
@@ -137,57 +136,14 @@ test("bundled eval definitions validate and cannot replace the agent finish sche
       );
     }
 });
-test("coverage validates paired overview evidence without depending on Markdown", async (t) => {
-  const home = await mkdtemp(path.join(tmpdir(), "nc-supervisor-eval-"));
-  t.after(() => rm(home, { recursive: true, force: true }));
-  const dir = path.join(home, "runs", "review");
-  await mkdir(dir, { recursive: true });
-  const messages = [
-    {
-      role: "assistant",
-      toolCalls: [
-        {
-          callID: "overview",
-          name: "nightcrew_inspect",
-          arguments: '{"action":"overview"}',
-        },
-      ],
-    },
-    response,
-  ];
-  await writeFile(path.join(dir, "state.json"), JSON.stringify({ messages }));
-  const check = (value: unknown) =>
-    validateReport({ runID: "review", text: JSON.stringify(value) }, home);
-  assert.equal((await check(valid)).valid, true);
-  for (const incidents of [
-    [],
-    [incident, incident],
-    [{ ...incident, delivery: "succeeded" }],
-    [{ ...incident, runID: "invented" }],
-    [{ ...incident, assessment: " " }],
-  ])
-    assert.equal((await check({ ...valid, incidents })).valid, false);
-  assert.equal(
-    (await check({ report: "### failure\nExecution: completed" })).valid,
-    false,
-  );
-  assert.equal(
-    (await validateReport({ runID: "review", text: "{" }, home)).valid,
-    false,
-  );
-  await writeFile(
-    path.join(dir, "state.json"),
-    JSON.stringify({ messages: [response] }),
-  );
-  assert.equal((await check(valid)).valid, false);
-});
-test("renderer produces Markdown without asking the model for status formatting", () => {
-  const text = renderReport(parseReport(JSON.stringify(valid)));
-  assert.match(text, /### failure\n\nExecution: completed/);
-  assert.match(text, /Assessment: \*\*Output\*\* was rejected/);
-  assert.match(text, /## Uncertainties/);
-  assert.match(
-    renderReport({ incidents: [], observations: [], uncertainties: [] }),
-    /No priority incidents/,
-  );
+
+test("production reports render schema-shaped output without a coverage validation gate", async (t) => {
+  const home = await mkdtemp(path.join(tmpdir(), "nc-supervisor-report-"));
+  t.after(() => rm(home, {recursive: true, force: true}));
+  const {report} = await import("./report.ts");
+  const result = await report({version: 1, event: "run.completed", state: "completed",
+    agentID: "agent-supervisor", runID: "review", turnID: "00000000-0000-4000-8000-000000000000",
+    result: JSON.stringify({incidents: [], observations: ["An observation"], uncertainties: []}),
+  }, home);
+  assert.match(await readFile(result.file!, "utf8"), /An observation/);
 });

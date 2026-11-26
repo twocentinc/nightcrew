@@ -139,7 +139,7 @@ async function fixture(
       agentID: "worker",
       name: "Worker",
       modelID: "background",
-      mode: "agent-loop",
+      mode: "agentLoop",
       systemPrompt: "Read records and finish.",
       enabled: true,
       skillIDs: [],
@@ -181,8 +181,8 @@ test("eval uses ordinary background execution, real finish validation, exact/def
   const r = await f.submit({
     ...seed(),
     tools: [
-      { tool: "inspect", output: "default result" },
-      { tool: "inspect", input: { page: 1 }, output: { value: 41 } },
+      { toolID: "inspect", output: "default result" },
+      { toolID: "inspect", input: { page: 1 }, output: { value: 41 } },
     ],
     grader: {
       schema: { ...finishSchema, properties: { answer: { const: "correct" } } },
@@ -258,7 +258,7 @@ test("unmatched and invalid tool calls are nonfatal mocked errors and never exec
   );
   const r = await f.submit({
     ...seed(),
-    tools: [{ tool: "inspect", input: { page: 1 }, output: "unused" }],
+    tools: [{ toolID: "inspect", input: { page: 1 }, output: "unused" }],
   });
   assert.equal(r.evaluation!.grade.status, "ungraded");
   assert.equal(r.state, "completed");
@@ -287,7 +287,7 @@ test("seeded transcript continues instead of completing; unfinished tools resume
   const def = {
     ...seed(),
     messages,
-    tools: [{ tool: "inspect", output: "seed tool result" }],
+    tools: [{ toolID: "inspect", output: "seed tool result" }],
   };
   const first = await f.submit(def),
     second = await f.submit(def);
@@ -333,14 +333,14 @@ test("definition CRUD and transcript edits use one shared operation contract", a
     });
   const created = await op("evals create", { eval: seed() });
   assert.equal(created.item.revision, 1);
-  await op("evals tools set", { tool: "inspect", output: "default" });
+  await op("evals tools set", { toolID: "inspect", output: "default" });
   await op("evals tools set", {
-    tool: "inspect",
+    toolID: "inspect",
     input: { page: 2 },
     output: 42,
   });
   assert.equal((await op("evals tools list")).items.length, 2);
-  await op("evals tools delete", { tool: "inspect" });
+  await op("evals tools delete", { toolID: "inspect" });
   assert.equal((await op("evals tools list")).items.length, 1);
   await assert.rejects(
     op("evals update", { expectedRevision: 1, changes: { agentID: "worker" } }),
@@ -376,7 +376,7 @@ test("definition CRUD and transcript edits use one shared operation contract", a
       messages: [{ role: "tool", toolCallID: "orphan", content: "bad" }],
     }),
   );
-  await op("evals transcript clear");
+  await op("evals transcript set", { messages: [] });
   assert.equal((await op("evals transcript get")).messages.length, 0);
   await assert.rejects(op("evals run"), /eval_transcript_requires_user/);
   await op("evals delete");
@@ -436,11 +436,11 @@ test("CLI file shortcuts create/edit offline definitions and reject conflicting 
 test("parameter-only updates preserve tools, transcript, and agent defaults", async (t) => {
   const f = await fixture(t, () => finish("ok"), {
     thinking: false,
-    temperature: 0.1,
+    sampling: { temperature: 0.1 },
     maxOutputTokens: 99,
   });
-  const def = evalSchema.parse({ ...seed(), overrides: { temperature: 0.2 } });
-  assert.deepEqual(def.overrides, { temperature: 0.2 });
+  const def = evalSchema.parse({ ...seed(), overrides: { sampling: { temperature: 0.2 } } });
+  assert.deepEqual(def.overrides, { sampling: { temperature: 0.2 } });
   await operation(f.service, {
     command: "evals create",
     request: { eval: def },
@@ -454,10 +454,10 @@ test("parameter-only updates preserve tools, transcript, and agent defaults", as
     result.item.definition.messages[0].content,
     def.messages[0]!.content,
   );
-  assert.deepEqual(result.item.definition.overrides, { temperature: 0.2 });
+  assert.deepEqual(result.item.definition.overrides, { sampling: { temperature: 0.2 } });
   const r = await f.submit(def);
   assert.equal(r.agent.thinking, false);
-  assert.equal(r.agent.temperature, 0.2);
+  assert.equal(r.agent.sampling.temperature, 0.2);
   assert.equal(r.agent.maxOutputTokens, 99);
 });
 test("eval compaction uses a linked agent and resumes the parent before grading", async (t) => {
@@ -474,7 +474,7 @@ test("eval compaction uses a linked agent and resumes the parent before grading"
     agentDraft.parse({
       agentID: "summarizer",
       name: "Summarizer",
-      mode: "single-turn",
+      mode: "singleTurn",
       modelID: "background",
       systemPrompt: "Summarize the supplied conversation.",
       skillIDs: [],
@@ -605,7 +605,7 @@ test("seeded finish calls cannot stand in for model generation", () => {
     }),
   );
   assert.throws(() =>
-    evalSchema.parse({ ...seed(), tools: [{ tool: "finish", output: {} }] }),
+    evalSchema.parse({ ...seed(), tools: [{ toolID: "finish", output: {} }] }),
   );
 });
 
@@ -683,7 +683,7 @@ test("invalid finish fails an eval without repair or executable grading", async 
       },
     },
   });
-  assert.equal(r.state, "failed");
+  assert.equal(r.state, "invalidOutput");
   assert.equal(r.evaluation!.grade.status, "failed");
   assert.equal(f.calls.length, 1);
   assert.equal(r.evaluation!.grade.exec, undefined);

@@ -48,7 +48,7 @@ export function contextMessages(
           run.agent.maxToolCalls === undefined
             ? null
             : Math.max(0, run.agent.maxToolCalls - used),
-        recovery: run.recovery?.turnID === run.turnID ? run.recovery : null,
+        toolLoop: run.toolLoop?.turnID === run.turnID ? run.toolLoop : null,
       }) +
       ". Treat hypotheses as unverified and check original evidence before relying on a summary claim.",
     attachments: [],
@@ -64,7 +64,7 @@ export class Context {
   constructor(private readonly ports: Dependencies) {}
   runMessages(run: Run, checkpoint?: Parameters<typeof contextMessages>[1]) {
     const messages = contextMessages(run, checkpoint);
-    return run.agent.mode === "agent-loop"
+    return run.agent.mode === "agentLoop"
       ? withSkillCatalog(messages, run.skills)
       : messages;
   }
@@ -95,17 +95,17 @@ export class Context {
   pauseForStorage(run: Run) {
     const limit = this.storageLimit(run);
     if (!limit) return;
-    if (run.pauseReason !== "storage_limit")
+    if (run.pauseReason !== "storageLimit")
       this.ports.records.event(run, "storageLimit", {
         previousState: run.state,
         limit,
       });
     run.state = "paused";
-    run.pauseReason = "storage_limit";
+    run.pauseReason = "storageLimit";
     run.held = true;
     run.storageLimit = limit;
     run.error = {
-      code: "run_storage_limit",
+      code: "run_storageLimit",
       message:
         `Run ${limit.resource} limit reached (${limit.used}/${limit.maximum}); ` +
         (limit.resource === "bytes"

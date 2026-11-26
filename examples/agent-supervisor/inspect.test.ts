@@ -213,7 +213,7 @@ test("terminal supervisor records are not reported as active holds", () => {
     );
 });
 
-test("recovered delivery and validation supersede historical failures ", () => {
+test("a successful new turn leaves prior-turn delivery failures historical ", () => {
   const r = run("recovered", {
     turnID: "00000000-0000-4000-8000-000000000001",
     deliveryExpected: true,
@@ -226,12 +226,12 @@ test("recovered delivery and validation supersede historical failures ", () => {
       {
         eventID: 2,
         sequence: 2,
-        turnID: "00000000-0000-4000-8000-000000000001",
+        turnID: "00000000-0000-4000-8000-000000000000",
       },
       {
         eventID: 3,
         sequence: 3,
-        turnID: "00000000-0000-4000-8000-000000000001",
+        turnID: "00000000-0000-4000-8000-000000000000",
       },
       {
         eventID: 4,
@@ -246,7 +246,6 @@ test("recovered delivery and validation supersede historical failures ", () => {
         executablePath: "/private/old",
         purpose: "delivery",
         status: "failed",
-        retryOfReceiptID: null,
       },
       {
         eventID: 2,
@@ -254,7 +253,6 @@ test("recovered delivery and validation supersede historical failures ", () => {
         executablePath: "/private/send",
         purpose: "delivery",
         status: "failed",
-        retryOfReceiptID: null,
       },
       {
         eventID: 3,
@@ -262,7 +260,6 @@ test("recovered delivery and validation supersede historical failures ", () => {
         executablePath: "/private/send",
         purpose: "delivery",
         status: "failed",
-        retryOfReceiptID: "receipt-1",
       },
       {
         eventID: 4,
@@ -270,7 +267,6 @@ test("recovered delivery and validation supersede historical failures ", () => {
         executablePath: "/private/send",
         purpose: "delivery",
         status: "succeeded",
-        retryOfReceiptID: "receipt-2",
       },
     ],
     validations: [
@@ -341,7 +337,7 @@ test("coverage counts distinct pages and detailed runs, and detail refreshes sna
 });
 
 test("priority failures survive checkpoints and every page, and reports must address them", async (t) => {
-  const { validateReport } = await import("./report.ts");
+  const { grade } = await import("./grade.ts");
   const { home, put } = await fixture(t);
   const failed = run("new-failure", {
     state: "completed",
@@ -360,7 +356,6 @@ test("priority failures survive checkpoints and every page, and reports must add
         eventID: 1,
         receiptID: "receipt-4",
         executablePath: "/send",
-        retryOfReceiptID: null,
         purpose: "delivery",
         status: "failed",
       },
@@ -377,6 +372,10 @@ test("priority failures survive checkpoints and every page, and reports must add
   };
   const overview = await inspect({ action: "overview" }, opts);
   assert.equal(overview.coverage.priorityIssues[0].runID, "new-failure");
+  const gradeReport = (input: {runID: string; text: string}, _home: string) => {
+    try { return {valid: grade({result: JSON.parse(input.text), run: {messages: [{role: "tool", content: JSON.stringify(overview)}]}}).passed}; }
+    catch { return {valid: false}; }
+  };
   const page = await inspect({ action: "page", page: 0 }, opts);
   assert.deepEqual(
     page.coverage.priorityIssues,
@@ -384,7 +383,7 @@ test("priority failures survive checkpoints and every page, and reports must add
   );
   assert.equal(
     (
-      await validateReport(
+      await gradeReport(
         { runID: opts.runID, text: "# Review\nAll good." },
         home,
       )
@@ -393,7 +392,7 @@ test("priority failures survive checkpoints and every page, and reports must add
   );
   assert.equal(
     (
-      await validateReport(
+      await gradeReport(
         {
           runID: opts.runID,
           text: JSON.stringify({
@@ -407,7 +406,7 @@ test("priority failures survive checkpoints and every page, and reports must add
                 nextAction: "No action required.",
               },
             ],
-            observations: [],
+            observations: ["Reviewed the supplied run summaries."],
             uncertainties: [],
           }),
         },
@@ -427,11 +426,11 @@ test("priority failures survive checkpoints and every page, and reports must add
         nextAction: "Inspect the destination before deciding whether to retry.",
       },
     ],
-    observations: [],
+    observations: ["Reviewed the supplied run summaries."],
     uncertainties: [],
   });
   assert.equal(
-    (await validateReport({ runID: opts.runID, text }, home)).valid,
+    (await gradeReport({ runID: opts.runID, text }, home)).valid,
     true,
   );
   await report(

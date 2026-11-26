@@ -1,3 +1,4 @@
+import { executableSchema } from "../../schemas/tool.js";
 import { z } from "zod";
 import type { Message } from "../../schemas/common.js";
 import type { Run } from "../../schemas/run.js";
@@ -11,14 +12,9 @@ export const compactionSchema = z.strictObject({
       type: z.literal("agent"),
       agentID: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$/),
     }),
-    z.strictObject({
-      type: z.literal("script"),
-      executablePath: z
-        .string()
-        .max(4096)
-        .regex(/^\/[^\r\n]*$/),
-      arguments: z.array(z.string()).max(64).default([]),
-      timeoutMs: z.number().int().min(100).max(600000).default(60000),
+    executableSchema.extend({
+      type: z.literal("exec"),
+      timeoutMs: executableSchema.shape.timeoutMs.removeDefault().default(60000),
     }),
   ]),
 });
@@ -28,10 +24,7 @@ export const summaryBulletSchema = z.strictObject({
     .trim()
     .min(1)
     .max(8192)
-    .refine(
-      (text) => !/src:[a-f0-9]{16}/.test(text),
-      "Put source references in sources, not text",
-    ),
+    .regex(/^(?![\s\S]*src:[a-f0-9]{16})[\s\S]*$/, "Put source references in sources, not text"),
   sources: z.array(z.string().regex(/^src:[a-f0-9]{16}$/)).max(64),
 });
 export const structuredSummarySchema = z.strictObject({
@@ -40,38 +33,8 @@ export const structuredSummarySchema = z.strictObject({
   findings: z.array(summaryBulletSchema).max(64),
   nextActions: z.array(summaryBulletSchema).max(64),
 });
-export const structuredSummaryJSONSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["objective", "decisions", "findings", "nextActions"],
-  properties: Object.fromEntries(
-    ["objective", "decisions", "findings", "nextActions"].map((key) => [
-      key,
-      {
-        type: "array",
-        maxItems: 64,
-        items: {
-          type: "object",
-          additionalProperties: false,
-          required: ["text", "sources"],
-          properties: {
-            text: {
-              type: "string",
-              minLength: 1,
-              maxLength: 8192,
-              pattern: "^(?![\\s\\S]*src:[a-f0-9]{16})[\\s\\S]*$",
-            },
-            sources: {
-              type: "array",
-              maxItems: 64,
-              items: { type: "string", pattern: "^src:[a-f0-9]{16}$" },
-            },
-          },
-        },
-      },
-    ]),
-  ),
-};
+export const structuredSummaryJSONSchema = z.record(z.string(), z.json()).parse(z.toJSONSchema(structuredSummarySchema));
+
 export function parseStructuredSummary(output: string) {
   const text = output.trim();
   const fenced = /^```(?:json)?\s*\n([\s\S]*?)\n```$/.exec(text);
@@ -215,7 +178,7 @@ export function compactionRequest(run: Run): CompactionRequest {
 export async function executeCompactionScript(
   handler: Extract<
     z.infer<typeof compactionSchema>["handler"],
-    { type: "script" }
+    { type: "exec" }
   >,
   request: CompactionRequest,
   signal: AbortSignal,
@@ -223,7 +186,7 @@ export async function executeCompactionScript(
   signal.throwIfAborted();
   const output = await runExecutable({
     executable: handler.executablePath,
-    argv: handler.arguments,
+    argv: handler.argv,
     env: { PATH: process.env.PATH ?? "/usr/bin:/bin", LANG: "C.UTF-8" },
     input: JSON.stringify(request),
     timeoutMs: handler.timeoutMs,

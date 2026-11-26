@@ -26,10 +26,11 @@ test(
       for (const file of pack.files)
         assert.match(
           file.path,
-          /^(package\.json|README\.md|docs\/(?:model-switch-verification|eval-format|acceptance|compatibility)\.md|examples\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_.-]+\.(?:md|json|ts)|dist\/(?:commands\/|engine\/(?:runs\/|execution\/|instant\/|scheduling\/|models\/|compaction\/|capabilities\/|evals\/)?|schemas\/|storage\/|server\/|utils\/(?:commands\/)?)?[a-zA-Z0-9_-]+\.(js|d\.ts))$/,
+          /^(package\.json|README\.md|docs\/(?:model-switch-verification|eval-format|acceptance|compatibility|configuration|spec)\.md|examples\/(?:[a-zA-Z0-9_-]+\/)*[a-zA-Z0-9_.-]+\.(?:md|json|ts)|dist\/(?:commands\/|engine\/(?:runs\/|execution\/|instant\/|scheduling\/|models\/|compaction\/|capabilities\/|evals\/)?|schemas\/|storage\/|server\/|utils\/(?:commands\/)?)?[a-zA-Z0-9_-]+\.(js|d\.ts))$/,
           "Unexpected packed file: " + file.path,
         );
       assert.ok(pack.files.some((f?: any) => f.path === "dist/cli.js"));
+      assert.ok(pack.files.some((f?: any) => f.path === "docs/configuration.md"));
       assert.ok(
         pack.files.some(
           (f?: any) => f.path === "examples/hello-world/agent.json",
@@ -120,13 +121,7 @@ test(
             invoke("inspect.ts", [], { action: "invalid" }).ok,
             false,
           );
-          assert.equal(
-            invoke("report.ts", ["--validate"], {
-              runID: "../invalid",
-              text: "",
-            }).valid,
-            false,
-          );
+
         }
         const request = JSON.parse(
           (

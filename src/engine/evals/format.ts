@@ -1,3 +1,4 @@
+import { executableSchema } from "../../schemas/tool.js";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { z } from "zod";
@@ -16,12 +17,7 @@ export const gradingSchema = jsonObject.superRefine((value, ctx) => {
     });
   }
 });
-export const graderExecSchema = z.strictObject({
-  executablePath: z
-    .string()
-    .refine(path.isAbsolute, "Expected an absolute executable path"),
-  argv: z.array(z.string().max(4000)).max(64).default([]),
-  timeoutMs: z.number().int().min(100).max(60000).default(10000),
+export const graderExecSchema = executableSchema.extend({
   sourceFiles: z.array(z.string().refine(path.isAbsolute)).max(32).default([]),
 });
 export const graderSchema = z
@@ -38,7 +34,7 @@ export const authorMessage = messageSchema.extend({
   toolCallID: messageSchema.shape.toolCallID.default(null),
 });
 export const toolOverrideSchema = z.strictObject({
-  tool: id.refine((v) => v !== "finish", "finish is runtime-owned"),
+  toolID: id.refine((v) => v !== "finish", "finish is runtime-owned"),
   input: jsonObject.optional(),
   output: z
     .json()
@@ -54,8 +50,8 @@ export const overrideSchema = z.strictObject({
   modelID: agentSchema.shape.modelID.optional(),
   thinking: agentSchema.shape.thinking.removeDefault().optional(),
   systemPrompt: agentSchema.shape.systemPrompt.optional(),
-  temperature: agentSchema.shape.temperature.removeDefault().optional(),
-  sampling: agentSchema.shape.sampling,
+  sampling: agentSchema.shape.sampling.removeDefault().optional(),
+  parallelToolCalls: agentSchema.shape.parallelToolCalls,
   maxOutputTokens: agentSchema.shape.maxOutputTokens.removeDefault().optional(),
   maxToolCalls: agentSchema.shape.maxToolCalls,
   timeoutMs: agentSchema.shape.timeoutMs.optional(),
@@ -71,7 +67,7 @@ export const evalFields = {
 export const evalSchema = z
   .strictObject(evalFields)
   .superRefine((value, ctx) => {
-    const keys = value.tools.map((t) => canonical([t.tool, t.input ?? null]));
+    const keys = value.tools.map((t) => canonical([t.toolID, t.input ?? null]));
     if (new Set(keys).size !== keys.length)
       ctx.addIssue({
         code: "custom",

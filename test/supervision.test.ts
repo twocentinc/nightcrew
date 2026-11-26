@@ -20,7 +20,6 @@ const callOperation: (
   ...args: Parameters<typeof rawcallOperation>
 ) => Promise<any> = rawcallOperation;
 import {
-  outputValidationSchema,
   runOutcome,
   loopProblem,
 } from "../dist/engine/supervision.js";
@@ -42,13 +41,9 @@ const validation = {
     },
   },
 };
-test("output validation rejects the removed repairAttempts option", () => {
-  assert.equal(outputValidationSchema.safeParse(validation).success, true);
-  assert.equal(
-    outputValidationSchema.safeParse({ ...validation, repairAttempts: 1 })
-      .success,
-    false,
-  );
+test("agents reject the removed outputValidation and repairAttempts options", () => {
+  assert.equal(agentDraft.safeParse({ finishSchema: validation.validator.schema }).success, false);
+  assert.equal(agentDraft.safeParse({ finishSchema: validation.validator.schema, repairAttempts: 1 }).success, false);
 });
 async function until(fn?: any) {
   for (let i = 0; i < 500; i++) {
@@ -128,7 +123,7 @@ async function fixture(
       agentID: "worker",
       name: "worker",
       systemPrompt: "Return the requested result.",
-      mode: "single-turn",
+      mode: "singleTurn",
       modelID: "q",
       executionClass: "instant",
       skillIDs: [],
@@ -144,7 +139,7 @@ async function fixture(
     const a = await service.submit("worker", input());
     return until(async () => {
       const r = await service.run(a.runID);
-      return ["completed", "failed", "timedOut"].includes(r.state) && r;
+      return ["completed", "invalidOutput", "failed", "timedOut"].includes(r.state) && r;
     });
   };
   return {
@@ -163,8 +158,8 @@ async function fixture(
 test("invalid output fails immediately, retains evidence, and never dispatches completed delivery", async (t) => {
   const f = await fixture(
     t,
-    async () => ({ text: "bad JSON" }),
-    { outputValidation: validation },
+    async () => ({ text: "bad JSON", toolCalls: [{ callID: "bad", name: "finish", arguments: "bad JSON" }] }),
+    { finishSchema: validation.validator.schema },
     [
       {
         hookID: "delivery",
@@ -176,10 +171,10 @@ test("invalid output fails immediately, retains evidence, and never dispatches c
     ],
   );
   const r = await f.submit();
-  assert.equal(r.state, "failed");
+  assert.equal(r.state, "invalidOutput");
   assert.equal(r.result, null);
   assert.equal(f.calls.length, 1);
-  assert.equal(r.error.code, "output_validation_failed");
+  assert.equal(r.error.code, "invalid_finish");
   assert.deepEqual(
     r.validations.map((v: any) => v.status),
     ["failed"],
@@ -193,7 +188,7 @@ test("invalid output fails immediately, retains evidence, and never dispatches c
   assert.equal(f.service.detail(r).outcome.output, "failed");
   await f.restart();
   const restored = await f.service.run(r.runID);
-  assert.equal(restored.state, "failed");
+  assert.equal(restored.state, "invalidOutput");
   assert.equal(f.calls.length, 1);
   const fleet = await callOperation(f.service, { command: "status" });
   assert.equal(fleet.totals.needsAttention, 1);
@@ -217,59 +212,18 @@ test("unconfigured output is unverified and ordinary hooks are not deliveries", 
   assert.equal(o.output, "notConfigured");
   assert.equal(o.delivery, "notConfigured");
   assert.equal(o.hooks, "failed");
-  assert.equal(o.task, "needsAttention");
+  assert.equal(o.needsAttention, true);
+  assert.equal("task" in o, false);
 });
-test("validator hooks run once and process failures fail the run", async (t) => {
-  const f = await fixture(t, async () => ({ text: "answer" }));
-  const executable = path.join(f.home, "validator");
-  await writeFile(
-    executable,
-    `#!${process.execPath}\nlet text='';process.stdin.on('data',c=>text+=c);process.stdin.on('end',()=>console.log(JSON.stringify({valid:JSON.parse(text).text==='answer',reason:'checked'})));\n`,
-    { mode: 0o700 },
-  );
-  let agent = f.service.agent("worker");
-  await manage(f.service, {
-    command: "agents update",
-    resourceID: "worker",
-    request: {
-      expectedRevision: agent.revision,
-      changes: {
-        outputValidation: {
-          validator: {
-            type: "hook" as const,
-            executablePath: executable,
-            argv: [],
-            timeoutMs: 1000,
-          },
-        },
-      },
-    },
-  });
-  let r = await f.submit();
-  assert.equal(r.validations[0].status, "passed");
-  agent = f.service.agent("worker");
-  await manage(f.service, {
-    command: "agents update",
-    resourceID: "worker",
-    request: {
-      expectedRevision: agent.revision,
-      changes: {
-        outputValidation: {
-          validator: {
-            type: "hook" as const,
-            executablePath: "/not-installed",
-            argv: [],
-            timeoutMs: 100,
-          },
-        },
-      },
-    },
-  });
-  r = await f.submit();
-  assert.equal(r.validations[0].status, "error");
-  assert.equal(r.state, "failed");
-  assert.equal(r.validations.length, 1);
-  assert.equal(f.calls.length, 2);
+test("removed finishValidator is rejected by agent updates", async (t) => {
+  const f = await fixture(t, async () => ({text: "answer"}));
+  await assert.rejects(() => manage(f.service, {command: "agents update", resourceID: "worker", request: {
+    expectedRevision: f.service.agent("worker").revision,
+    changes: {finishValidator: {executablePath: "/usr/bin/false", argv: [], timeoutMs: 100}},
+  }}));
+  const r = await f.submit();
+  assert.equal(r.state, "completed");
+  assert.deepEqual(r.validations, []);
 });
 test("loop errors get one recovery opportunity then tool-free finalization with failure evidence", async (t) => {
   const f = await fixture(
@@ -284,16 +238,16 @@ test("loop errors get one recovery opportunity then tool-free finalization with 
           }
         : { text: "Could not retrieve evidence." },
     {
-      mode: "agent-loop",
+      mode: "agentLoop",
       loopPolicy: { consecutiveErrors: 2, repeatedCalls: 2 },
       maxToolCalls: 20,
     },
   );
   const r = await f.submit();
   assert.equal(r.state, "completed");
-  assert.equal(r.recovery.finalizing, true);
+  assert.equal(r.toolLoop.finalizing, true);
   assert.equal(f.calls.length, 4);
-  assert.match(f.calls[2].messages.at(-1).content, /recovery opportunity/);
+  assert.match(f.calls[2].messages.at(-1).content, /tool-loop correction opportunity/);
   assert.deepEqual(f.calls[3].tools, []);
   assert.equal(runOutcome(r).needsAttention, true);
   assert.equal(r.messages.filter((m?: any) => m.role === "tool").length, 3);
@@ -301,14 +255,14 @@ test("loop errors get one recovery opportunity then tool-free finalization with 
 test("explicit persistent follow-up can succeed while retaining the prior failure", async (t) => {
   const f = await fixture(
     t,
-    async (_?: any, n?: any) => ({ text: n % 2 ? "invalid" : '{"answer":1}' }),
-    { outputValidation: validation, contextMode: "persistent" },
+    async (_?: any, n?: any) => ({ text: "", toolCalls: [{ callID: "finish" + n, name: "finish", arguments: n % 2 ? "invalid" : '{"answer":1}' }] }),
+    { finishSchema: validation.validator.schema, contextMode: "persistent" },
   );
   const first = await f.submit();
   const second = await f.submit();
   assert.equal(first.runID, second.runID);
   assert.notEqual(second.turnID, first.turnID);
-  assert.equal(first.state, "failed");
+  assert.equal(first.state, "invalidOutput");
   assert.equal(second.state, "completed");
   assert.equal(second.validations.length, 2);
   assert.equal(runOutcome(second).output, "passed");
@@ -359,14 +313,14 @@ test("unchanged successful calls stop after the single recovery opportunity", as
           }
         : { text: "No further progress." },
     {
-      mode: "agent-loop",
+      mode: "agentLoop",
       loopPolicy: { consecutiveErrors: 3, repeatedCalls: 3 },
       maxToolCalls: 20,
     },
   );
   const r = await f.submit();
   assert.equal(f.calls.length, 5);
-  assert.equal(r.recovery.finalizing, true);
+  assert.equal(r.toolLoop.finalizing, true);
   assert.equal(r.messages.filter((m?: any) => m.role === "tool").length, 4);
 });
 
@@ -413,7 +367,7 @@ test("failed runs retry in place with a new turnID and preserved failure evidenc
   assert.equal(dry.runID, done.runID);
 });
 
-test("output-limit chunks form one validated JSON answer and remain inspectable", async (t) => {
+test("output-limit chunks form one JSON answer and remain inspectable", async (t) => {
   const f = await fixture(
     t,
     async (request?: any, n?: any) => {
@@ -425,13 +379,12 @@ test("output-limit chunks form one validated JSON answer and remain inspectable"
       assert.deepEqual(request.tools, []);
       return { text: "42}" };
     },
-    { outputValidation: validation },
+    {},
   );
   const r = await f.submit();
   assert.equal(r.state, "completed");
   assert.equal(r.result, '{"answer":42}');
-  assert.equal(r.validations.length, 1);
-  assert.equal(r.validations[0].status, "passed");
+  assert.equal(r.validations.length, 0);
   assert.equal(
     r.messages.filter((m?: any) => m.role === "assistant").length,
     1,
@@ -512,7 +465,7 @@ test("truncated tool calls are regenerated, never executed as fragments", async 
       }
       return { text: "done" };
     },
-    { mode: "agent-loop", toolIDs: ["runs_list"] },
+    { mode: "agentLoop", toolIDs: ["runs_list"] },
   );
   const r = await f.submit();
   assert.equal(r.state, "completed");
@@ -556,7 +509,7 @@ test("empty length responses cannot spin through continuation forever", async (t
   assert.equal(f.calls.length, 1);
 });
 
-test("hook identity survives path changes and retry uses receipt UUID", async (t) => {
+test("hook identity survives path changes without replay", async (t) => {
   const f = await fixture(t, async () => ({}), {}, [
     {
       hookID: "deliver",
@@ -584,20 +537,4 @@ test("hook identity survives path changes and retry uses receipt UUID", async (t
     1,
     "moving the executable must not replay a dispatched event",
   );
-  const input = {
-    expectedRevision: run.revision,
-    receiptID: original.receiptID,
-    requestID: randomUUID(),
-    note: "verified safe to retry",
-    acceptUnknown: false,
-  };
-  await f.service.retryHook(run.runID, input, false);
-  run = await f.service.run(run.runID);
-  assert.equal(run.hookReceipts[1].status, "succeeded");
-  assert.equal(run.hookReceipts[1].retryOfReceiptID, original.receiptID);
-  assert.equal(run.hookReceipts[1].hookID, "deliver");
-  assert.equal(run.events.at(-1).data.receiptID, run.hookReceipts[1].receiptID);
-  await f.service.retryHook(run.runID, input, false);
-  await f.restart();
-  assert.equal((await f.service.run(run.runID)).hookReceipts.length, 2);
 });

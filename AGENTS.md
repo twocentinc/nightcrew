@@ -66,9 +66,9 @@ legacy resumed context; structured summaries retain source references only as ch
 runs; the runtime counts templated tokens and validates KV checkpoint generations.
 Managed output-limit continuation is reconstructed from durable attempt records;
 never validate/deliver partial answers or execute truncated tool calls.
-Persisted runs use one discriminated `execution` record; mutable engine working state is encoded and validated at storage boundaries. `src/schemas/execution.ts`, `event.ts`, `hook.ts`, and `tool.ts` own the shared typed contracts. Hook identity never depends on executable paths or array positions. Runs carry pending inputs, compaction checkpoints, configuration and trigger occurrence snapshots.
+Persisted runs use one discriminated `execution` record; mutable engine working state is encoded and validated at storage boundaries. `src/schemas/execution.ts`, `event.ts`, `hook.ts`, and `tool.ts` own the shared typed contracts. Hook identity never depends on executable paths or array positions. Hook retries are removed; never replay a recorded invocation. Runs carry pending inputs, compaction checkpoints, configuration and trigger occurrence snapshots.
 `src/engine/supervision.ts` owns output-validation configuration/execution, loop detection
-and derived run outcomes, effective hook receipt chains. Keep validation evidence durable and never equate schema
+and derived run outcomes, hook receipt outcomes. Keep validation evidence durable and never equate schema
 validation or hook execution with factual correctness or confirmed external delivery.
 `src/engine/evals/format.ts` owns eval definitions and grading schemas;
 `definitions.ts` owns tool/transcript edits, `tools.ts` substitutes tool results,
@@ -137,7 +137,7 @@ behavior without an actual model-specific check.
 Real-model tests live under `test/live/`, outside the default suite. Do not run
 them without explicit authorization for inference.
 
-The public contract is frozen at schema 49; follow `docs/compatibility.md`.
+The public contract is frozen at schema 52; follow `docs/compatibility.md`.
 Do not remove or rename public commands, tighten accepted inputs, or change
 execution semantics without explicitly reopening the freeze. Schema increments
 alone do not authorize breaking changes. Keep
@@ -179,7 +179,7 @@ semantics, and eventsource-parser owns SSE framing. Follow their native behavior
 without compatibility exceptions. Nightcrew retains command contracts, scheduler
 admission/no-catch-up policies, generation limits and completion validation.
 
-`src/storage/runDocument.ts` owns the format-7 single-file run document and its derived engine projection. `src/storage/runEvents.ts` owns typed document event payloads and field mappings. Lifecycle events are flat; public transcript sequence is derived without changing event UUIDs. `validateTranscript` in `src/schemas/run.ts` owns integrity checks shared by persisted reads and artifact verification. Only state.json is written for run progress. Do not add a journal or multi-file transactions; unsaved progress can be lost on crashes. `src/storage/migrate.ts` is the explicit offline format migration with original-run backups.
+`src/storage/runDocument.ts` owns the format-10 single-file run document and its derived engine projection. `src/storage/runEvents.ts` owns typed document event payloads and field mappings. Lifecycle events are flat; public transcript sequence is derived without changing event UUIDs. `validateTranscript` in `src/schemas/run.ts` owns integrity checks shared by persisted reads and artifact verification. Only state.json is written for run progress. Do not add a journal or multi-file transactions; unsaved progress can be lost on crashes. `src/storage/migrate.ts` is the explicit offline format migration with original-run backups.
 
 `src/engine/models/operations.ts` owns temporary model smoke tests and explicit unloading. Both use Dispatch.withIdleRuntime to exclude scheduler work and competing model commands; shutdown aborts and settles that reservation. Model tests create no runs, hooks or durable contexts and never change instantModelID.
 
@@ -192,3 +192,5 @@ configurationChanged event selects a run snapshot; no top-level configurationID.
 Instant requests never accept slotID. Runtime status owns the active-executions
 array; do not reintroduce activeRunID or a duplicate scheduler.active. Run
 execution state belongs in execution.state, never outcome.execution.
+
+Executable handlers share executableSchema in schemas/tool.ts. Sampling settings share samplingSchema in schemas/common.ts; parallelToolCalls stays outside sampling. Agent structured output uses finishSchema only; Custom executable checks belong only in eval graders. Execution invalidOutput is terminal; delivery failures stay in hook events/receipts. Never reintroduce outcome.task, outputValidation configuration, or the recovery field (use toolLoop). Offline schema conversions live in storage/schemaMigration.ts; runtime readers reject retired fields. docs/configuration.md explains authoring versus managed records.

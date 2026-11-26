@@ -1,3 +1,5 @@
+import { upgradeContract, upgradeDefinition } from "./schemaMigration.js";
+import { evalRecordSchema } from "../engine/evals/format.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   cp,
@@ -46,8 +48,8 @@ function upgradeAgents(value: any, instantSlots: Set<string>): any {
   return result;
 }
 export function convertStore(input: any) {
-  if (input.version === 3) {
-    const store = storeSchema.parse(input);
+  if ([3, 4, 5].includes(input.version)) {
+    const store = storeSchema.parse({ ...upgradeContract(input), version: 5 });
     validateConfig(store);
     return store;
   }
@@ -68,8 +70,8 @@ export function convertStore(input: any) {
       4096;
   delete old.config.slots;
   delete old.config.scheduler.contextTokens;
-  old.version = 3;
-  const store = storeSchema.parse(old);
+  old.version = 5;
+  const store = storeSchema.parse(upgradeContract(old));
   validateConfig(store);
   return store;
 }
@@ -191,16 +193,16 @@ export function convertLegacyRun(
         if (call.name !== "finish" && !answered.has(call.callID))
           append("toolStarted", { callID: call.callID, name: call.name });
   }
-  return runProjectionSchema.parse(upgradeAgents(old, instantSlots));
+  return runProjectionSchema.parse(upgradeContract(upgradeAgents(old, instantSlots)));
 }
 
 /** Preserve lifecycle identities while upgrading single-file documents. */
-export function convertDocument(
+function convertDiskDocument(
   input: any,
   instantSlots = new Set(["instant"]),
-): StoredRun {
-  if (![4, 5, 6].includes(input?.version))
-    throw Error("Expected run format 4, 5 or 6");
+) {
+  if (![4, 5, 6, 7, 8, 9].includes(input?.version))
+    throw Error("Expected run format 4 through 9");
   const {
     inFlight: _inFlight,
     configurationID,
@@ -218,7 +220,7 @@ export function convertDocument(
     throw Error("Invalid active configuration snapshot");
   document.events = document.events.map((event: any, index: number) => {
     const flat = event.type === "lifecycleRecorded" ? event.data.event : event;
-    const upgraded = upgradeAgents(flat, instantSlots);
+    const upgraded = upgradeContract(upgradeAgents(flat, instantSlots));
     if (upgraded.type === "configurationChanged")
       upgraded.data.configurationID = fingerprint(upgraded.data.configuration);
     const collection = Object.values(collectionEvents).find(
@@ -231,12 +233,16 @@ export function convertDocument(
     }
     return { ...upgraded, sequence: index + 1 };
   });
-  return projectDocument(runDocumentSchema.parse({ ...document, version: 7 }));
+  return runDocumentSchema.parse({ ...upgradeContract(document), version: 10 });
+}
+
+export function convertDocument(input: any, instantSlots = new Set(["instant"])): StoredRun {
+  return projectDocument(convertDiskDocument(input, instantSlots));
 }
 
 export async function migrateHome(home: string, apply = false) {
   const runs = path.join(home, "runs"),
-    marker = path.join(home, "migration-v7.json");
+    marker = path.join(home, "migration-v10.json");
   let plan: { backup: string; ids: string[] };
   try {
     plan = JSON.parse(await readFile(marker, "utf8"));
@@ -248,15 +254,15 @@ export async function migrateHome(home: string, apply = false) {
       const state = JSON.parse(
         await readFile(path.join(runs, e.name, "state.json"), "utf8"),
       );
-      if ([3, 4, 5, 6].includes(state.version)) ids.push(e.name);
-      else if (state.version !== 7)
+      if ([3, 4, 5, 6, 7, 8, 9].includes(state.version)) ids.push(e.name);
+      else if (state.version !== 10)
         throw Error("Unsupported run format: " + e.name);
     }
     plan = {
       backup: path.join(
         home,
         "backups",
-        "runs-v7-" + new Date().toISOString().replace(/[:.]/g, "-"),
+        "runs-v10-" + new Date().toISOString().replace(/[:.]/g, "-"),
       ),
       ids,
     };
@@ -278,7 +284,7 @@ export async function migrateHome(home: string, apply = false) {
   if (!apply)
     return {
       runs: plan.ids.length,
-      configurationChanged: rawConfig.version !== 3,
+      configurationChanged: rawConfig.version !== 5,
       backup: plan.backup,
     };
   const lock = await open(path.join(home, "daemon.lock"), "wx", 0o600);
@@ -305,7 +311,7 @@ export async function migrateHome(home: string, apply = false) {
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       }
-      if (current?.version === 7) {
+      if (current?.version === 10) {
         await new RunDocuments(runs).read(id);
         migrated++;
         continue;
@@ -321,7 +327,8 @@ export async function migrateHome(home: string, apply = false) {
       await rm(prepared, { recursive: true, force: true });
       await mkdir(prepared, { recursive: true, mode: 0o700 });
       const documents = new RunDocuments(preparedRoot);
-      await documents.write(record, true);
+      if (legacy.version === 3) await documents.write(record, true);
+      else await atomicJSON(path.join(prepared, "state.json"), convertDiskDocument(legacy, instantSlots), 64 * 1024 * 1024);
       const restored = await documents.read(id);
       if (fingerprint(restored) !== fingerprint(record))
         throw Error("Migration projection mismatch: " + id);
@@ -346,6 +353,21 @@ export async function migrateHome(home: string, apply = false) {
       { ...plan, migrated, completedAt: new Date().toISOString() },
       1048576,
     );
+    const evalRoot = path.join(home, "evals");
+    for (const name of await readdir(evalRoot).catch((e) => {
+      if (e.code === "ENOENT") return [] as string[];
+      throw e;
+    })) {
+      if (name.startsWith(".") || !name.endsWith(".json")) continue;
+      const file = path.join(evalRoot, name);
+      const bytes = await readFile(file, "utf8");
+      const raw = JSON.parse(bytes);
+      const upgraded = evalRecordSchema.parse({ ...raw, definition: upgradeDefinition(raw.definition) });
+      const backup = path.join(plan.backup, "evals");
+      await mkdir(backup, { recursive: true, mode: 0o700 });
+      await cp(file, path.join(backup, name), { force: false, errorOnExist: false });
+      await atomicJSON(file, upgraded, 8 * 1024 * 1024);
+    }
     await atomicJSON(configFile, convertedConfig, 8 * 1024 * 1024);
     await rm(marker);
     await syncDirectory(home);

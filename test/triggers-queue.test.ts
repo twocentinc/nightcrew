@@ -77,7 +77,7 @@ async function fixture(t: import("node:test").TestContext) {
       agentID: "reviewer",
       name: "reviewer",
       systemPrompt: "Review",
-      mode: "single-turn",
+      mode: "singleTurn",
       modelID: "qwen",
       executionClass: "background",
       enabled: true,
@@ -85,7 +85,7 @@ async function fixture(t: import("node:test").TestContext) {
       skillIDs: [],
       timeoutMs: 30000,
       thinking: false,
-      temperature: 0,
+      sampling: { temperature: 0 },
       maxOutputTokens: 32,
     }),
   );

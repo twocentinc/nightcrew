@@ -1,33 +1,8 @@
 import { z } from "zod";
+import { terminal } from "../schemas/common.js";
 import type { Message } from "../schemas/common.js";
 import type { Run } from "../schemas/run.js";
 
-export const outputValidationSchema = z.strictObject({
-  validator: z.discriminatedUnion("type", [
-    z.strictObject({
-      type: z.literal("json-schema"),
-      schema: z.record(z.string(), z.json()).superRefine((schema, ctx) => {
-        try {
-          z.fromJSONSchema(schema);
-        } catch {
-          ctx.addIssue({
-            code: "custom",
-            message: "Unsupported output JSON Schema",
-          });
-        }
-      }),
-    }),
-    z.strictObject({
-      type: z.literal("hook"),
-      executablePath: z
-        .string()
-        .max(4096)
-        .regex(/^\/[^\r\n]*$/),
-      argv: z.array(z.string().max(4000)).max(64).default([]),
-      timeoutMs: z.number().int().min(100).max(60000).default(10000),
-    }),
-  ]),
-});
 export const loopPolicySchema = z.strictObject({
   consecutiveErrors: z.number().int().min(2).max(20).default(3),
   repeatedCalls: z.number().int().min(2).max(20).default(3),
@@ -39,22 +14,14 @@ export const validationRecordSchema = z.strictObject({
   reason: z.string().max(2000),
   at: z.iso.datetime(),
 });
-export const recoverySchema = z.strictObject({
+export const toolLoopSchema = z.strictObject({
   turnID: z.string().uuid(),
   afterMessageID: z.uuid(),
   reason: z.string().max(2000),
   finalizing: z.boolean().default(false),
 });
-export function effectiveReceipts(run: Run) {
-  const superseded = new Set(
-    run.hookReceipts.map((r) => r.retryOfReceiptID).filter(Boolean),
-  );
-  return run.hookReceipts.filter((r) => !superseded.has(r.receiptID));
-}
-
 export const outcomeSchema = z.strictObject({
-  output: z.enum(["pending", "notConfigured", "passed", "failed", "error"]),
-  task: z.enum(["pending", "unverified", "validated", "needsAttention"]),
+  output: z.enum(["pending", "notConfigured", "notChecked", "passed", "failed", "error"]),
   delivery: z.enum([
     "notConfigured",
     "pending",
@@ -65,18 +32,21 @@ export const outcomeSchema = z.strictObject({
   hooks: z.enum(["none", "pending", "succeeded", "failed", "unknown"]),
   needsAttention: z.boolean(),
   reasons: z.array(z.string()),
-  nextAction: z.string().nullable(),
 });
 export function runOutcome(run: Run): z.infer<typeof outcomeSchema> {
-  const terminal = ["completed", "failed", "cancelled", "timedOut"].includes(
-    run.state,
-  );
   const records = run.validations.filter((v) => v.turnID === run.turnID);
   const validation = records.at(-1);
   const output =
     validation?.status ??
-    (run.agent.outputValidation ? "pending" : "notConfigured");
-  const receipts = effectiveReceipts(run).filter(
+    (run.agent.finishSchema
+      ? terminal(run.state) ? "notChecked" : "pending"
+      : "notConfigured");
+  // Older files may contain multiple invocations for one hook/event. Retain all
+  // evidence, but report the latest recorded outcome without retry-chain metadata.
+  const latestReceipts = new Map<string, Run["hookReceipts"][number]>();
+  for (const receipt of run.hookReceipts)
+    latestReceipts.set(JSON.stringify([receipt.eventID, receipt.hookID]), receipt);
+  const receipts = [...latestReceipts.values()].filter(
     (h) =>
       run.events.find((e) => e.eventID === h.eventID)?.turnID === run.turnID,
   );
@@ -96,21 +66,21 @@ export function runOutcome(run: Run): z.infer<typeof outcomeSchema> {
       : "notConfigured";
   const hooks = receipts.length ? aggregate(receipts) : "none";
   const reasons: string[] = [];
-  if (["failed", "timedOut", "cancelled"].includes(run.state))
+  if (["invalidOutput", "failed", "timedOut", "cancelled"].includes(run.state))
     reasons.push(run.error?.message ?? `Execution ${run.state}`);
   if (["failed", "error"].includes(output)) reasons.push(validation!.reason);
   if (
-    run.pauseReason === "runtime_error" ||
-    run.pauseReason === "context_full" ||
-    run.pauseReason === "storage_limit"
+    run.pauseReason === "runtimeError" ||
+    run.pauseReason === "contextFull" ||
+    run.pauseReason === "storageLimit"
   )
     reasons.push(run.error?.message ?? run.pauseReason);
   if (
-    run.recovery &&
-    run.recovery.turnID === run.turnID &&
-    run.recovery.finalizing
+    run.toolLoop &&
+    run.toolLoop.turnID === run.turnID &&
+    run.toolLoop.finalizing
   )
-    reasons.push(run.recovery.reason);
+    reasons.push(run.toolLoop.reason);
   if (["failed", "unknown"].includes(hooks))
     reasons.push(
       `Lifecycle hooks ${hooks}; inspect receipts before retrying side effects`,
@@ -118,20 +88,10 @@ export function runOutcome(run: Run): z.infer<typeof outcomeSchema> {
   const needsAttention = reasons.length > 0;
   return {
     output,
-    task: needsAttention
-      ? "needsAttention"
-      : !terminal
-        ? "pending"
-        : output === "passed"
-          ? "validated"
-          : "unverified",
     delivery,
     hooks,
     needsAttention,
     reasons,
-    nextAction: needsAttention
-      ? "Inspect runs get and runs transcript; correct the reported issue before submitting a new turn. Do not blindly retry delivery."
-      : null,
   };
 }
 function stable(value: unknown): string {
@@ -240,78 +200,4 @@ export function parseOutputJSON(text: string): unknown {
     }
   }
   return result;
-}
-
-export async function validateOutput(
-  run: Run,
-  message: Message,
-  home: string,
-  signal: AbortSignal,
-): Promise<z.infer<typeof validationRecordSchema>> {
-  const config = run.agent.outputValidation!;
-  let status: "passed" | "failed" | "error" = "passed",
-    reason =
-      "Configured output validation passed; factual accuracy is not implied.";
-  try {
-    if (config.validator.type === "json-schema") {
-      let value: unknown;
-      try {
-        value = parseOutputJSON(message.content);
-      } catch (error) {
-        if (error instanceof DuplicateJSONKeyError) throw error;
-        throw Error("Output is not valid JSON");
-      }
-      const result = z.fromJSONSchema(config.validator.schema).safeParse(value);
-      if (!result.success)
-        throw Error(
-          result.error.issues
-            .map((i) => `${i.path.join(".")}: ${i.message}`)
-            .join("; "),
-        );
-    } else {
-      const { executeExternalTool } =
-        await import("./capabilities/registry.js");
-      const result = await executeExternalTool(
-        {
-          toolID: "output_validator",
-          description: "Validate final output",
-          parameters: {
-            type: "object",
-            properties: {
-              runID: { type: "string" },
-              turnID: { type: "string", format: "uuid" },
-              text: { type: "string" },
-            },
-            required: ["runID", "turnID", "text"],
-            additionalProperties: false,
-          },
-          ...config.validator,
-        },
-        { runID: run.runID, turnID: run.turnID, text: message.content },
-        signal,
-        { home, agentID: run.agent.agentID, runID: run.runID },
-      );
-      const verdict = z
-        .strictObject({ valid: z.boolean(), reason: z.string().max(2000) })
-        .parse(result);
-      if (!verdict.valid) {
-        status = "failed";
-        reason = verdict.reason || "Validator rejected output";
-      }
-    }
-  } catch (error) {
-    signal.throwIfAborted();
-    status = config.validator.type === "hook" ? "error" : "failed";
-    reason =
-      error instanceof Error
-        ? error.message.slice(0, 2000)
-        : "Output validation failed";
-  }
-  return {
-    turnID: run.turnID,
-    messageID: message.messageID,
-    status,
-    reason: reason.slice(0, 2000),
-    at: new Date().toISOString(),
-  };
 }

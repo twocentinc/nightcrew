@@ -3,7 +3,7 @@
     "agentID": "transcribe-audio",
     "name": "transcribe audio",
     "systemPrompt": "",
-    "mode": "single-turn",
+    "mode": "singleTurn",
     "modelID": "granite",
     "skillIDs": [],
     "toolIDs": [],
@@ -11,6 +11,8 @@
     "maxOutputTokens": 200,
     "timeoutMs": 180000,
     "enabled": false,
-    "temperature": 0
+    "sampling": {
+      "temperature": 0
+    }
   }
 }

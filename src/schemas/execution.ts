@@ -10,9 +10,9 @@ export const pauseReasonSchema = z.enum([
   "timeSlice",
   "scheduler",
   "compaction",
-  "context_full",
-  "runtime_error",
-  "storage_limit",
+  "contextFull",
+  "runtimeError",
+  "storageLimit",
 ]);
 export const storageLimitSchema = z.strictObject({
   resource: z.enum([
@@ -43,6 +43,7 @@ export const executionSchema = z
       limit: storageLimitSchema.optional(),
     }),
     z.strictObject({ state: z.literal("completed") }),
+    z.strictObject({ state: z.literal("invalidOutput"), error: error.optional() }),
     z.strictObject({ state: z.literal("failed"), error: error.optional() }),
     z.strictObject({ state: z.literal("cancelled"), error: error.optional() }),
     z.strictObject({ state: z.literal("timedOut"), error: error.optional() }),
@@ -50,7 +51,7 @@ export const executionSchema = z
   .superRefine((value, ctx) => {
     if (value.state !== "paused") return;
     if (
-      ["manualStop", "context_full", "runtime_error", "storage_limit"].includes(
+      ["manualStop", "contextFull", "runtimeError", "storageLimit"].includes(
         value.reason,
       ) &&
       value.resume !== "manual"
@@ -59,12 +60,12 @@ export const executionSchema = z
         code: "custom",
         message: "This pause requires manual intervention",
       });
-    if (value.reason === "storage_limit" && !value.limit)
+    if (value.reason === "storageLimit" && !value.limit)
       ctx.addIssue({
         code: "custom",
         message: "Storage pause requires the exhausted limit",
       });
-    if (value.reason !== "storage_limit" && value.limit)
+    if (value.reason !== "storageLimit" && value.limit)
       ctx.addIssue({
         code: "custom",
         message: "Limit evidence is only valid for a storage pause",
@@ -79,6 +80,7 @@ export type WorkingExecution = {
     | "running"
     | "paused"
     | "completed"
+    | "invalidOutput"
     | "failed"
     | "cancelled"
     | "timedOut";
@@ -96,11 +98,11 @@ export function executionRecord(run: WorkingExecution): ExecutionState {
       reason: run.pauseReason ?? (run.held ? "manualStop" : "scheduler"),
       resume: run.held ? "manual" : "automatic",
       ...(run.error ? { error: run.error } : {}),
-      ...(run.pauseReason === "storage_limit" && run.storageLimit
+      ...(run.pauseReason === "storageLimit" && run.storageLimit
         ? { limit: run.storageLimit }
         : {}),
     });
-  if (["failed", "cancelled", "timedOut"].includes(run.state))
+  if (["invalidOutput", "failed", "cancelled", "timedOut"].includes(run.state))
     return executionSchema.parse({
       state: run.state,
       ...(run.error ? { error: run.error } : {}),

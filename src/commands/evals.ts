@@ -33,7 +33,7 @@ export const operationInputs = {
   "evals tools set": toolOverrideSchema.extend(revision),
   "evals tools delete": z.strictObject({
     ...revision,
-    tool: id,
+    toolID: id,
     input: z.record(z.string(), z.json()).optional(),
   }),
   "evals transcript set": z.strictObject({
@@ -50,7 +50,6 @@ export const operationInputs = {
     message: authorMessage,
   }),
   "evals transcript delete": z.strictObject({ ...revision, messageID: uuid }),
-  "evals transcript clear": z.strictObject(revision),
 };
 export async function handle(
   service: Service,
@@ -197,7 +196,7 @@ export const operations = {
     false,
     "management",
     {
-      tool: { field: "tool" },
+      tool: { field: "toolID" },
       input: { field: "input", input: "json" },
       output: { field: "output", input: "json" },
     },
@@ -210,7 +209,7 @@ export const operations = {
     "required",
     false,
     "management",
-    { tool: { field: "tool" }, input: { field: "input", input: "json" } },
+    { tool: { field: "toolID" }, input: { field: "input", input: "json" } },
   ),
   "evals transcript get": define(
     "evals transcript get",
@@ -264,13 +263,5 @@ export const operations = {
     false,
     "management",
     { message: { field: "messageID" } },
-  ),
-  "evals transcript clear": define(
-    "evals transcript clear",
-    "Clear the starting transcript",
-    mutation,
-    true,
-    "required",
-    true,
   ),
 };

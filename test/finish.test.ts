@@ -117,7 +117,7 @@ async function fixture(
       agentID: "worker",
       name: "worker",
       systemPrompt: "Return the requested result.",
-      mode: "single-turn",
+      mode: "singleTurn",
       modelID: "q",
       executionClass: "instant",
       skillIDs: [],
@@ -134,7 +134,7 @@ async function fixture(
     const a = await service.submit("worker", input());
     return until(async () => {
       const r = await service.run(a.runID);
-      return ["completed", "failed", "timedOut"].includes(r.state) && r;
+      return ["completed", "invalidOutput", "failed", "timedOut"].includes(r.state) && r;
     });
   };
   return {
@@ -188,13 +188,13 @@ for (const [name, result] of [
   test(`${name} fails on the first completion attempt and stays failed after restart`, async (t) => {
     const f = await fixture(t, async () => result);
     const r = await f.submit();
-    assert.equal(r.state, "failed");
+    assert.equal(r.state, "invalidOutput");
     assert.equal(r.result, null);
     assert.equal(f.calls.length, 1);
     assert.equal(r.error.code, "invalid_finish");
     assert.equal(r.events.filter((e: any) => e.type === "completed").length, 0);
     await f.restart();
-    assert.equal((await f.service.run(r.runID)).state, "failed");
+    assert.equal((await f.service.run(r.runID)).state, "invalidOutput");
     assert.equal(f.calls.length, 1);
   });
 }
@@ -206,12 +206,12 @@ test("shutdown after a rejected finish preserves the terminal failure", async (t
     ...args: Parameters<ToolExecution["resumeTools"]>
   ) => {
     await resumeTools(...args);
-    if (args[0].state === "failed") args[4].abort("restart");
+    if (args[0].state === "invalidOutput") args[4].abort("restart");
   };
   const r = await f.submit();
   await f.restart();
   const saved = await f.service.run(r.runID);
-  assert.equal(saved.state, "failed");
+  assert.equal(saved.state, "invalidOutput");
   assert.equal(saved.error?.code, "invalid_finish");
   assert.equal(f.calls.length, 1);
 });
@@ -228,7 +228,7 @@ test("mixed finish batch executes neither finish nor sibling", async (t) => {
             ],
           }
         : finish({ answer: 43 }),
-    { mode: "agent-loop" },
+    { mode: "agentLoop" },
   );
   let invoked = 0;
   f.service["toolStep"]["invokeTool"] = async () => {
@@ -236,7 +236,7 @@ test("mixed finish batch executes neither finish nor sibling", async (t) => {
     return { ok: true };
   };
   const r = await f.submit();
-  assert.equal(r.state, "failed");
+  assert.equal(r.state, "invalidOutput");
   assert.equal(invoked, 0);
   assert.equal(r.result, null);
   assert.equal(f.calls.length, 1);
@@ -259,7 +259,7 @@ test("finish remains available after the ordinary tool budget", async (t) => {
             ],
           }
         : finish({ answer: 42 }),
-    { mode: "agent-loop", maxToolCalls: 1 },
+    { mode: "agentLoop", maxToolCalls: 1 },
   );
   let invoked = 0;
   f.service["toolStep"]["invokeTool"] = async () => {
@@ -274,21 +274,14 @@ test("finish remains available after the ordinary tool budget", async (t) => {
     ["finish"],
   );
 });
-test("finish schema success still fails immediately when the configured output validator rejects it", async (t) => {
+test("finish rejects output outside the single configured schema", async (t) => {
   const f = await fixture(t, async () => finish({ answer: 1 }), {
-    outputValidation: {
-      validator: {
-        type: "json-schema",
-        schema: {
-          type: "object",
-          properties: { answer: { const: 2 } },
-          required: ["answer"],
-        },
-      },
+    finishSchema: {
+      type: "object", properties: { answer: { const: 2 } }, required: ["answer"],
     },
   });
   const r = await f.submit();
-  assert.equal(r.state, "failed");
+  assert.equal(r.state, "invalidOutput");
   assert.equal(r.result, null);
   assert.equal(f.calls.length, 1);
   assert.deepEqual(
@@ -304,7 +297,7 @@ test("finish schema success still fails immediately when the configured output v
 test("duplicate finish keys retain the rejection evidence without requesting repair", async (t) => {
   const f = await fixture(t, async () => finish('{"answer":1,"answer":42}'));
   const r = await f.submit();
-  assert.equal(r.state, "failed");
+  assert.equal(r.state, "invalidOutput");
   assert.equal(f.calls.length, 1);
   assert.equal(r.result, null);
   assert.ok(
@@ -332,27 +325,4 @@ test("structured JSON detects escaped duplicate keys without rejecting siblings 
     },
   );
   assert.throws(() => parseOutputJSON('{"a":'), SyntaxError);
-});
-
-test("ordinary JSON output validation rejects duplicate keys even when last value matches schema", async () => {
-  const { validateOutput } = await import("../dist/engine/supervision.js");
-  const verdict = await validateOutput(
-    {
-      agent: { outputValidation: validation },
-      turnID: "00000000-0000-4000-8000-000000000000",
-    } as unknown as Parameters<typeof validateOutput>[0],
-    {
-      role: "assistant",
-      attachments: [],
-      toolCalls: [],
-      toolCallID: null,
-      messageID: randomUUID(),
-      content: '{"answer":0,"answer":42}',
-    },
-    "/unused",
-    new AbortController().signal,
-  );
-  assert.equal(verdict.status, "failed");
-  assert.match(verdict.reason, /Duplicate JSON key/);
-  assert.match(verdict.reason, /separate objects/);
 });

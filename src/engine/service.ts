@@ -150,14 +150,7 @@ export class Service {
       },
       configuration,
     });
-    this.hooks = hooks = new Hooks({
-      storage,
-      records,
-      get dispatch() {
-        return dispatch;
-      },
-      runner,
-    });
+    this.hooks = hooks = new Hooks({ storage, records, runner });
     this.dispatch = dispatch = new Dispatch({
       inference: this.inference,
       storage,
@@ -283,19 +276,6 @@ export class Service {
     dryRun: boolean,
   ) {
     return this.runs.retryRun(runID, input, dryRun);
-  }
-  retryHook(
-    runID: string,
-    input: {
-      expectedRevision: number;
-      receiptID: string;
-      requestID: string;
-      note: string;
-      acceptUnknown: boolean;
-    },
-    dryRun: boolean,
-  ) {
-    return this.hooks.retryHook(runID, input, dryRun);
   }
   pauseRun(runID: string, expectedRevision: number, dryRun: boolean) {
     return this.runs.pauseRun(runID, expectedRevision, dryRun);

@@ -8,7 +8,8 @@ import type { Runtime, Result } from "./types.js";
 export type ModelTestInput = {
   prompt: string;
   maxOutputTokens: number;
-  temperature: number;
+  sampling: import("../../schemas/agent.js").Agent["sampling"];
+  parallelToolCalls?: boolean;
   thinking: boolean;
   timeoutMs: number;
 };
@@ -59,7 +60,8 @@ export class ModelOperations {
             ],
             tools: [],
             maxOutputTokens: input.maxOutputTokens,
-            temperature: input.temperature,
+            sampling: input.sampling,
+            parallelToolCalls: input.parallelToolCalls,
             thinking: input.thinking,
           },
           AbortSignal.any([signal, AbortSignal.timeout(input.timeoutMs)]),

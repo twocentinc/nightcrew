@@ -1,6 +1,6 @@
 # Run summarizer
 
-A single-turn compaction agent using a registered chat model named `qwen`.
+A singleTurn compaction agent using a registered chat model named `qwen`.
 Edit `modelID` in a copy of `agent.json` for your installation. Nothing is installed,
 downloaded, or scheduled automatically. The prompt in `agent.json` is canonical.
 

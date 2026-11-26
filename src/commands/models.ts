@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { Service, fail } from "../engine/service.js";
-import { id, resultSchema, revision } from "../schemas/common.js";
+import { id, resultSchema, revision, samplingSchema } from "../schemas/common.js";
 import { configMutation } from "../schemas/config.js";
 import { modelSchema } from "../schemas/model.js";
 import { capabilities, capabilitiesSchema } from "../server/diagnostics.js";
@@ -19,7 +19,8 @@ export const operationInputs = {
   "models test": z.strictObject({
     prompt: z.string().trim().min(1).max(50000),
     maxOutputTokens: z.number().int().min(1).max(4096).default(64),
-    temperature: z.number().min(0).max(2).default(0),
+    sampling: samplingSchema.default(() => samplingSchema.parse({ temperature: 0 })),
+    parallelToolCalls: z.boolean().optional(),
     thinking: z.boolean().default(false),
     timeoutMs: z.number().int().min(1000).max(300000).default(60000),
   }),

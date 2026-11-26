@@ -5,6 +5,7 @@ import {
   skillLoadInputSchema,
   skillLoadResultSchema,
   skillSchema,
+  skillMetadataSchema,
 } from "../schemas/agent.js";
 import { id } from "../schemas/common.js";
 import { fingerprint } from "../utils/json.js";
@@ -57,7 +58,7 @@ export const operations = {
   "skills list": defineOperation(
     "skills list",
     "List skills",
-    z.object({ items: z.array(skillSchema.safeExtend({ hash: z.string() })) }),
+    z.object({ items: z.array(skillMetadataSchema.extend({ hash: z.string() })) }),
   ),
   "skills get": defineOperation(
     "skills get",
@@ -106,7 +107,7 @@ const resourceActions: ResourceActions = {
       ...x,
       hash: fingerprint(x),
     }));
-    if (action === "list") return { items };
+    if (action === "list") return { items: items.map(({ skillID, name, description, hash }) => ({ skillID, name, description, hash })) };
     const item =
       items.find((x) => x.skillID === name) ?? fail("not_found", 404);
     return { item };

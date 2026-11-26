@@ -23,9 +23,6 @@ export const operationInputs = {
       .partial()
       .extend({
         finishSchema: agentSchema.shape.finishSchema.unwrap().optional(),
-        outputValidation: agentSchema.shape.outputValidation
-          .unwrap()
-          .optional(),
         loopPolicy: agentSchema.shape.loopPolicy.unwrap().optional(),
         compaction: agentSchema.shape.compaction.unwrap().optional(),
         storageLimitMB: agentSchema.shape.storageLimitMB.unwrap().optional(),
@@ -34,7 +31,7 @@ export const operationInputs = {
         timeSliceMs: z.number().int().min(100).max(3600000).optional(),
         executionClass: agentSchema.shape.executionClass.unwrap().optional(),
         thinking: z.boolean().optional(),
-        temperature: z.number().min(0).max(2).optional(),
+        sampling: agentSchema.shape.sampling.removeDefault().optional(),
         maxOutputTokens: z.number().int().min(1).max(32768).optional(),
       }),
   }),

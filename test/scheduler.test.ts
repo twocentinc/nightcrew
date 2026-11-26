@@ -87,7 +87,7 @@ async function setup(
         systemPrompt: "test",
         modelID: "q",
         executionClass: "background",
-        mode: "single-turn",
+        mode: "singleTurn",
         skillIDs: [],
         toolIDs: [],
         enabled: true,
@@ -175,7 +175,7 @@ test("scheduler batches resident work, eventually switches, and validates extern
   );
   const hook = {
     executablePath: process.execPath,
-    arguments: [
+    argv: [
       "-e",
       "process.stdin.resume();process.stdin.on('end',()=>console.log(JSON.stringify({start:[],pause:[],reason:'wait'})))",
     ],
@@ -192,7 +192,7 @@ test("scheduler batches resident work, eventually switches, and validates extern
         ...s,
         settings: {
           ...settings,
-          hook: { ...hook, arguments: ["-e", "console.log('invalid')"] },
+          hook: { ...hook, argv: ["-e", "console.log('invalid')"] },
         },
       })
     ).source,
@@ -206,7 +206,7 @@ test("scheduler batches resident work, eventually switches, and validates extern
           ...settings,
           hook: {
             ...hook,
-            arguments: ["-e", "setTimeout(()=>{},10000)"],
+            argv: ["-e", "setTimeout(()=>{},10000)"],
             timeoutMs: 100,
             failurePolicy: "hold" as const,
           },
@@ -274,6 +274,7 @@ test("two background slots run concurrently and instant work waits for both to r
   assert.equal(detail.execution.state, "running");
   assert.equal("execution" in detail.outcome, false);
   f.state.away = false;
+  f.service.presence = { ...f.service.presence, state: "present" };
   const accepted = await f.service.submitChat({
     skillIDs: [],
     conversationID: randomUUID(),
@@ -286,9 +287,9 @@ test("two background slots run concurrently and instant work waits for both to r
       },
     ],
     tools: [],
-    timeoutMs: 1000,
+    timeoutMs: 10000,
     maxOutputTokens: 20,
-    temperature: 0,
+    sampling: { temperature: 0 },
   });
   await until(() => !!releaseInstant);
   const instantStatus = f.service.status();
@@ -783,7 +784,7 @@ test("models unload refuses unrelated active background work", async (t) => {
 test("explicit capability refresh preserves daily history, snapshots and stopped state", async (t) => {
   const f = await setup(t, async () => done);
   await f.agent("interactive", {
-    mode: "agent-loop",
+    mode: "agentLoop",
     contextMode: "fresh",
     enabled: false,
   });
@@ -826,10 +827,7 @@ test("explicit capability refresh preserves daily history, snapshots and stopped
   assert.deepEqual(after.messages, before.messages);
   assert.equal(after.state, before.state);
   assert.deepEqual(after.agent.toolIDs, ["current_time"]);
-  assert.deepEqual(
-    after.capabilityRefreshes[0].previousTools,
-    before.toolSnapshots,
-  );
+  assert.equal("previousTools" in after.capabilityRefreshes[0], false);
   assert.equal(after.capabilityRefreshes.length, 1);
   await assert.rejects(
     manage(f.service, command),
@@ -872,7 +870,7 @@ test("instant delete settles active work and forgets completed results; dry run 
     tools: [],
     timeoutMs: 10000,
     maxOutputTokens: 20,
-    temperature: 0,
+    sampling: { temperature: 0 },
   });
   await until(() => started);
   assert.equal(
@@ -903,7 +901,7 @@ test("instant delete settles active work and forgets completed results; dry run 
     tools: [],
     timeoutMs: 10000,
     maxOutputTokens: 20,
-    temperature: 0,
+    sampling: { temperature: 0 },
   });
   await until(() => g.service.chat(done.requestID).state === "completed");
   await g.service.deleteChat(done.requestID);

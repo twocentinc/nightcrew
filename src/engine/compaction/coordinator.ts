@@ -29,10 +29,10 @@ export interface Dependencies {
 }
 
 export class Compaction {
-  readonly recovery: CompactionRecovery;
+  readonly toolLoop: CompactionRecovery;
   constructor(private readonly ports: Dependencies) {
     const self = this;
-    this.recovery = new CompactionRecovery({ dependencies: this.ports });
+    this.toolLoop = new CompactionRecovery({ dependencies: this.ports });
   }
   async prepareContext(
     run: Run,
@@ -46,7 +46,7 @@ export class Compaction {
     if (model.kind !== "chat") return true;
     if (!this.ports.runtime.countTokens) {
       if (run.agent.compaction || model.compactionThresholdTokens) {
-        this.recovery.compactionFailure(
+        this.toolLoop.compactionFailure(
           run,
           "Runtime does not support context token counting",
         );
@@ -297,7 +297,7 @@ export class Compaction {
         await this.ports.storage.exclusive(() => this.ports.records.save(run));
         return false;
       }
-      if (pending.handler?.type !== "script")
+      if (pending.handler?.type !== "exec")
         throw Error("Compaction handler unavailable");
       pending.summary = await executeCompactionScript(
         pending.handler,
@@ -312,18 +312,18 @@ export class Compaction {
       if (error instanceof Error && error.name === "ContextPreparationError") {
         run.state = "paused";
         run.held = true;
-        run.pauseReason = "runtime_error";
+        run.pauseReason = "runtimeError";
         run.error = {
           code: "context_preparation_failed",
           message: error.message.slice(0, 2000),
         };
         this.ports.records.event(run, "paused", {
-          reason: "runtime_error",
+          reason: "runtimeError",
           ...run.error,
         });
         return false;
       }
-      this.recovery.retryCompaction(
+      this.toolLoop.retryCompaction(
         run,
         error instanceof Error
           ? error.message.slice(0, 1000)
@@ -333,6 +333,6 @@ export class Compaction {
     }
   }
   reconcileCompactions() {
-    return this.recovery.reconcileCompactions();
+    return this.toolLoop.reconcileCompactions();
   }
 }

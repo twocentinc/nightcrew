@@ -64,7 +64,7 @@ test("slot snapshots survive model switches, use the selected home, and reject s
         messages: [],
         tools: [],
         maxOutputTokens: 10,
-        temperature: 0,
+        sampling: { temperature: 0 },
       },
       new AbortController().signal,
     );
@@ -147,7 +147,7 @@ test("slot snapshots survive model switches, use the selected home, and reject s
       messages: [],
       tools: [],
       maxOutputTokens: 10,
-      temperature: 0,
+      sampling: { temperature: 0 },
     },
     new AbortController().signal,
   );
@@ -229,7 +229,7 @@ test("named KV contexts move between concurrent live slots and respect the disk 
         messages: [],
         tools: [],
         maxOutputTokens: 10,
-        temperature: 0,
+        sampling: { temperature: 0 },
       },
       new AbortController().signal,
     );
@@ -261,7 +261,7 @@ test("named KV contexts move between concurrent live slots and respect the disk 
     ],
     thinking: true,
     maxOutputTokens: 10,
-    temperature: 0,
+    sampling: { temperature: 0 },
   };
   assert.equal(
     await runtime.countTokens(input, new AbortController().signal),

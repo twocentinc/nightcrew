@@ -109,9 +109,9 @@ export class ModelClient {
         await post("/apply-template", {
           messages: this.formatMessages(input.messages),
           tools: input.tools.map((t) => ({ type: "function", function: t })),
-          ...(input.sampling?.parallelToolCalls === undefined
+          ...(input.parallelToolCalls === undefined
             ? {}
-            : { parallel_tool_calls: input.sampling.parallelToolCalls }),
+            : { parallel_tool_calls: input.parallelToolCalls }),
           add_generation_prompt: !input.continueFinalMessage,
           ...(input.continueFinalMessage
             ? { continue_final_message: "content" }
@@ -229,7 +229,7 @@ export class ModelClient {
           .find((m) => m.role === "user")?.content;
         if (prompt?.trim()) form.set("prompt", prompt);
         form.set("response_format", "json");
-        form.set("temperature", String(input.temperature));
+        form.set("temperature", String(input.sampling.temperature));
         form.set("max_tokens", String(input.maxOutputTokens));
         form.set(
           "file",
@@ -280,7 +280,7 @@ export class ModelClient {
                 ? {}
                 : { reasoning_budget_tokens: input.reasoningBudgetTokens }),
               max_tokens: input.maxOutputTokens,
-              temperature: input.temperature,
+              temperature: input.sampling.temperature,
               ...(input.sampling
                 ? {
                     top_p: input.sampling.topP,
@@ -288,7 +288,7 @@ export class ModelClient {
                     min_p: input.sampling.minP,
                     presence_penalty: input.sampling.presencePenalty,
                     repeat_penalty: input.sampling.repeatPenalty,
-                    parallel_tool_calls: input.sampling.parallelToolCalls,
+                    parallel_tool_calls: input.parallelToolCalls,
                   }
                 : {}),
               stream: true,

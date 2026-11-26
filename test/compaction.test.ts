@@ -110,7 +110,7 @@ async function fixture(
         systemPrompt: "test",
         modelID: "q",
         executionClass: "background",
-        mode: "single-turn",
+        mode: "singleTurn",
         skillIDs: [],
         toolIDs: [],
         enabled: true,
@@ -148,9 +148,9 @@ async function fixture(
   };
 }
 const script = (code?: any) => ({
-  type: "script" as const,
+  type: "exec" as const,
   executablePath: process.execPath,
-  arguments: ["-e", code],
+  argv: ["-e", code],
   timeoutMs: 1000,
 });
 test("script compaction preserves transcript, checkpoints, exports and persistent run identity", async (t) => {
@@ -226,7 +226,7 @@ test("invalid summary pauses and runs resume retries using the current handler",
     const r = await f.service.run(f.runID);
     return r.held && r;
   });
-  assert.equal(paused.pauseReason, "context_full");
+  assert.equal(paused.pauseReason, "contextFull");
   assert.equal(paused.compactions.length, 0);
   await f.service.patchAgent("worker", f.service.agent("worker").revision, {
     compaction: {
@@ -580,15 +580,8 @@ test("compaction retains per-turn output constraints when replacing context", as
     request: {
       expectedRevision: a.revision,
       changes: {
-        outputValidation: {
-          validator: {
-            type: "json-schema" as const,
-            schema: {
-              type: "object" as const,
-              properties: { answer: { type: "string" as const } },
-              required: ["answer"],
-            },
-          },
+        finishSchema: {
+          type: "object", properties: { answer: { type: "string" } }, required: ["answer"],
         },
       },
     },
@@ -601,8 +594,8 @@ test("compaction retains per-turn output constraints when replacing context", as
   f.runtime.generate = async (input) => {
     generated.push(input);
     return {
-      text: '{"answer":"done"}',
-      toolCalls: [],
+      text: "",
+      toolCalls: [{callID:"finish",name:"finish",arguments:'{"answer":"done"}'}],
       usage: { inputTokens: 1, outputTokens: 1 },
     };
   };
@@ -614,7 +607,7 @@ test("compaction retains per-turn output constraints when replacing context", as
   assert.equal(done.validations.at(-1).status, "passed");
   assert.ok(
     generated[0].messages.some((m?: any) =>
-      m.content.includes("Final output must be JSON matching this schema"),
+      m.content.includes("runtime-owned finish tool"),
     ),
   );
 });
@@ -631,7 +624,7 @@ test("template failures are held as runtime errors and retain the actual cause",
   await f.service.submit("worker", message("continue"));
   const held = await until(async () => {
     const r = await f.service.run(f.runID);
-    return r.pauseReason === "runtime_error" && r;
+    return r.pauseReason === "runtimeError" && r;
   });
   assert.equal(held.error.code, "context_preparation_failed");
   assert.match(held.error.message, /HTTP 500/);
@@ -639,7 +632,7 @@ test("template failures are held as runtime errors and retain the actual cause",
   assert.equal(held.held, true);
   await f.restart();
   const restored = await f.service.run(f.runID);
-  assert.equal(restored.pauseReason, "runtime_error");
+  assert.equal(restored.pauseReason, "runtimeError");
   f.runtime.countTokens = async () => 10;
   await f.service.queueControl(f.runID, "release", restored.revision, false);
   await until(async () => (await f.service.run(f.runID)).state === "completed");
@@ -731,7 +724,7 @@ test("compactor runtime errors hold the parent without summary retry and resume 
     const r = await f.service.run(f.runID);
     return r.held && r;
   });
-  assert.equal(held.pauseReason, "runtime_error");
+  assert.equal(held.pauseReason, "runtimeError");
   assert.equal(held.compaction.retries, 0);
   assert.match(held.error.message, /HTTP 500/);
   broken = false;
@@ -1449,7 +1442,7 @@ test("unknown structured provenance exhausts bounded retries without replacing c
     const r = await f.service.run(f.runID);
     return r.held && r;
   });
-  assert.equal(paused.pauseReason, "context_full");
+  assert.equal(paused.pauseReason, "contextFull");
   assert.equal(paused.compactions.length, 0);
   assert.deepEqual(
     paused.messages.slice(0, f.original.messages.length),

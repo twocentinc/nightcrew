@@ -1,3 +1,4 @@
+import { now } from "../../schemas/common.js";
 import { terminal } from "../../schemas/common.js";
 import { type Run } from "../../schemas/run.js";
 import type { RunRecords } from "../../storage/records.js";
@@ -128,13 +129,20 @@ export class Runner {
           !lastAssistant.toolCalls.length &&
           !continuation.length
         ) {
-          r.state = "failed";
+          r.state = "invalidOutput";
           r.error = {
             code: "invalid_finish",
             message:
               "Expected a finish call; ordinary text does not complete the run",
           };
-          this.ports.records.event(r, "failed", {});
+          this.ports.records.event(r, "invalidOutput", {});
+          r.validations.push({
+            turnID: r.turnID, messageID: lastAssistant.messageID, status: "failed",
+            reason: r.error.message, at: now(),
+          });
+          this.ports.records.event(r, "outputValidation", {
+            messageID: lastAssistant.messageID, status: "failed", reason: r.error.message,
+          });
           break;
         }
         if (this.ports.context.atStorageLimit(r)) {
@@ -145,7 +153,6 @@ export class Runner {
           r,
           lastAssistant,
           continuation,
-          controller,
         );
         if (validation) break;
         const history: TurnHistory = {

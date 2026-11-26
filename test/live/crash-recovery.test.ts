@@ -81,7 +81,7 @@ test(
       slotSnapshots: { enabled: false, directory: null },
     };
     const store = storeSchema.parse({
-      version: 3,
+      version: 5,
       config: {
         revision: 1,
         host: "127.0.0.1",
@@ -222,7 +222,7 @@ test(
       systemPrompt:
         "Follow instructions. Preserve the project facts: code lavender, seven trees, blue gate.",
       modelID: model.modelID,
-      mode: "single-turn",
+      mode: "singleTurn",
       executionClass: "background",
       contextMode: "persistent",
       skillIDs: [],
@@ -232,7 +232,7 @@ test(
       maxOutputTokens: 1024,
       timeoutMs: 300000,
       timeSliceMs: 300000,
-      temperature: 0,
+      sampling: { temperature: 0 },
       ...extra,
     });
     t.after(async () => {

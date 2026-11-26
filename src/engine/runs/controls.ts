@@ -76,10 +76,6 @@ export class RunControls {
           at: now(),
           turnID: run.turnID,
           sourceAgentRevision: configured.revision,
-          previousToolIDs: run.agent.toolIDs,
-          previousSkillIDs: run.agent.skillIDs,
-          previousTools: run.toolSnapshots,
-          previousSkills: run.skills,
         });
         run.agent = candidate;
         run.skills = skills;
@@ -193,7 +189,7 @@ export class RunControls {
           run.pauseReason = null;
           this.ports.dependencies.records.event(run, "cancelled", {});
         } else {
-          if (action === "release" && run.pauseReason === "storage_limit") {
+          if (action === "release" && run.pauseReason === "storageLimit") {
             const updated = {
               ...run,
               agent: {
@@ -204,7 +200,7 @@ export class RunControls {
               },
             };
             if (this.ports.dependencies.context.atStorageLimit(updated))
-              fail("run_storage_limit", 409);
+              fail("run_storageLimit", 409);
             run.agent.storageLimitMB = updated.agent.storageLimitMB;
             delete run.storageLimit;
             const boundary = [...run.events]
@@ -220,7 +216,7 @@ export class RunControls {
           run.held = action === "hold";
           if (action === "release" && run.pauseReason === "manualStop")
             run.pauseReason = null;
-          if (action === "release" && run.pauseReason === "context_full") {
+          if (action === "release" && run.pauseReason === "contextFull") {
             run.compaction = null;
             run.agent.compaction = structuredClone(
               this.ports.dependencies.configuration.agent(run.agent.agentID)
@@ -229,12 +225,12 @@ export class RunControls {
             run.error = null;
             run.pauseReason = null;
           }
-          if (action === "release" && run.pauseReason === "runtime_error") {
+          if (action === "release" && run.pauseReason === "runtimeError") {
             if (run.compaction?.childRunID) {
               const child = await this.ports.dependencies.records.run(
                 run.compaction.childRunID,
               );
-              if (child.pauseReason === "runtime_error") {
+              if (child.pauseReason === "runtimeError") {
                 child.held = false;
                 child.pauseReason = null;
                 child.error = null;

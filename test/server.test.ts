@@ -23,7 +23,7 @@ const chat = (m = message()) => ({
 async function fixture(t: import("node:test").TestContext, generate?: any) {
   const home = await mkdtemp(path.join(tmpdir(), "nightcrew-test-"));
   const initial = {
-    version: 3,
+    version: 5,
     config: {
       revision: 1,
       host: "127.0.0.1",
@@ -100,7 +100,7 @@ async function fixture(t: import("node:test").TestContext, generate?: any) {
     agentID: "researcher",
     name: "researcher",
     systemPrompt: "Research.",
-    mode: "single-turn",
+    mode: "singleTurn",
     modelID: "qwen",
     executionClass: "background",
     skillIDs: [],
@@ -466,15 +466,15 @@ test("managed llama router provisions from PATH and parses streamed completions"
       slotID: runtime.config().slots.find((s) => s.instant)!.slotID,
       tools: [],
       thinking: false,
-      temperature: 0.7,
+      parallelToolCalls: false,
       maxOutputTokens: 32,
       sampling: {
+        temperature: 0.7,
         topP: 0.95,
         topK: 20,
         minP: 0,
         presencePenalty: 1.5,
         repeatPenalty: 1,
-        parallelToolCalls: false,
       },
     },
     new AbortController().signal,
@@ -585,7 +585,7 @@ test("custom executable tools run with snapshotted definitions and appear in dis
   await manage(f.app.service, { command: "tools create", request: { tool } });
   await f.request("PATCH", "/v1/agents/researcher", {
     expectedRevision: 1,
-    changes: { mode: "agent-loop", toolIDs: ["inspect"] },
+    changes: { mode: "agentLoop", toolIDs: ["inspect"] },
   });
   assert.equal(
     (await f.request("GET", "/v1/tools/inspect")).body.tool.description,
@@ -601,7 +601,7 @@ test("custom executable tools run with snapshotted definitions and appear in dis
       await readFile(path.join(f.home, "runs", r.runID, "state.json"), "utf8")
     ).toString(),
   );
-  assert.equal(original.version, 7);
+  assert.equal(original.version, 10);
   assert.equal(
     original.events.find((e: any) => e.type === "configurationChanged").data
       .configuration.tools[0].toolID,
@@ -634,7 +634,7 @@ test("agent generation settings are snapshotted and passed to inference", async 
   });
   const updated = await f.request("PATCH", "/v1/agents/researcher", {
     expectedRevision: 1,
-    changes: { thinking: false, maxOutputTokens: 32, temperature: 0 },
+    changes: { thinking: false, maxOutputTokens: 32, sampling: { temperature: 0 } },
   });
   assert.equal(updated.status, 200);
   const renamed = await f.request("PATCH", "/v1/agents/researcher", {
@@ -660,7 +660,7 @@ test("agent generation settings are snapshotted and passed to inference", async 
   };
   await until(() => observed);
   assert.equal(observed.thinking, false);
-  assert.equal(observed.temperature, 0);
+  assert.equal(observed.sampling.temperature, 0);
   assert.equal(observed.maxOutputTokens, 32);
   const run = (await f.request("GET", "/v1/runs/" + submitted.body.runID)).body
     .run;
@@ -773,7 +773,7 @@ test("instant agents bypass presence and cooldown, extend cooldown, and preempt 
       agentID: "instant-test",
       name: "instant",
       systemPrompt: "hello",
-      mode: "single-turn",
+      mode: "singleTurn",
       modelID: "qwen",
       executionClass: "instant",
       skillIDs: [],
@@ -924,7 +924,7 @@ test("audio adapter sends output settings and the WAV attachment to transcriptio
       ],
       tools: [],
       maxOutputTokens: 512,
-      temperature: 0.7,
+      sampling: { temperature: 0.7 },
     },
     new AbortController().signal,
   );
@@ -1078,7 +1078,7 @@ test("failed generation retains partial answer, thinking and tool fragments as v
   await f.request("PATCH", "/v1/agents/researcher", {
     expectedRevision: 1,
     changes: {
-      mode: "agent-loop",
+      mode: "agentLoop",
       thinking: true,
       toolIDs: ["runs_transcript"],
     },
@@ -1166,7 +1166,7 @@ test("storage limit holds a persistent run and delivers one bounded hook with us
   const runID = submitted.body.runID;
   await until(async () => {
     const r = await f.app.service.storage.read(runID);
-    return r.pauseReason === "storage_limit";
+    return r.pauseReason === "storageLimit";
   });
   const rejected = await f.request("POST", "/v1/agents/researcher/runs", {
     message: message("next"),
@@ -1193,7 +1193,7 @@ test("storage limit holds a persistent run and delivers one bounded hook with us
   await f.restart();
   assert.equal(
     (await f.app.service.storage.read(runID)).pauseReason,
-    "storage_limit",
+    "storageLimit",
   );
   const raised = await f.request("PATCH", "/v1/agents/researcher", {
     expectedRevision: 2,
@@ -1339,6 +1339,14 @@ test("agent loops automatically discover and load snapshotted skill files on dem
     request: {},
   });
   assert.equal(created.item!.hash, fetched.item.hash);
+  const listed = await api["skills list"]({ resourceID: undefined, request: {} });
+  const expected = { skillID: skill.skillID, name: skill.name, description: skill.description, hash: fetched.item.hash };
+  assert.deepEqual(listed.items.find((s) => s.skillID === skill.skillID), expected);
+  const httpList = await f.request("GET", "/v1/skills");
+  assert.equal(httpList.status, 200);
+  const httpBody = httpList.body;
+  assert.deepEqual(httpBody.items.find((s: any) => s.skillID === skill.skillID), expected);
+
   const updated = await api["skills update"]({
     resourceID: "review",
     request: {
@@ -1350,7 +1358,7 @@ test("agent loops automatically discover and load snapshotted skill files on dem
 
   const changed = await f.request("PATCH", "/v1/agents/researcher", {
     expectedRevision: 1,
-    changes: { mode: "agent-loop", skillIDs: ["review"] },
+    changes: { mode: "agentLoop", skillIDs: ["review"] },
   });
   assert.equal(changed.status, 200);
   f.state.away = true;
@@ -1360,7 +1368,7 @@ test("agent loops automatically discover and load snapshotted skill files on dem
   });
   const run = await until(async () => {
     const r = await f.app.service.storage.read(submitted.body.runID);
-    return ["completed", "failed"].includes(r.state) && r;
+    return ["completed", "invalidOutput", "failed"].includes(r.state) && r;
   });
   assert.equal(run.state, "completed", JSON.stringify(run.error));
   assert.equal(turn, 3);
@@ -1461,7 +1469,7 @@ test("instant chats execute selected skills automatically and return client-owne
   assert.equal(submitted.status, 202);
   const c = await until(() => {
     const c = f.app.service.chat(submitted.body.requestID);
-    return ["completed", "failed"].includes(c.state) && c;
+    return ["completed", "invalidOutput", "failed"].includes(c.state) && c;
   });
   assert.equal(c.state, "completed", JSON.stringify(c.error));
   assert.equal(step, 2);
@@ -1501,7 +1509,7 @@ test("instant chats execute selected skills automatically and return client-owne
   assert.equal(followup.status, 202);
   const finished = await until(() => {
     const c = f.app.service.chat(followup.body.requestID);
-    return ["completed", "failed"].includes(c.state) && c;
+    return ["completed", "invalidOutput", "failed"].includes(c.state) && c;
   });
   assert.equal(finished.result?.text, "Finished with client result");
 
@@ -1587,12 +1595,12 @@ for (const instant of [false, true]) {
       });
       completed = await until(() => {
         const c = f.app.service.chat(submitted.body.requestID);
-        return ["completed", "failed"].includes(c.state) && c;
+        return ["completed", "invalidOutput", "failed"].includes(c.state) && c;
       });
     } else {
       await f.request("PATCH", "/v1/agents/researcher", {
         expectedRevision: 1,
-        changes: { mode: "agent-loop", skillIDs: ["review"] },
+        changes: { mode: "agentLoop", skillIDs: ["review"] },
       });
       f.state.away = true;
       await f.app.service["dispatch"].tick();
@@ -1601,7 +1609,7 @@ for (const instant of [false, true]) {
       });
       completed = await until(async () => {
         const r = await f.app.service.storage.read(submitted.body.runID);
-        return ["completed", "failed"].includes(r.state) && r;
+        return ["completed", "invalidOutput", "failed"].includes(r.state) && r;
       });
       const { verifyRun } = await import("../dist/storage/artifacts.js");
       assert.equal(
@@ -1622,7 +1630,7 @@ test("history tools exclude the current nonterminal run", async (t) => {
   const f = await fixture(t);
   await f.request("PATCH", "/v1/agents/researcher", {
     expectedRevision: 1,
-    changes: { mode: "agent-loop", toolIDs: ["runs_list", "runs_transcript"] },
+    changes: { mode: "agentLoop", toolIDs: ["runs_list", "runs_transcript"] },
   });
   const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
     message: message(),
@@ -1655,7 +1663,7 @@ test("worker history bounds long evidence while administrator transcripts remain
   }));
   await f.request("PATCH", "/v1/agents/researcher", {
     expectedRevision: 1,
-    changes: { mode: "agent-loop", toolIDs: ["runs_transcript"] },
+    changes: { mode: "agentLoop", toolIDs: ["runs_transcript"] },
   });
   f.state.away = true;
   await f.app.service["dispatch"].tick();
@@ -1716,16 +1724,16 @@ test("agent sampling settings are validated, snapshotted and forwarded to infere
     };
   });
   const sampling = {
+    temperature: 0.7,
     topP: 0.95,
     topK: 20,
     minP: 0,
     presencePenalty: 1.5,
     repeatPenalty: 1,
-    parallelToolCalls: false,
   };
   const changed = await f.request("PATCH", "/v1/agents/researcher", {
     expectedRevision: 1,
-    changes: { sampling },
+    changes: { sampling, parallelToolCalls: false },
   });
   assert.equal(changed.status, 200);
   f.state.away = true;
@@ -1771,7 +1779,7 @@ test("tool budget rejects excess batch calls and requests a tool-free final answ
   });
   await f.request("PATCH", "/v1/agents/researcher", {
     expectedRevision: 1,
-    changes: { mode: "agent-loop", toolIDs: ["runs_list"], maxToolCalls: 1 },
+    changes: { mode: "agentLoop", toolIDs: ["runs_list"], maxToolCalls: 1 },
   });
   let invoked = 0;
   const invoke = f.app.service["toolStep"].invokeTool.bind(
@@ -1824,7 +1832,7 @@ for (const emptyAgain of [false, true])
     });
     await f.request("PATCH", "/v1/agents/researcher", {
       expectedRevision: 1,
-      changes: { mode: "agent-loop" },
+      changes: { mode: "agentLoop" },
     });
     f.state.away = true;
     await f.app.service["dispatch"].tick();
@@ -1833,7 +1841,7 @@ for (const emptyAgain of [false, true])
     });
     const run = await until(async () => {
       const r = await f.app.service.storage.read(submitted.body.runID);
-      return ["completed", "failed"].includes(r.state) && r;
+      return ["completed", "invalidOutput", "failed"].includes(r.state) && r;
     });
     assert.equal(turns, 2);
     assert.equal(run.state, emptyAgain ? "failed" : "completed");

@@ -25,7 +25,7 @@ export const configSchema = z.strictObject({
   hooks: z.array(hookSchema).max(16),
 });
 export const storeSchema = z.strictObject({
-  version: z.literal(3),
+  version: z.literal(5),
   config: configSchema,
   agents: z.array(agentSchema).max(1000),
   triggers: z.array(triggerSchema).max(1000).default([]),
@@ -78,19 +78,19 @@ export function validateConfig(store: Store) {
       if (
         !compactor ||
         compactor.agentID === a.agentID ||
-        compactor.mode !== "single-turn" ||
+        compactor.mode !== "singleTurn" ||
         !config.models.some(
           (m) => m.modelID === compactor.modelID && m.kind === "chat",
         )
       )
-        throw Error("Compactor must reference another single-turn chat agent");
+        throw Error("Compactor must reference another singleTurn chat agent");
     }
     const model = config.models.find((x) => x.modelID === a.modelID);
     if (!model) throw new Error("Invalid agent model");
-    if (a.mode === "single-turn" && (a.toolIDs.length || a.skillIDs.length))
+    if (a.mode === "singleTurn" && (a.toolIDs.length || a.skillIDs.length))
       throw new Error("Single-turn agents do not use tools or skills");
-    if (model.kind === "audio" && a.mode !== "single-turn")
-      throw new Error("Audio agents must be single-turn");
+    if (model.kind === "audio" && a.mode !== "singleTurn")
+      throw new Error("Audio agents must be singleTurn");
     if (
       new Set(a.toolIDs).size !== a.toolIDs.length ||
       new Set(a.skillIDs).size !== a.skillIDs.length

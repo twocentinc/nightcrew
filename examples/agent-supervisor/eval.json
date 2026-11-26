@@ -9,7 +9,6 @@
   ],
   "tools": [
     {
-      "tool": "load_skills",
       "input": {
         "skillIDs": [
           "agent-supervisor"
@@ -26,10 +25,10 @@
           }
         ],
         "files": []
-      }
+      },
+      "toolID": "load_skills"
     },
     {
-      "tool": "nightcrew_inspect",
       "input": {
         "action": "overview"
       },
@@ -49,10 +48,10 @@
             "priorityIssues": []
           }
         }
-      }
+      },
+      "toolID": "nightcrew_inspect"
     },
     {
-      "tool": "nightcrew_inspect",
       "input": {
         "action": "page",
         "page": 0
@@ -98,10 +97,10 @@
           "nextPage": null,
           "complete": true
         }
-      }
+      },
+      "toolID": "nightcrew_inspect"
     },
     {
-      "tool": "nightcrew_inspect",
       "input": {
         "action": "run",
         "runID": "run-retry"
@@ -148,7 +147,8 @@
           ],
           "caveat": "Tool arguments intentionally omitted. Repeated calls may be legitimate; investigate before acting."
         }
-      }
+      },
+      "toolID": "nightcrew_inspect"
     }
   ],
   "grader": {

@@ -12,18 +12,18 @@ import { fail } from "../protocol.js";
 export function editTools(
   definition: EvalDefinition,
   action: "set" | "delete",
-  input: { tool: string; input?: Record<string, unknown>; output?: unknown },
+  input: { toolID: string; input?: Record<string, unknown>; output?: unknown },
 ) {
-  const key = canonical([input.tool, input.input ?? null]);
+  const key = canonical([input.toolID, input.input ?? null]);
   const index = definition.tools.findIndex(
-    (t) => canonical([t.tool, t.input ?? null]) === key,
+    (t) => canonical([t.toolID, t.input ?? null]) === key,
   );
   if (action === "delete") {
     if (index < 0) fail("eval_tool_not_found", 404);
     definition.tools.splice(index, 1);
   } else {
     const rule = {
-      tool: input.tool,
+      toolID: input.toolID,
       ...(input.input === undefined ? {} : { input: input.input }),
       output: input.output,
     };
@@ -40,8 +40,7 @@ export function editTranscript(
   action: string,
   input: { messages?: unknown[]; message?: unknown; messageID?: string },
 ) {
-  if (action === "clear") definition.messages = [];
-  else if (action === "set")
+  if (action === "set")
     definition.messages = (input.messages ?? []).map((m) =>
       authorMessage.parse(m),
     );

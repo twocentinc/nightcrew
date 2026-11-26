@@ -6,13 +6,10 @@ import type { RunRecords } from "../storage/records.js";
 import { Storage } from "../storage/store.js";
 import { runExecutable, withoutExecution } from "./execution/process.js";
 import type { Runner } from "./execution/runner.js";
-import { fail } from "./protocol.js";
-import type { Dispatch } from "./scheduling/dispatch.js";
 
 interface Dependencies {
   readonly storage: Storage;
-  readonly records: Pick<RunRecords, "run" | "detail" | "save" | "event">;
-  readonly dispatch: Pick<Dispatch, "hasActivity">;
+  readonly records: Pick<RunRecords, "run" | "save" | "event">;
   readonly runner: Pick<Runner, "liveRun">;
 }
 export class Hooks {
@@ -62,129 +59,21 @@ export class Hooks {
       await this.ports.records.save(current);
     });
   }
-  async retryHook(
-    runID: string,
-    input: {
-      expectedRevision: number;
-      receiptID: string;
-      requestID: string;
-      note: string;
-      acceptUnknown: boolean;
-    },
-    dryRun: boolean,
-  ) {
-    const result = await this.ports.storage.exclusive(async () => {
-      const run = await this.ports.records.run(runID);
-      const prior = run.hookReceipts.find(
-        (h) => h.requestID === input.requestID,
-      );
-      if (prior) {
-        if (
-          prior.retryOfReceiptID !== input.receiptID ||
-          prior.note !== input.note
-        )
-          fail("request_conflict", 409);
-        return {
-          run: this.ports.records.detail(run),
-          changed: false,
-          receiptID: null,
-        };
-      }
-      if (run.revision !== input.expectedRevision)
-        fail("revision_conflict", 409);
-      if (!terminal(run.state) || this.ports.dispatch.hasActivity(runID))
-        fail("run_not_terminal", 409);
-      const receipt = run.hookReceipts.find(
-        (h) => h.receiptID === input.receiptID,
-      );
-      if (!receipt || !["failed", "unknown"].includes(receipt.status))
-        fail("hook_not_retryable", 409);
-      if (run.hookReceipts.some((h) => h.retryOfReceiptID === input.receiptID))
-        fail("hook_already_retried", 409);
-      if (receipt.status === "unknown" && !input.acceptUnknown)
-        fail("hook_outcome_unknown", 409);
-      const event = run.events.find((e) => e.eventID === receipt.eventID);
-      if (!event || event.turnID !== run.turnID)
-        fail("hook_turnID_changed", 409);
-      const hook = this.ports.storage.store.config.hooks.find(
-        (h) =>
-          h.hookID === receipt.hookID &&
-          h.event === `run.${event.type}` &&
-          h.purpose === receipt.purpose,
-      );
-      if (!hook) fail("hook_not_registered", 409);
-      if (run.hookReceipts.length >= 1000) fail("hook_receipt_capacity", 409);
-      const receiptID = randomUUID();
-      if (!dryRun) {
-        run.hookReceipts.push({
-          ...receipt,
-          executablePath: hook.executablePath,
-          requestID: input.requestID,
-          receiptID,
-          retryOfReceiptID: input.receiptID,
-          startedAt: null,
-          finishedAt: null,
-          note: input.note,
-          status: "pending",
-          diagnostic: null,
-        });
-        await this.ports.records.save(run);
-      }
-      return {
-        run: this.ports.records.detail(run),
-        changed: !dryRun,
-        receiptID: dryRun ? null : receiptID,
-      };
-    });
-    if (result.receiptID !== null) {
-      const work = withoutExecution(async () =>
-        this.deliverHooks(
-          await this.ports.records.run(runID),
-          undefined,
-          result.receiptID!,
-        ),
-      );
-      this.hookWork.add(work);
-      try {
-        await work;
-      } finally {
-        this.hookWork.delete(work);
-      }
-    }
-    return {
-      run: this.ports.records.detail(await this.ports.records.run(runID)),
-      changed: result.changed,
-    };
-  }
-  private async deliverHooks(r: Run, selectedEvent?: string, retryID?: string) {
-    const retry =
-      retryID === undefined
-        ? null
-        : r.hookReceipts.find((h) => h.receiptID === retryID);
-    const retryEvent = retry
-      ? r.events.find((e) => e.eventID === retry.eventID)
-      : null;
+  private async deliverHooks(r: Run, selectedEvent?: string) {
     const eventType =
-      retryEvent?.type ??
       selectedEvent ??
-      (r.pauseReason === "storage_limit" ? "storageLimit" : r.state);
+      (r.pauseReason === "storageLimit" ? "storageLimit" : r.state);
     const eventName = `run.${eventType}`;
-    const event =
-      retryEvent ?? [...r.events].reverse().find((e) => e.type === eventType);
+    const event = [...r.events].reverse().find((e) => e.type === eventType);
     if (!event) return;
     for (const hook of this.ports.storage.store.config.hooks.filter(
-      (h) => h.event === eventName && (!retry || h.hookID === retry.hookID),
+      (h) => h.event === eventName,
     )) {
       const accepted = await this.ports.storage.exclusive(async () => {
         const current =
           this.ports.runner.liveRun(r.runID) ??
           (await this.ports.records.run(r.runID));
-        if (retryID !== undefined) {
-          const receipt = current.hookReceipts.find(
-            (h) => h.receiptID === retryID,
-          );
-          if (!receipt || receipt.status !== "pending") return null;
-        } else if (
+        if (
           current.hookReceipts.some(
             (h) => h.eventID === event.eventID && h.hookID === hook.hookID,
           )
@@ -195,15 +84,12 @@ export class Hooks {
           r.validations.some((v) => v.turnID === event.turnID) &&
           r.validations.filter((v) => v.turnID === event.turnID).at(-1)
             ?.status !== "passed";
-        const receiptID = retryID ?? randomUUID();
+        const receiptID = randomUUID();
         const updated = {
-          requestID: retry?.requestID ?? null,
           receiptID,
           hookID: hook.hookID,
-          retryOfReceiptID: retry?.retryOfReceiptID ?? null,
           startedAt: blocked ? null : now(),
           finishedAt: blocked ? now() : null,
-          note: retry?.note ?? null,
           eventID: event.eventID,
           executablePath: hook.executablePath,
           purpose: hook.purpose,
@@ -212,12 +98,7 @@ export class Hooks {
             ? "Delivery not dispatched: output validation did not pass"
             : null,
         };
-        if (retryID === undefined) current.hookReceipts.push(updated);
-        else
-          Object.assign(
-            current.hookReceipts.find((h) => h.receiptID === retryID)!,
-            updated,
-          );
+        current.hookReceipts.push(updated);
         await this.ports.records.save(current);
         return blocked ? null : receiptID;
       });
@@ -226,6 +107,7 @@ export class Hooks {
       try {
         await runExecutable({
           executable: hook.executablePath,
+          argv: hook.argv,
           env: { PATH: process.env.PATH ?? "" },
           discardOutput: true,
           timeoutMs: hook.timeoutMs,

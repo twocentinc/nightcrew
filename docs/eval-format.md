@@ -1,11 +1,11 @@
 # Evals
 
 - An eval is an ordinary Nightcrew run with a saved starting transcript, substituted tool responses, and optional grading.
-- The agent's configured model, system prompt, `finishSchema`, output validation, tool loop, output continuation, scheduler, timeouts, interruption recovery, and compaction remain in use. No instant model is required.
+- The agent's configured model, system prompt, `finishSchema`, tool loop, output continuation, scheduler, timeouts, interruption recovery, and compaction remain in use. No instant model is required.
 - Each invocation creates a separate run, including for persistent agents. Eval caches do not overwrite the persistent agent cache.
 - The eval definition and revision are snapshotted in `run.evaluation`. Later edits affect new runs only.
 - Ordinary tool calls (including `load_skills`) use only the eval's responses. Unmatched/invalid calls return ordinary tool errors; they never execute a production tool. The runtime-owned `finish` tool cannot be mocked.
-- Production lifecycle/delivery hooks are suppressed. Compaction handlers and agent output validators still run normally. An executable grader is an explicitly trusted program with the daemon user's permissions, not a sandbox.
+- Production lifecycle/delivery hooks are suppressed. Compaction handlers still run normally. An executable grader is an explicitly trusted program with the daemon user's permissions, not a sandbox.
 
 ## Definition
 
@@ -18,9 +18,9 @@
     { "role": "user", "content": "Read record 42 and report its status." }
   ],
   "tools": [
-    { "tool": "read_record", "output": { "error": "not found" } },
+    { "toolID": "read_record", "output": { "error": "not found" } },
     {
-      "tool": "read_record",
+      "toolID": "read_record",
       "input": { "id": 42 },
       "output": { "status": "ready" }
     }
@@ -36,8 +36,8 @@
 ```
 
 - `evalID` and `agentID` are required. Definitions are stored as `{revision, definition}` in `~/.nightcrew/evals/<evalID>.json` (or the selected home).
-- Optional `overrides`: `modelID`, `systemPrompt`, `thinking`, `temperature`, `sampling`, `maxOutputTokens`, `maxToolCalls`, `timeoutMs`. Omitted fields retain agent settings. Changing model selects an automatic slot when the agent's fixed slot belongs to another model.
-- Overrides cannot replace `finishSchema`, output validation, or configured tools/skills. The eval tests those real contracts.
+- Optional `overrides`: `modelID`, `systemPrompt`, `thinking`, `sampling.temperature`, `sampling`, `maxOutputTokens`, `maxToolCalls`, `timeoutMs`. Omitted fields retain agent settings. Changing model selects an automatic slot when the agent's fixed slot belongs to another model.
+- Overrides cannot replace `finishSchema`, or configured tools/skills. The eval tests those real contracts.
 - `messages` defaults to `[]`; at least one user message is required to run. Roles are `user`, `assistant`, `tool`. The agent supplies the system message. Message UUIDs can be omitted during authoring; Nightcrew assigns them. Each run gets fresh message UUIDs.
 - Messages support ordinary `thinking`, `reasoningContent`, `attachments`, `toolCalls`, and `toolCallID` fields. Tool calls retain their call IDs for pairing. Only user messages carry attachments; only assistants call tools. Tool results must follow their calls. An unfinished tool exchange may appear only at the end and resumes through the normal tool loop. A seeded `finish` call must already have its result; it cannot complete the new eval without model generation.
 - A seeded assistant answer is context, not the new run's final answer. Historical tool calls still contribute to the ordinary conversation's loop/tool budget checks.
@@ -48,7 +48,7 @@
 
 Invalid finish calls or rejected final answers terminate execution immediately; neither normal validation nor grading asks the model to repair its answer.
 
-1. The ordinary run must complete and satisfy its own output validation. Execution/validation failures cannot pass an eval.
+1. The ordinary run must complete and satisfy its own finishSchema when configured. Execution/validation failures cannot pass an eval.
 2. If `grader.schema` exists, validate the **accepted finish arguments** using the existing Zod `z.fromJSONSchema` validator. For an agent without `finishSchema`, validate its final answer as a string. Nothing rewrites the real agent schema or changes the accepted output.
 3. A schema mismatch fails grading and skips the executable.
 4. If `grader.exec` exists, execute it after schema success (or directly when no grading schema is configured).
@@ -106,7 +106,7 @@ nightcrew evals transcript set record-answer --file messages.json
 nightcrew evals transcript append record-answer --file message.json
 nightcrew evals transcript update record-answer MESSAGE_UUID --file message.json
 nightcrew evals transcript delete record-answer MESSAGE_UUID
-nightcrew evals transcript clear record-answer --yes
+printf '{"messages":[]}\n' | nightcrew evals transcript set record-answer --request -
 ```
 
 - `--file`, `--input`, and `--output` read JSON; `-` reads stdin. Only one input can read stdin. String outputs must be JSON strings in their files.

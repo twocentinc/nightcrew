@@ -117,7 +117,7 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
     agentID: "reviewer",
     name: "reviewer",
     systemPrompt: "Review.",
-    mode: "agent-loop",
+    mode: "agentLoop",
     modelID: "qwen",
     executionClass: "instant",
     skillIDs: ["review"],
@@ -526,32 +526,9 @@ test("executable-only tools preserve structured JSON input and reject adapter fi
       .success,
     false,
   );
-  const { normalizeStoredTool, builtinTools } =
-    await import("../dist/engine/capabilities/registry.js");
-  assert.deepEqual(
-    normalizeStoredTool({ ...definition, adapter: "exec" }),
-    tool,
-  );
-  const { argv, ...oldDefinition } = definition;
-  assert.deepEqual(
-    normalizeStoredTool({ ...oldDefinition, arguments: argv, readOnly: true }),
-    tool,
-  );
-  assert.throws(
-    () => normalizeStoredTool({ ...definition, arguments: ["conflict"] }),
-    /Conflicting/,
-  );
-  const legacy = normalizeStoredTool({
-    toolID: "old_history",
-    description: "history",
-    adapter: "runs_list",
-    parameters: { type: "object" as const },
-  });
-  assert.ok(legacy.executablePath);
-  assert.equal("adapter" in legacy, false);
-  assert.ok(
-    builtinTools.every((t) => t.executablePath && !Object.hasOwn(t, "adapter")),
-  );
+  for (const legacy of [{adapter: "exec"}, {readOnly: true}, {arguments: []}])
+    assert.equal(toolDefinitionSchema.safeParse({...definition, ...legacy}).success, false);
+
 });
 
 test("tool JSON parameters reach Nightcrew CLI through --request -", async (t) => {
@@ -746,7 +723,7 @@ test("declarative eval flags decode files, map UUIDs and reject duplicate reques
   ]);
   assert.equal(result.ok, true, JSON.stringify(result.error));
   assert.deepEqual(result.result.item.definition.tools, [
-    { tool: "read", input: { page: 2 }, output: { rows: [1, 2] } },
+    { toolID: "read", input: { page: 2 }, output: { rows: [1, 2] } },
   ]);
   assert.equal(
     (
@@ -762,7 +739,7 @@ test("declarative eval flags decode files, map UUIDs and reject duplicate reques
           "--output",
           output,
         ],
-        { tool: "duplicate" },
+        { toolID: "duplicate" },
       )
     ).ok,
     false,

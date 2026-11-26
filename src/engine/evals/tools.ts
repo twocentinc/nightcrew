@@ -20,7 +20,7 @@ export function overrideTool(
   } catch {
     return error("Tool arguments do not match its schema");
   }
-  const rules = evaluation.tools.filter((t) => t.tool === name);
+  const rules = evaluation.tools.filter((t) => t.toolID === name);
   const rule =
     rules.find(
       (t) => t.input !== undefined && canonical(t.input) === canonical(input),

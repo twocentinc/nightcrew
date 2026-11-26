@@ -109,7 +109,7 @@ export class ResponseRecorder {
     this.ports.inference.clearProvisional(runID);
     this.ports.records.event(r, "message", { messageID: m.messageID });
     if (!result.toolCalls.length) {
-      if (r.agent.mode === "agent-loop" && !result.text.trim()) {
+      if (r.agent.mode === "agentLoop" && !result.text.trim()) {
         if (finalizing) throw Error("Model returned no visible final answer");
         await this.ports.storage.exclusive(() => this.ports.records.save(r));
         return;
@@ -119,7 +119,7 @@ export class ResponseRecorder {
     }
     if (finalizing && !r.agent.finishSchema)
       throw Error("Model requested tools during tool-free finalization");
-    if (r.agent.mode === "single-turn" && !r.agent.finishSchema)
+    if (r.agent.mode === "singleTurn" && !r.agent.finishSchema)
       throw Error("Unexpected tools");
     await this.ports.storage.exclusive(() => this.ports.records.save(r));
   }

@@ -3,7 +3,7 @@
     "agentID": "hello-world",
     "name": "hello world",
     "systemPrompt": "You are a minimal connectivity test. Call finish with {\"greeting\":\"Hello world!\"}. Do not explain or call other tools.",
-    "mode": "single-turn",
+    "mode": "singleTurn",
     "modelID": "qwen",
     "skillIDs": [],
     "toolIDs": [],

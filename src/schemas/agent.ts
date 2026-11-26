@@ -3,9 +3,8 @@ import { compactionSchema } from "../engine/compaction/format.js";
 import { scheduleSchema } from "../engine/scheduling/schedule.js";
 import {
   loopPolicySchema,
-  outputValidationSchema,
 } from "../engine/supervision.js";
-import { id, timestamp, toolID, userMessageSchema, uuid } from "./common.js";
+import { samplingSchema, id, timestamp, toolID, userMessageSchema, uuid } from "./common.js";
 
 export const agentSchema = z.strictObject({
   finishSchema: z
@@ -24,7 +23,6 @@ export const agentSchema = z.strictObject({
     })
     .nullable()
     .default(null),
-  outputValidation: outputValidationSchema.nullable().default(null),
   loopPolicy: loopPolicySchema.default(() => loopPolicySchema.parse({})),
   storageLimitMB: z.number().int().min(1).max(48).default(48),
   compaction: compactionSchema.nullable().default(null),
@@ -35,24 +33,15 @@ export const agentSchema = z.strictObject({
   revision: z.number().int().positive().max(2147483647),
   name: z.string().min(1).max(200),
   systemPrompt: z.string().max(64000),
-  mode: z.enum(["single-turn", "agent-loop"]),
+  mode: z.enum(["singleTurn", "agentLoop"]),
   modelID: id,
   executionClass: z.enum(["background", "instant"]).default("background"),
   skillIDs: z.array(id).max(40),
   toolIDs: z.array(toolID).max(64),
   thinking: z.boolean().default(true),
   maxToolCalls: z.number().int().min(1).max(1000).optional(),
-  temperature: z.number().min(0).max(2).default(0.7),
-  sampling: z
-    .strictObject({
-      topP: z.number().min(0).max(1).optional(),
-      topK: z.number().int().min(0).max(1000).optional(),
-      minP: z.number().min(0).max(1).optional(),
-      presencePenalty: z.number().min(-2).max(2).optional(),
-      repeatPenalty: z.number().min(0).max(2).optional(),
-      parallelToolCalls: z.boolean().optional(),
-    })
-    .optional(),
+  sampling: samplingSchema.default(() => samplingSchema.parse({})),
+  parallelToolCalls: z.boolean().optional(),
   maxOutputTokens: z.number().int().min(1).max(32768).default(4096),
   timeoutMs: z.number().int().min(1000).max(86400000),
   enabled: z.boolean(),

@@ -15,7 +15,7 @@ import {
 } from "../engine/compaction/format.js";
 import {
   outcomeSchema,
-  recoverySchema,
+  toolLoopSchema,
   validationRecordSchema,
 } from "../engine/supervision.js";
 import { agentSchema, skillSchema, triggerSourceSchema } from "./agent.js";
@@ -34,6 +34,7 @@ export const runState = z.enum([
   "running",
   "paused",
   "completed",
+  "invalidOutput",
   "failed",
   "cancelled",
   "timedOut",
@@ -83,10 +84,6 @@ export const runProjectionSchema = z.strictObject({
         at: timestamp,
         turnID: z.string().uuid(),
         sourceAgentRevision: z.number().int().positive(),
-        previousToolIDs: z.array(id),
-        previousSkillIDs: z.array(id),
-        previousTools: z.array(toolDefinitionSchema),
-        previousSkills: z.array(skillSchema),
       }),
     )
     .max(100)
@@ -94,7 +91,7 @@ export const runProjectionSchema = z.strictObject({
   contextUsage: contextUsageSchema.nullable().default(null),
   deliveryExpected: z.boolean().default(false),
   validations: z.array(validationRecordSchema).max(10000).default([]),
-  recovery: recoverySchema.nullable().default(null),
+  toolLoop: toolLoopSchema.nullable().default(null),
   attempts: z.array(attemptSchema).max(10000).default([]),
   compactions: z.array(checkpointSchema).max(1000).default([]),
   compaction: compactionStateSchema.nullable().default(null),
@@ -167,7 +164,7 @@ export const runDetailSchema = runSummarySchema.extend({
   capabilityRefreshes: runProjectionSchema.shape.capabilityRefreshes,
   contextUsage: runProjectionSchema.shape.contextUsage,
   validations: runProjectionSchema.shape.validations,
-  recovery: runProjectionSchema.shape.recovery,
+  toolLoop: runProjectionSchema.shape.toolLoop,
   compactions: runProjectionSchema.shape.compactions,
   compaction: runProjectionSchema.shape.compaction,
   parentRunID: runProjectionSchema.shape.parentRunID,
@@ -244,7 +241,6 @@ function validateRunLinks(run: StoredRun) {
     receipts.size !== run.hookReceipts.length
   )
     throw Error("Duplicate event or receipt identity");
-  const retried = new Set<string>();
   for (const receipt of run.hookReceipts) {
     if (!events.has(receipt.eventID))
       throw Error("Missing hook event reference");
@@ -258,29 +254,6 @@ function validateRunLinks(run: StoredRun) {
       throw Error("Unsettled hook has a finish timestamp");
     if (receipt.status === "pending" && receipt.startedAt)
       throw Error("Pending hook has a start timestamp");
-    if (receipt.retryOfReceiptID) {
-      if (retried.has(receipt.retryOfReceiptID))
-        throw Error("Hook receipt has multiple retries");
-      retried.add(receipt.retryOfReceiptID);
-      const prior = receipts.get(receipt.retryOfReceiptID);
-      if (
-        !prior ||
-        prior.hookID !== receipt.hookID ||
-        prior.eventID !== receipt.eventID ||
-        prior.purpose !== receipt.purpose
-      )
-        throw Error("Invalid hook retry reference");
-      const seen = new Set([receipt.receiptID]);
-      let current = receipt;
-      while (current.retryOfReceiptID) {
-        if (seen.has(current.retryOfReceiptID))
-          throw Error("Cyclic hook retry reference");
-        seen.add(current.retryOfReceiptID);
-        const previous = receipts.get(current.retryOfReceiptID);
-        if (!previous) throw Error("Missing hook retry reference");
-        current = previous;
-      }
-    }
   }
   for (const e of run.events)
     if (e.type === "hookResult") {
@@ -296,7 +269,7 @@ function validateRunLinks(run: StoredRun) {
 
 /** Metadata stored alongside messages and events in the single run document. */
 export const runStateRecordSchema = z.strictObject({
-  version: z.literal(7),
+  version: z.literal(10),
   runID: id,
   revision: z.number().int().positive(),
   createdAt: timestamp,

@@ -51,7 +51,7 @@ export class RunRecords {
       contextUsage: r.contextUsage,
       capabilityRefreshes: r.capabilityRefreshes,
       validations: r.validations,
-      recovery: r.recovery,
+      toolLoop: r.toolLoop,
       compactions: r.compactions,
       compaction: r.compaction,
       parentRunID: r.parentRunID,
@@ -249,9 +249,9 @@ export class RunRecords {
       if (!terminal(r.state) && r.state !== "queued") {
         r.state = "paused";
         if (
-          r.pauseReason !== "storage_limit" &&
-          r.pauseReason !== "runtime_error" &&
-          r.pauseReason !== "context_full"
+          r.pauseReason !== "storageLimit" &&
+          r.pauseReason !== "runtimeError" &&
+          r.pauseReason !== "contextFull"
         )
           r.pauseReason = "restart";
         this.event(r, "interrupted", {});

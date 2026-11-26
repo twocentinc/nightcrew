@@ -177,7 +177,7 @@ export class Runs {
         : (previous?.agent ?? configuredAgent);
     if (
       previous &&
-      (previous.pauseReason === "storage_limit" ||
+      (previous.pauseReason === "storageLimit" ||
         this.ports.context.atStorageLimit(previous))
     ) {
       if (!dryRun && !this.ports.dispatch.hasActivity(previous.runID)) {
@@ -185,7 +185,7 @@ export class Runs {
         await this.ports.records.save(previous);
         this.ports.hooks.scheduleHooks(previous);
       }
-      fail("run_storage_limit", 409);
+      fail("run_storageLimit", 409);
     }
     if (
       previous &&
@@ -248,7 +248,7 @@ export class Runs {
       capabilityRefreshes: [],
       deliveryExpected: false,
       validations: [],
-      recovery: null,
+      toolLoop: null,
       attempts: [],
       compactions: [],
       compaction: null,

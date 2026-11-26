@@ -27,38 +27,38 @@ export class RequestBuilder {
     const turnMessages = r.messages.slice(
       r.messages.map((m) => m.role).lastIndexOf("user") + 1,
     );
-    const recovery = r.recovery?.turnID === r.turnID ? r.recovery : null;
-    const afterRecovery = recovery
+    const toolLoop = r.toolLoop?.turnID === r.turnID ? r.toolLoop : null;
+    const afterToolLoop = toolLoop
       ? turnMessages.slice(
           turnMessages.findIndex(
-            (m) => m.messageID === recovery.afterMessageID,
+            (m) => m.messageID === toolLoop.afterMessageID,
           ) + 1,
         )
       : turnMessages;
     const problem =
-      recovery && !afterRecovery.some((m) => m.role === "tool")
+      toolLoop && !afterToolLoop.some((m) => m.role === "tool")
         ? null
         : loopProblem(
             turnMessages,
-            recovery
+            toolLoop
               ? { ...r.agent.loopPolicy, consecutiveErrors: 1 }
               : r.agent.loopPolicy,
           );
     if (problem) {
-      if (!recovery) {
-        r.recovery = {
+      if (!toolLoop) {
+        r.toolLoop = {
           turnID: r.turnID,
           afterMessageID: turnMessages.at(-1)!.messageID,
           reason: problem,
           finalizing: false,
         };
-        this.ports.records.event(r, "loopRecovery", {
+        this.ports.records.event(r, "toolLoopUpdated", {
           reason: problem,
           finalizing: false,
         });
-      } else if (!recovery.finalizing) {
-        recovery.finalizing = true;
-        this.ports.records.event(r, "loopRecovery", {
+      } else if (!toolLoop.finalizing) {
+        toolLoop.finalizing = true;
+        this.ports.records.event(r, "toolLoopUpdated", {
           reason: problem,
           finalizing: true,
         });
@@ -77,30 +77,30 @@ export class RequestBuilder {
       ) >= r.agent.maxToolCalls;
     if (
       budgetExhausted &&
-      (r.recovery?.turnID !== r.turnID || !r.recovery.finalizing)
+      (r.toolLoop?.turnID !== r.turnID || !r.toolLoop.finalizing)
     ) {
-      r.recovery = {
+      r.toolLoop = {
         turnID: r.turnID,
         afterMessageID: turnMessages.at(-1)!.messageID,
         reason:
           "Tool-call budget exhausted before the agent returned a final answer",
         finalizing: true,
       };
-      this.ports.records.event(r, "loopRecovery", {
-        reason: r.recovery.reason,
+      this.ports.records.event(r, "toolLoopUpdated", {
+        reason: r.toolLoop.reason,
         finalizing: true,
       });
       await this.ports.storage.exclusive(() => this.ports.records.save(r));
     }
     const emptyAnswer =
-      r.agent.mode === "agent-loop" &&
+      r.agent.mode === "agentLoop" &&
       !!lastAssistant &&
       !lastAssistant.toolCalls.length &&
       !lastAssistant.content.trim();
     const finalizing =
       budgetExhausted ||
       emptyAnswer ||
-      (r.recovery?.turnID === r.turnID && r.recovery.finalizing);
+      (r.toolLoop?.turnID === r.turnID && r.toolLoop.finalizing);
     const thinking =
       finalizing || continuation.length > 0
         ? false
@@ -126,37 +126,17 @@ export class RequestBuilder {
           toolCallID: null,
         });
     }
-    if (r.agent.outputValidation?.validator.type === "json-schema") {
-      const instruction =
-        "Final output must be JSON matching this schema: " +
-        JSON.stringify(r.agent.outputValidation.validator.schema);
-      const system = messages[0];
-      if (system?.role === "system")
-        messages[0] = {
-          ...system,
-          content: system.content + "\n\n" + instruction,
-        };
-      else
-        messages.unshift({
-          messageID: randomUUID(),
-          role: "system",
-          content: instruction,
-          attachments: [],
-          toolCalls: [],
-          toolCallID: null,
-        });
-    }
     if (
-      r.recovery?.turnID === r.turnID &&
-      !r.recovery.finalizing &&
+      r.toolLoop?.turnID === r.turnID &&
+      !r.toolLoop.finalizing &&
       !finalizing
     )
       messages.push({
         messageID: randomUUID(),
         role: "user",
         content:
-          "Nightcrew recovery opportunity: " +
-          r.recovery.reason +
+          "Nightcrew tool-loop correction opportunity: " +
+          r.toolLoop.reason +
           " Do not repeat an unchanged failed request. Correct it or change approach. Another tool failure ends tool use for this turn. Preserve the required final output format.",
         attachments: [],
         toolCalls: [],
@@ -167,8 +147,8 @@ export class RequestBuilder {
         messageID: randomUUID(),
         role: "user",
         content:
-          (r.recovery?.finalizing
-            ? "Nightcrew stopped unproductive tool use: " + r.recovery.reason
+          (r.toolLoop?.finalizing
+            ? "Nightcrew stopped unproductive tool use: " + r.toolLoop.reason
             : budgetExhausted
               ? "Nightcrew execution limit: your tool-call budget for this turn is exhausted."
               : "Nightcrew finalization: the previous generation contained no visible answer.") +
@@ -256,7 +236,7 @@ export class RequestBuilder {
       messages,
       tools: [
         ...(finalizing ||
-        (r.agent.finishSchema && r.agent.mode === "single-turn") ||
+        (r.agent.finishSchema && r.agent.mode === "singleTurn") ||
         (prefix && !continuation.at(-1)?.toolCalls.length)
           ? []
           : this.ports.registry.runTools(r)
@@ -286,7 +266,7 @@ export class RequestBuilder {
           }
         : {}),
       maxOutputTokens: r.agent.maxOutputTokens,
-      temperature: r.agent.temperature,
+      parallelToolCalls: r.agent.parallelToolCalls,
       sampling: r.agent.sampling,
     };
     return { input, thinking, finalizing };

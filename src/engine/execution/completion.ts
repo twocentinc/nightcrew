@@ -5,7 +5,6 @@ import { Storage } from "../../storage/store.js";
 import type { Hooks } from "../hooks.js";
 import type { Attempt } from "../models/types.js";
 import type { Dispatch } from "../scheduling/dispatch.js";
-import { validateOutput } from "../supervision.js";
 import type { Context } from "./context.js";
 import type { RunExecution } from "./inference.js";
 
@@ -22,7 +21,6 @@ export class Completion {
     r: Run,
     lastAssistant: Message | undefined,
     continuation: Attempt[],
-    controller: AbortController,
   ) {
     if (
       !r.agent.finishSchema &&
@@ -31,36 +29,11 @@ export class Completion {
       !lastAssistant.toolCalls.length &&
       lastAssistant.content.trim()
     ) {
-      const validation = r.agent.outputValidation;
-      let verdict = r.validations.find(
-        (v) => v.messageID === lastAssistant.messageID,
-      );
-      if (validation && !verdict) {
-        verdict = await validateOutput(
-          r,
-          lastAssistant,
-          this.ports.storage.home,
-          controller.signal,
-        );
-        r.validations.push(verdict);
-        this.ports.records.event(r, "outputValidation", {
-          messageID: lastAssistant.messageID,
-          status: verdict.status,
-          reason: verdict.reason,
-        });
-        await this.ports.storage.exclusive(() => this.ports.records.save(r));
-      }
-      if (verdict && verdict.status !== "passed") {
-        r.state = "failed";
-        r.error = { code: "output_validation_failed", message: verdict.reason };
-        this.ports.records.event(r, "failed", {});
-      } else {
-        r.state = "completed";
-        r.result = lastAssistant.content;
-        this.ports.records.event(r, "completed", {
-          messageID: lastAssistant.messageID,
-        });
-      }
+      r.state = "completed";
+      r.result = lastAssistant.content;
+      this.ports.records.event(r, "completed", {
+        messageID: lastAssistant.messageID,
+      });
       return true;
     }
     return false;

@@ -9,7 +9,6 @@
   ],
   "tools": [
     {
-      "tool": "load_skills",
       "input": {
         "skillIDs": [
           "agent-supervisor"
@@ -26,10 +25,10 @@
           }
         ],
         "files": []
-      }
+      },
+      "toolID": "load_skills"
     },
     {
-      "tool": "nightcrew_inspect",
       "input": {
         "action": "overview"
       },
@@ -56,10 +55,10 @@
             ]
           }
         }
-      }
+      },
+      "toolID": "nightcrew_inspect"
     },
     {
-      "tool": "nightcrew_inspect",
       "input": {
         "action": "page",
         "page": 0
@@ -112,10 +111,10 @@
             ]
           }
         }
-      }
+      },
+      "toolID": "nightcrew_inspect"
     },
     {
-      "tool": "nightcrew_inspect",
       "input": {
         "action": "run",
         "runID": "run-invalid"
@@ -148,7 +147,8 @@
           ],
           "caveat": "Generation completed, but the report failed validation and export."
         }
-      }
+      },
+      "toolID": "nightcrew_inspect"
     }
   ],
   "grader": {

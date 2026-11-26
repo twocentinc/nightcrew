@@ -13,26 +13,17 @@ export function toolValidator(parameters: ToolDefinition["parameters"]) {
   validators.set(key, validator);
   return validator;
 }
-export const toolDefinitionSchema = z
-  .strictObject({
+export const executableSchema = z.strictObject({
+  executablePath: z.string().max(4096).refine(path.isAbsolute, "Executable path must be absolute"),
+  argv: z.array(z.string().max(4000)).max(64).default([]),
+  timeoutMs: z.number().int().min(100).max(600000).default(10000),
+});
+export const toolDefinitionSchema = executableSchema
+  .extend({
     toolID: id,
     description: z.string().min(1).max(2000),
     parameters: z.record(z.string(), z.json()),
-    executablePath: z
-      .string()
-      .refine(path.isAbsolute, "Executable path must be absolute"),
-    argv: z
-      .array(
-        z
-          .string()
-          .max(4000)
-          .describe(
-            "One process argument. Supports %parameter% and %nested.path%; %% is a literal percent. Substituted values remain one argument.",
-          ),
-      )
-      .max(64)
-      .default([]),
-    timeoutMs: z.number().int().min(100).max(60000).default(10000),
+
   })
   .superRefine((value, ctx) => {
     if (value.parameters.type !== "object")

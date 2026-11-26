@@ -9,7 +9,7 @@ cannot change configuration, retry/cancel runs or send messages.
 ## Install
 
 Copy this directory to a durable local directory. Set `agent.json` modelID to a
-registered chat model and compaction.handler.agentID to an installed single-turn
+registered chat model and compaction.handler.agentID to an installed singleTurn
 summarizer (or disable compaction). In `tool.json`, replace executablePath with
 your absolute Node executable and argv[1] with the copied inspect.ts path; retain argv[0],
 `--experimental-strip-types`, for Node 22.
@@ -82,16 +82,11 @@ It adds counts and review coverage without reconstructing hook retry status.
 Changed revisions during snapshot collection are reported as unreadable, not
 classified from mismatched evidence.
 
-Configure the agent output-validation hook with your Node path and copied
-`report.ts --validate` path. The inspector repeats recent priority incidents
-in every response; finish data needs one incident object for each, with copied
-execution/output/delivery values, an assessment, and a next action.
-If the snapshot file is absent, validation uses the recorded successful overview
-tool response from the run transcript. This supports eval tool overrides without
-requiring simulated filesystem writes or weakening coverage checks.
-The validator checks coverage, not semantic accuracy. Recent unresolved incidents
-remain visible after checkpoints, while capability refresh alone is not a new
-incident. The exporter rejects incomplete coverage before saving/checkpointing.
+The inspector repeats recent priority incidents in every response; finish data
+should address each incident with an assessment and next action. The finishSchema
+checks structure. Report coverage and status accuracy are checked by the eval
+grader, not a production validator. The report hook renders and saves output
+without judging coverage.
 
 ## Colocated evals
 
@@ -120,6 +115,6 @@ immediately.
 
 - `incidents` contains exactly one object per `coverage.priorityIssues` entry: `runID`, `execution`, `output`, `delivery`, `assessment`, `nextAction`. Copy status values from the snapshot.
 - `observations` and `uncertainties` are arrays of strings covering reviewed scope, metrics, recovered history, and evidence gaps. Recovered children belong in observations, not the current incident list.
-- The agent finish schema owns structure and status enums. The coverage validator rejects missing, duplicate, extra, or mismatched priority incidents without parsing Markdown.
+- The agent finish schema owns structure and status enums. The eval grader rejects missing, duplicate, extra, or mismatched priority incidents without parsing Markdown.
 - The exporter deterministically renders the accepted object into Markdown, retaining create-only/idempotent writes and checkpoint behavior. Other agents using the exporter retain their plain-text reports.
 - Eval schemas remain independent and check scenario expectations. Executable grading additionally checks recovery and uncertainty cues; it is not a general semantic judge. No repair is attempted.

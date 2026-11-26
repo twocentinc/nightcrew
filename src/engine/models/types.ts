@@ -53,8 +53,8 @@ export interface Runtime {
       continueOnOutputLimit?: boolean;
       continueFinalMessage?: boolean;
       maxOutputTokens: number;
-      temperature: number;
-      sampling?: Agent["sampling"];
+      sampling: Agent["sampling"];
+      parallelToolCalls?: boolean;
     },
     signal: AbortSignal,
     onDelta?: (text: string) => void,

@@ -70,7 +70,7 @@ async function fixture(t: import("node:test").TestContext) {
           name: "reviewer",
           revision: 1,
           systemPrompt: "Test",
-          mode: "single-turn",
+          mode: "singleTurn",
           modelID: "test",
           executionClass: "background",
           skillIDs: [],

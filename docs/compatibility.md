@@ -1,7 +1,7 @@
 # Public contract and compatibility
 
-The current frozen public contract is protocol 1, schema 49, introduced in
-0.49.0 through owner-approved instant-input and status cleanup. The freeze began at schema 34;
+The current frozen public contract is protocol 1, schema 52, introduced in
+0.52.0 through owner-approved contract cleanup. The freeze began at schema 34;
 owner-approved changes since then are recorded below. This is the baseline for
 the upcoming 1.0 release, not a claim that acceptance work is complete.
 
@@ -243,3 +243,28 @@ Generated `/v1/operations/...` routes are the complete remote management surface
 
 - Collection events derive identity from their value instead of duplicating it in `data.key`.
 - Normal reads accept only format 7. The offline migration upgrades existing runs with backups; public schema 49 is unchanged.
+
+## 0.50.0 / schema 50
+
+- All executable handlers use executablePath, argv, timeoutMs.
+- Agent output uses finishSchema plus optional executable finishValidator; outputValidation is removed. Eval grading remains independent.
+- Execution adds invalidOutput. outcome.task is removed; delivery stays in events and receipts.
+- Temperature moves into sampling; parallelToolCalls moves out. Eval tool references use toolID.
+- Modes are singleTurn/agentLoop; pause reasons use contextFull/runtimeError/storageLimit. Tool-loop bookkeeping is toolLoop.
+- Configuration format 4 and run format 8 migrate offline with backups. Installed eval definitions are upgraded too. No runtime aliases accept retired fields.
+- See [authoring and runtime files](configuration.md) for minimal examples and version domains.
+
+## 0.51.0 / schema 51
+
+- finishValidator is removed and rejected on create/update. Regular structured completion uses finishSchema only; custom executable checks belong in eval graders.
+- Configuration format 5 and run format 9 remove old validators offline, with backups. Historical validation evidence is preserved without rerunning checks.
+- The supervisor example grades report coverage in evals; its production report writer only renders and saves output.
+
+## 0.52.0 / schema 52
+
+- Removed internal hook retries and receipt retry/request/note fields. Hook/event identities still prevent duplicate dispatch. Historical originals remain in migration backups.
+- Capability refresh events retain time, turn and source revision; configuration events own tool and skill snapshots. Older migrations may have flattened configuration history; any snapshots found only in retired refresh fields remain available in the original-run backup.
+- Removed the repetitive outcome.nextAction field.
+- Removed evals transcript clear; use transcript set with messages: [] instead.
+- skills list returns only skillID, name, description and hash, including HTTP listings. Use get/read for content.
+- Run format 10 requires offline migration from formats 3–9; configuration stays at format 5. Migration retains existing configuration events instead of reconstructing only the latest snapshot.

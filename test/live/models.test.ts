@@ -34,7 +34,7 @@ test(
     t.diagnostic("Retained validation transcripts: " + home);
     const token = randomUUID();
     const store = storeSchema.parse({
-      version: 3,
+      version: 5,
       config: {
         revision: 1,
         host: "127.0.0.1",
@@ -109,7 +109,7 @@ test(
       agentID,
       name: agentID,
       systemPrompt: "Follow the user request concisely.",
-      mode: "single-turn",
+      mode: "singleTurn",
       modelID: qwen.modelID,
       executionClass: "background",
       skillIDs: [],
@@ -228,7 +228,7 @@ test(
         agent: draft("live-audio", {
           modelID: granite.modelID,
           maxOutputTokens: 512,
-          temperature: 0,
+          sampling: { temperature: 0 },
         }),
       });
       accepted = await rpc(

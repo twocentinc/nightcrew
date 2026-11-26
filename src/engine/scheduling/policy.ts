@@ -1,3 +1,4 @@
+import { executableSchema } from "../../schemas/tool.js";
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import type { Config } from "../../schemas/config.js";
@@ -10,11 +11,9 @@ export const schedulerSchema = z.strictObject({
   minResidencyMs: z.number().int().min(0).max(3600000).default(60000),
   maxWaitMs: z.number().int().min(1000).max(86400000).default(900000),
   timersEnabled: z.boolean().default(true),
-  hook: z
-    .strictObject({
-      executablePath: z.string().regex(/^\//),
-      arguments: z.array(z.string()).max(64).default([]),
-      timeoutMs: z.number().int().min(100).max(30000).default(2000),
+  hook: executableSchema
+    .extend({
+      timeoutMs: executableSchema.shape.timeoutMs.removeDefault().default(2000),
       failurePolicy: z.enum(["builtin", "hold"]).default("builtin"),
     })
     .nullable()
@@ -210,7 +209,7 @@ export async function policyPlan(
   try {
     const output = await runExecutable({
       executable: hook.executablePath,
-      argv: hook.arguments,
+      argv: hook.argv,
       env: { PATH: process.env.PATH ?? "/usr/bin:/bin", LANG: "C.UTF-8" },
       input: JSON.stringify({
         version: 1,

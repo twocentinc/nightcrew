@@ -10,7 +10,6 @@ import { executeModelTool } from "../capabilities/registry.js";
 import {
   DuplicateJSONKeyError,
   parseOutputJSON,
-  validateOutput,
 } from "../supervision.js";
 import type { Context } from "./context.js";
 
@@ -26,8 +25,8 @@ export class ToolExecution {
     if (
       r.agent.finishSchema &&
       (name === "finish" ||
-        r.agent.mode === "single-turn" ||
-        (r.recovery?.turnID === r.turnID && r.recovery.finalizing))
+        r.agent.mode === "singleTurn" ||
+        (r.toolLoop?.turnID === r.turnID && r.toolLoop.finalizing))
     )
       return {
         ok: false,
@@ -93,21 +92,17 @@ export class ToolExecution {
             toolCalls: [],
             toolCallID: null,
           };
-          if (!error && r.agent.outputValidation) {
-            const verdict = await validateOutput(
-              r,
-              { ...finalMessage, messageID: lastAssistant.messageID },
-              this.ports.storage.home,
-              controller.signal,
-            );
-            r.validations.push(verdict);
-            this.ports.records.event(r, "outputValidation", {
-              messageID: lastAssistant.messageID,
-              status: verdict.status,
-              reason: verdict.reason,
-            });
-            if (verdict.status !== "passed") error = verdict.reason;
-          }
+          const verdict = {
+            turnID: r.turnID,
+            messageID: lastAssistant.messageID,
+            status: error ? "failed" as const : "passed" as const,
+            reason: error ?? "finishSchema passed; factual accuracy is not implied.",
+            at: new Date().toISOString(),
+          } as import("zod").z.infer<typeof import("../supervision.js").validationRecordSchema>;
+          r.validations.push(verdict);
+          this.ports.records.event(r, "outputValidation", {
+            messageID: verdict.messageID, status: verdict.status, reason: verdict.reason,
+          });
           for (const resultCall of error ? lastAssistant.toolCalls : [call]) {
             const receipt: Message = {
               messageID: randomUUID(),
@@ -130,9 +125,9 @@ export class ToolExecution {
             });
           }
           if (error) {
-            r.state = "failed";
+            r.state = "invalidOutput";
             r.error = { code: "invalid_finish", message: error };
-            this.ports.records.event(r, "failed", {});
+            this.ports.records.event(r, "invalidOutput", {});
           } else {
             r.messages.push(finalMessage);
             this.ports.records.event(r, "message", {
@@ -158,14 +153,14 @@ export class ToolExecution {
         ) {
           r.state = "paused";
           r.held = true;
-          r.pauseReason = "runtime_error";
+          r.pauseReason = "runtimeError";
           r.error = {
             code: "tool_outcome_unknown",
             message:
               "Tool execution started but no result was committed. Inspect the destination before submitting more work; this call will not be replayed.",
           };
           this.ports.records.event(r, "paused", {
-            reason: "runtime_error",
+            reason: "runtimeError",
             code: r.error.code,
             message: r.error.message,
           });

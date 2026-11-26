@@ -9,7 +9,6 @@ import {
 import { executionSchema } from "../dist/schemas/execution.js";
 import { eventSchema } from "../dist/schemas/event.js";
 import { Context } from "../dist/engine/execution/context.js";
-import { effectiveReceipts } from "../dist/engine/supervision.js";
 const at = "2026-01-01T00:00:00.000Z";
 function fixture() {
   const messageID = randomUUID();
@@ -25,7 +24,7 @@ function fixture() {
         name: "test",
         revision: 1,
         systemPrompt: "Test",
-        mode: "single-turn",
+        mode: "singleTurn",
         modelID: "q",
         skillIDs: [],
         toolIDs: [],
@@ -94,7 +93,7 @@ test("run execution is one discriminated record, with explicit pause admission",
   for (const value of [
     { state: "completed", reason: "instant" },
     { state: "paused", reason: "manualStop", resume: "automatic" },
-    { state: "paused", reason: "storage_limit", resume: "manual" },
+    { state: "paused", reason: "storageLimit", resume: "manual" },
     {
       state: "paused",
       reason: "instant",
@@ -164,7 +163,7 @@ test("count limits identify the actual resource and cannot be fixed by raising M
   assert.match(run.error!.message, /raising storageLimitMB cannot/);
   assert.deepEqual(encodeRun(run).execution, {
     state: "paused",
-    reason: "storage_limit",
+    reason: "storageLimit",
     resume: "manual",
     error: run.error,
     limit: { resource: "messages", used: 9000, maximum: 9000 },
@@ -172,15 +171,12 @@ test("count limits identify the actual resource and cannot be fixed by raising M
   run.agent.storageLimitMB = 48;
   assert.equal(context.atStorageLimit(run), true);
 });
-test("receipt chains remain stable after array reorder and reject cycles or wrong identity", () => {
+test("receipts retain identity and reject missing event references", () => {
   const run = fixture();
   const first = {
     receiptID: randomUUID(),
     hookID: "delivery",
     eventID: run.events[1]!.eventID,
-    retryOfReceiptID: null,
-    requestID: null,
-    note: null,
     startedAt: at,
     finishedAt: at,
     purpose: "delivery" as const,
@@ -188,21 +184,10 @@ test("receipt chains remain stable after array reorder and reject cycles or wron
     status: "failed" as const,
     diagnostic: "failed",
   };
-  const retry = {
-    ...first,
-    receiptID: randomUUID(),
-    retryOfReceiptID: first.receiptID,
-    executablePath: "/new",
-    status: "succeeded" as const,
-    diagnostic: null,
-  };
-  run.hookReceipts = [retry, first];
-  assert.deepEqual(effectiveReceipts(decodeRun(encodeRun(run))), [retry]);
-  run.hookReceipts[0]!.hookID = "different";
-  assert.throws(() => encodeRun(run), /Invalid hook retry/);
-  run.hookReceipts[0]!.hookID = "delivery";
-  run.hookReceipts[1]!.retryOfReceiptID = retry.receiptID;
-  assert.throws(() => encodeRun(run), /Cyclic/);
+  run.hookReceipts = [first];
+  assert.deepEqual(decodeRun(encodeRun(run)).hookReceipts, [first]);
+  first.eventID = randomUUID();
+  assert.throws(() => encodeRun(run), /Missing hook event/);
   run.hookReceipts = [first, first];
   assert.throws(() => encodeRun(run), /Duplicate/);
 });
@@ -227,4 +212,16 @@ test("completed instant events retain model output-limit metadata", () => {
     usage: { inputTokens: 1, outputTokens: 1 },
     outputLimitReached: true,
   });
+});
+
+test("historical hook attempts retain evidence but latest invocation determines outcome", async () => {
+  const {runOutcome} = await import("../dist/engine/supervision.js");
+  const run = fixture();
+  const receipt = { receiptID: randomUUID(), hookID: "delivery", eventID: run.events[1]!.eventID,
+    startedAt: at, finishedAt: at, purpose: "delivery" as const, executablePath: "/old",
+    status: "failed" as const, diagnostic: "failed" };
+  run.hookReceipts = [receipt, {...receipt, receiptID: randomUUID(), status: "succeeded", diagnostic: null}];
+  assert.equal(runOutcome(run).delivery, "succeeded");
+  assert.equal("nextAction" in runOutcome(run), false);
+  assert.equal(run.hookReceipts.length, 2);
 });

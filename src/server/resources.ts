@@ -11,6 +11,7 @@ import {
   agentDraftSchema,
   agentSchema,
   skillSchema,
+  skillMetadataSchema,
 } from "../schemas/agent.js";
 import {
   chatDetailSchema,
@@ -259,7 +260,7 @@ export function resourceRoutes(
     skillsList: protectedRoute
       .route({ method: "GET", path: "/v1/skills" })
       .input(pageSchema)
-      .output(pageOutput(skillSchema))
+      .output(pageOutput(skillMetadataSchema.extend({ hash: z.string() })))
       .handler(({ input }) =>
         page(
           "skills",

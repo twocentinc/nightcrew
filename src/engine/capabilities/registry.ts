@@ -57,39 +57,6 @@ export const builtinTools: ToolDefinition[] = (
     parameters: parameters[name],
   }),
 );
-// Read compatibility only: new command requests must use the executable-only schema.
-// Historical snapshots retain their original bytes; conversion happens at execution.
-export function normalizeStoredTool(value: unknown): ToolDefinition {
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    return toolDefinitionSchema.parse(value);
-  const {
-    adapter,
-    readOnly,
-    arguments: legacyArgv,
-    ...rest
-  } = value as Record<string, unknown>;
-  if (
-    legacyArgv !== undefined &&
-    rest.argv !== undefined &&
-    JSON.stringify(legacyArgv) !== JSON.stringify(rest.argv)
-  )
-    throw Error("Conflicting legacy arguments and argv");
-  const executable = {
-    ...rest,
-    ...(rest.argv === undefined && legacyArgv !== undefined
-      ? { argv: legacyArgv }
-      : {}),
-  };
-  if (adapter === undefined || adapter === "exec")
-    return toolDefinitionSchema.parse(executable);
-  const bundled = builtinTools.find((t) => t.toolID === adapter);
-  if (!bundled) throw Error("Unknown legacy tool adapter");
-  return toolDefinitionSchema.parse({
-    ...executable,
-    executablePath: bundled.executablePath,
-    argv: bundled.argv,
-  });
-}
 export async function loadRegistry(home: string) {
   const skills = new Map<string, Skill>();
   const tools = new Map(builtinTools.map((t) => [t.toolID, t]));
@@ -109,7 +76,7 @@ export async function loadRegistry(home: string) {
         throw Error("Skill folders cannot be symlinks");
       if (kind === "tools" && entry.name.endsWith(".json")) {
         const name = id.parse(entry.name.slice(0, -5));
-        const tool = normalizeStoredTool(
+        const tool = toolDefinitionSchema.parse(
           await readJSON(path.join(root, entry.name), z.unknown(), 128 * 1024),
         );
         if (tool.toolID !== name || tools.has(name))
@@ -355,13 +322,13 @@ export class AgentRegistry {
     return [
       ...new Set([
         ...agent.toolIDs,
-        ...(agent.mode === "agent-loop" ? ["load_skills"] : []),
+        ...(agent.mode === "agentLoop" ? ["load_skills"] : []),
       ]),
     ];
   }
   runTools(run: Run) {
     const selected = this.agentToolIDs(run.agent);
-    const snapshots = run.toolSnapshots.map(normalizeStoredTool);
+    const snapshots = run.toolSnapshots.map((tool) => toolDefinitionSchema.parse(tool));
     return selected.map(
       (id) =>
         snapshots.find((t) => t.toolID === id) ??

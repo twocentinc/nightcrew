@@ -40,7 +40,7 @@ async function json(file: string) {
   return JSON.parse(await readFile(file, "utf8"));
 }
 const terminal = (state?: any) =>
-  ["completed", "failed", "timedOut", "cancelled"].includes(state);
+  ["completed", "invalidOutput", "failed", "timedOut", "cancelled"].includes(state);
 // Public CLI outcomes are authoritative; this example only adds operational metrics.
 async function call(home: string, args: string[]) {
   const { stdout } = await promisify(execFile)(
@@ -74,7 +74,7 @@ async function outcomes(home: string) {
 function recentProblem(r?: any, outcome?: any, since?: any) {
   if (!outcome) return false;
   const bad =
-    ["failed", "timedOut"].includes(r.execution.state) ||
+    ["invalidOutput", "failed", "timedOut"].includes(r.execution.state) ||
     ["failed", "error"].includes(outcome.output) ||
     ["failed", "unknown"].includes(outcome.delivery) ||
     (terminal(r.execution.state) && outcome.delivery === "pending") ||
@@ -84,7 +84,7 @@ function recentProblem(r?: any, outcome?: any, since?: any) {
   if (!bad) return false;
   // Capability refreshes and old reviewer notes do not create new incidents.
   const relevant = (r.events ?? []).filter((e?: any) =>
-    ["failed", "timedOut", "outputValidation", "hookResult", "held"].includes(
+    ["invalidOutput", "failed", "timedOut", "outputValidation", "hookResult", "held"].includes(
       e.type,
     ),
   );
@@ -207,7 +207,7 @@ export function metrics(r?: any, parent?: any, outcome?: any) {
         !terminal(r.execution.state),
       error:
         terminal(r.execution.state) &&
-        !["failed", "timedOut"].includes(r.execution.state)
+        !["invalidOutput", "failed", "timedOut"].includes(r.execution.state)
           ? null
           : (r.execution.error ?? null),
       delivery,
@@ -226,7 +226,7 @@ export function metrics(r?: any, parent?: any, outcome?: any) {
       retainedError: r.execution.error ?? null,
       note: "Past evidence, not current failure status. Later successful retries or terminal parent states supersede earlier status claims.",
     },
-    statusMeaning: ["completed", "failed", "timedOut", "cancelled"].includes(
+    statusMeaning: ["completed", "invalidOutput", "failed", "timedOut", "cancelled"].includes(
       r.execution.state,
     )
       ? r.execution.state
@@ -359,7 +359,7 @@ export async function inspect(
             !(
               r.execution.state === "paused" && r.execution.resume === "manual"
             ) &&
-            !["failed", "timedOut"].includes(r.execution.state)
+            !["invalidOutput", "failed", "timedOut"].includes(r.execution.state)
           )
             continue;
           const item = await project(r, home, summaries.get(r.runID), read);

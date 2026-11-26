@@ -1,6 +1,6 @@
 # Granite transcription
 
-A single-turn, manually invoked audio agent using the existing transcription
+A singleTurn, manually invoked audio agent using the existing transcription
 adapter. No recordings, transcripts or model weights are bundled.
 
 Register a model with `kind: "audio"`, the local Granite GGUF `weightsPath`, its

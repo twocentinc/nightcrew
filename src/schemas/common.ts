@@ -39,6 +39,14 @@ export const functionToolSchema = z.strictObject({
   description: z.string().max(2000),
   parameters: z.record(z.string(), z.json()),
 });
+export const samplingSchema = z.strictObject({
+  temperature: z.number().min(0).max(2).default(0.7),
+  topP: z.number().min(0).max(1).optional(),
+  topK: z.number().int().min(0).max(1000).optional(),
+  minP: z.number().min(0).max(1).optional(),
+  presencePenalty: z.number().min(-2).max(2).optional(),
+  repeatPenalty: z.number().min(0).max(2).optional(),
+});
 export const chatInputSchema = z.strictObject({
   skillIDs: z.array(id).max(40).default([]),
   conversationID: id,
@@ -47,13 +55,14 @@ export const chatInputSchema = z.strictObject({
   tools: z.array(functionToolSchema).max(64).default([]),
   timeoutMs: z.number().int().min(1000).max(600000).default(120000),
   maxOutputTokens: z.number().int().min(1).max(32768).default(4096),
-  temperature: z.number().min(0).max(2).default(0.7),
+  sampling: samplingSchema.default(() => samplingSchema.parse({})),
+  parallelToolCalls: z.boolean().optional(),
 });
 export type Message = z.infer<typeof messageSchema>;
 export type UserMessage = z.infer<typeof userMessageSchema>;
 export type ChatInput = z.infer<typeof chatInputSchema>;
 export const terminal = (state: string) =>
-  ["completed", "failed", "cancelled", "timedOut", "interrupted"].includes(
+  ["completed", "invalidOutput", "failed", "cancelled", "timedOut", "interrupted"].includes(
     state,
   );
 export const now = () => new Date().toISOString();

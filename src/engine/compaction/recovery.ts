@@ -20,9 +20,9 @@ export class CompactionRecovery {
   constructor(private readonly ports: Dependencies) {}
   compactionFailure(run: Run, message: string) {
     run.state = "paused";
-    run.pauseReason = "context_full";
+    run.pauseReason = "contextFull";
     run.held = true;
-    run.error = { code: "context_full", message: message.slice(0, 2000) };
+    run.error = { code: "contextFull", message: message.slice(0, 2000) };
     if (run.compaction) run.compaction.status = "failed";
     this.ports.dependencies.records.event(run, "compactionFailed", { message });
   }
@@ -95,13 +95,13 @@ export class CompactionRecovery {
               ),
             );
             if (
-              agent.mode !== "single-turn" ||
+              agent.mode !== "singleTurn" ||
               agent.agentID === parent.agent.agentID ||
               this.ports.dependencies.storage.store.config.models.find(
                 (m) => m.modelID === agent.modelID,
               )?.kind !== "chat"
             )
-              throw Error("Compactor must be another single-turn chat agent");
+              throw Error("Compactor must be another singleTurn chat agent");
             agent.contextMode = "fresh";
             agent.compaction = null;
             const interactiveCompaction =
@@ -144,7 +144,7 @@ export class CompactionRecovery {
               attempts: [],
               deliveryExpected: false,
               validations: [],
-              recovery: null,
+              toolLoop: null,
               parentRunID: parent.runID,
               compaction: null,
               compactions: [],
@@ -239,10 +239,10 @@ export class CompactionRecovery {
             );
           }
           await this.ports.dependencies.records.save(parent);
-        } else if (child.pauseReason === "runtime_error") {
+        } else if (child.pauseReason === "runtimeError") {
           parent.state = "paused";
           parent.held = true;
-          parent.pauseReason = "runtime_error";
+          parent.pauseReason = "runtimeError";
           parent.error = {
             code: "context_preparation_failed",
             message: (
@@ -251,14 +251,14 @@ export class CompactionRecovery {
             ).slice(0, 2000),
           };
           this.ports.dependencies.records.event(parent, "paused", {
-            reason: "runtime_error",
+            reason: "runtimeError",
             childRunID: child.runID,
             ...parent.error,
           });
           await this.ports.dependencies.records.save(parent);
         } else if (
           terminal(child.state) ||
-          child.pauseReason === "context_full"
+          child.pauseReason === "contextFull"
         ) {
           this.retryCompaction(
             parent,

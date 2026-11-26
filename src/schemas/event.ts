@@ -28,6 +28,7 @@ export const eventPayloads = {
   message,
   toolResult: message,
   completed: z.union([empty, z.strictObject({ messageID: uuid }), generation]),
+  invalidOutput: empty,
   failed: empty,
   cancelled: empty,
   timedOut: empty,
@@ -73,7 +74,7 @@ export const eventPayloads = {
     status: z.enum(["passed", "failed", "error"]),
     reason,
   }),
-  loopRecovery: z.strictObject({ reason, finalizing: z.boolean() }),
+  toolLoopUpdated: z.strictObject({ reason, finalizing: z.boolean() }),
   retried: z.strictObject({
     previousTurnID: uuid,
     messageID: uuid,

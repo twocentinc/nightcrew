@@ -201,7 +201,7 @@ test("test reservation blocks competing unloads and lets instant work run after 
     tools: [],
     timeoutMs: 30000,
     maxOutputTokens: 64,
-    temperature: 0,
+    sampling: { temperature: 0 },
   });
   await delay(25);
   assert.equal(f.service.chat(chat.requestID).state, "queued");
