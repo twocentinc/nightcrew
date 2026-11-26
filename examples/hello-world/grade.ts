@@ -1,15 +1,9 @@
 import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-
-export function grade(input: { result: { answer: string } }) {
+export function grade(input: { result: unknown }) {
   return {
-    checks: [
-      {
-        checkID: "exact-greeting",
-        status: input.result.answer === "Hello world!" ? "passed" : "failed",
-        reason: "The answer must be exactly Hello world! with no extra text.",
-      },
-    ],
+    passed: input.result === "Hello world!",
+    reason: "Require exactly Hello world! without extra text.",
   };
 }
 if (

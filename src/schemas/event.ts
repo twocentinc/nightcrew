@@ -1,3 +1,4 @@
+import { gradeSchema } from "../engine/evals/format.js";
 import { z } from "zod";
 import { id, messageSchema, resultSchema, timestamp, uuid } from "./common.js";
 import { pauseReasonSchema, storageLimitSchema } from "./execution.js";
@@ -13,6 +14,7 @@ const generation = z.strictObject({
   outputLimitReached: z.boolean().optional(),
 });
 export const eventPayloads = {
+  evalGraded: gradeSchema,
   queued: z.strictObject({ parentRunID: id.optional() }),
   started: empty,
   paused: z.strictObject({

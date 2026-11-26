@@ -1,3 +1,8 @@
+import {
+  type EvalDefinition,
+  type evalRunStateSchema,
+} from "../evals/format.js";
+import { evaluationAgent, prepareEvaluation } from "../evals/definitions.js";
 import { createHash, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { triggerSourceSchema } from "../../schemas/agent.js";
@@ -97,6 +102,7 @@ export class Runs {
     dryRun: boolean,
     source: z.infer<typeof triggerSourceSchema> | null = null,
     retryNote?: string,
+    evaluation?: z.infer<typeof evalRunStateSchema>,
   ) {
     if (this.ports.instant.unloadingInstant)
       fail("instant_unload_in_progress", 409);
@@ -139,12 +145,30 @@ export class Runs {
       fail("message_conflict", 409);
     this.ports.dispatch.capacity();
     let previous = reply ? await this.ports.records.run(target) : null;
-    const configuredAgent = reply
-      ? previous!.agent.contextMode === "persistent"
+    if (
+      previous?.evaluation &&
+      terminal(previous.state) &&
+      ["pending", "running"].includes(previous.evaluation.grade.status)
+    )
+      fail("eval_grading_in_progress", 409);
+    let configuredAgent = reply
+      ? previous!.agent.contextMode === "persistent" && !previous!.evaluation
         ? this.ports.configuration.agent(previous!.agent.agentID)
         : previous!.agent
       : this.ports.configuration.agent(target);
-    if (!previous && configuredAgent.contextMode === "persistent") {
+    if (evaluation) {
+      configuredAgent = evaluationAgent(
+        configuredAgent,
+        evaluation.definition,
+        this.ports.storage.store,
+      );
+      this.ports.registry.validateAgent(configuredAgent);
+    }
+    if (
+      !evaluation &&
+      !previous &&
+      configuredAgent.contextMode === "persistent"
+    ) {
       const persistentID =
         "persistent-" + createHash("sha256").update(target).digest("hex");
       if (this.ports.storage.summaries.has(persistentID))
@@ -224,6 +248,7 @@ export class Runs {
     const cancelledChildID =
       previous?.state === "cancelled" ? previous.compaction?.childRunID : null;
     const r: Run = previous ?? {
+      ...(evaluation ? { evaluation } : {}),
       contextUsage: null,
       capabilityRefreshes: [],
       deliveryExpected: false,
@@ -236,6 +261,7 @@ export class Runs {
       version: 3,
       held: false,
       interactive:
+        !evaluation &&
         source?.admission !== "timer" &&
         this.ports.dispatch.instantSlot(a.slotID),
       pendingInputs: [],
@@ -247,7 +273,7 @@ export class Runs {
           JSON.parse(JSON.stringify(this.ports.registry.tools.get(id))),
         ),
       runID:
-        a.contextMode === "persistent"
+        !evaluation && a.contextMode === "persistent"
           ? "persistent-" + createHash("sha256").update(a.agentID).digest("hex")
           : randomUUID(),
       revision: 1,
@@ -319,6 +345,7 @@ export class Runs {
           JSON.parse(JSON.stringify(this.ports.registry.tools.get(id))),
         );
       r.interactive =
+        !r.evaluation &&
         source?.admission !== "timer" &&
         this.ports.dispatch.instantSlot(a.slotID);
       if (source) r.triggerHistory.push(source);
@@ -349,6 +376,26 @@ export class Runs {
     });
     this.ports.records.event(r, "message", { messageID: message.messageID });
     this.ports.records.event(r, "queued", {});
+    if (evaluation) {
+      r.messages = [
+        r.messages[0]!,
+        ...evaluation.definition.messages.map((m) => ({
+          ...m,
+          messageID: randomUUID(),
+        })),
+      ];
+      r.events = [];
+      for (const m of r.messages.slice(1))
+        this.ports.records.event(
+          r,
+          m.role === "tool" ? "toolResult" : "message",
+          { messageID: m.messageID },
+        );
+      this.ports.records.event(r, "queued", {});
+      evaluation.initialMessages = r.messages.length;
+      for (const m of r.messages.filter((m) => m.role === "user"))
+        this.checkMessage(m, a.modelID);
+    } else if (r.evaluation) r.evaluation.grade = { status: "pending" };
     if (Buffer.byteLength(JSON.stringify(r)) > 56 * 1024 * 1024)
       fail("run_capacity", 507);
     if (!dryRun) {
@@ -375,6 +422,26 @@ export class Runs {
       }
     }
     return this.acceptance(r, false);
+  }
+  async submitEval(
+    definition: EvalDefinition,
+    revision: number,
+    dryRun = false,
+  ) {
+    const evaluation = await prepareEvaluation(definition, revision);
+    const result = await this.ports.storage.exclusive(() =>
+      this.submitLocked(
+        evaluation.definition.agentID,
+        { messageID: randomUUID(), content: "", attachments: [] },
+        false,
+        dryRun,
+        null,
+        undefined,
+        evaluation,
+      ),
+    );
+    if (!dryRun) this.ports.dispatch.wake();
+    return result;
   }
   fireTrigger(
     triggerID: string,

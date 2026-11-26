@@ -263,30 +263,223 @@
     },
     {
       "confirmation": false,
-      "description": "Run a suite with mocked tools and save a create-only result bundle",
+      "description": "Create an eval definition",
       "mutates": true,
-      "name": "evals run",
+      "name": "evals create",
       "operand": "none",
       "options": [
         "request",
-        "dry-run"
+        "dry-run",
+        "file"
       ],
-      "requestSchema": "evals.run.request",
-      "resultSchema": "evals.run.result",
-      "scope": "local"
+      "requestSchema": "evals.create.request",
+      "resultSchema": "evals.create.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": true,
+      "description": "Delete an eval definition; retain its runs",
+      "mutates": true,
+      "name": "evals delete",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run",
+        "yes"
+      ],
+      "requestSchema": "evals.delete.request",
+      "resultSchema": "evals.delete.result",
+      "scope": "management"
     },
     {
       "confirmation": false,
-      "description": "Validate an eval suite without inference",
+      "description": "Read an eval definition",
       "mutates": false,
-      "name": "evals validate",
+      "name": "evals get",
+      "operand": "required",
+      "options": [
+        "request"
+      ],
+      "requestSchema": "evals.get.request",
+      "resultSchema": "evals.get.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "List saved eval definitions",
+      "mutates": false,
+      "name": "evals list",
       "operand": "none",
       "options": [
         "request"
       ],
-      "requestSchema": "evals.validate.request",
-      "resultSchema": "evals.validate.result",
-      "scope": "static"
+      "requestSchema": "evals.list.request",
+      "resultSchema": "evals.list.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "Submit an ordinary run with eval tool overrides and grading",
+      "mutates": true,
+      "name": "evals run",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run",
+        "wait"
+      ],
+      "requestSchema": "evals.run.request",
+      "resultSchema": "evals.run.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "Delete an exact or default tool response",
+      "mutates": true,
+      "name": "evals tools delete",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run",
+        "tool",
+        "input"
+      ],
+      "requestSchema": "evals.tools.delete.request",
+      "resultSchema": "evals.tools.delete.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "List exact and default tool responses",
+      "mutates": false,
+      "name": "evals tools list",
+      "operand": "required",
+      "options": [
+        "request"
+      ],
+      "requestSchema": "evals.tools.list.request",
+      "resultSchema": "evals.tools.list.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "Set an exact or default tool response",
+      "mutates": true,
+      "name": "evals tools set",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run",
+        "tool",
+        "input",
+        "output"
+      ],
+      "requestSchema": "evals.tools.set.request",
+      "resultSchema": "evals.tools.set.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "Append messages to the starting transcript",
+      "mutates": true,
+      "name": "evals transcript append",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run",
+        "file"
+      ],
+      "requestSchema": "evals.transcript.append.request",
+      "resultSchema": "evals.transcript.append.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": true,
+      "description": "Clear the starting transcript",
+      "mutates": true,
+      "name": "evals transcript clear",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run",
+        "yes"
+      ],
+      "requestSchema": "evals.transcript.clear.request",
+      "resultSchema": "evals.transcript.clear.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "Delete a message and its paired tool results",
+      "mutates": true,
+      "name": "evals transcript delete",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run",
+        "message"
+      ],
+      "requestSchema": "evals.transcript.delete.request",
+      "resultSchema": "evals.transcript.delete.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "Read the starting transcript",
+      "mutates": false,
+      "name": "evals transcript get",
+      "operand": "required",
+      "options": [
+        "request"
+      ],
+      "requestSchema": "evals.transcript.get.request",
+      "resultSchema": "evals.transcript.get.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "Replace the starting transcript",
+      "mutates": true,
+      "name": "evals transcript set",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run",
+        "file"
+      ],
+      "requestSchema": "evals.transcript.set.request",
+      "resultSchema": "evals.transcript.set.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "Replace a starting message by UUID",
+      "mutates": true,
+      "name": "evals transcript update",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run",
+        "file",
+        "message"
+      ],
+      "requestSchema": "evals.transcript.update.request",
+      "resultSchema": "evals.transcript.update.result",
+      "scope": "management"
+    },
+    {
+      "confirmation": false,
+      "description": "Update eval parameters",
+      "mutates": true,
+      "name": "evals update",
+      "operand": "required",
+      "options": [
+        "request",
+        "dry-run"
+      ],
+      "requestSchema": "evals.update.request",
+      "resultSchema": "evals.update.result",
+      "scope": "management"
     },
     {
       "confirmation": false,
@@ -933,5 +1126,5 @@
     "version": false
   },
   "protocolVersion": 1,
-  "schemaVersion": 43
+  "schemaVersion": 44
 }

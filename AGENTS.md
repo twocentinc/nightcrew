@@ -47,7 +47,7 @@ owns the streaming buffer shared with instant requests;
 `src/engine/execution/tools.ts` recovers pending calls and commits paired tool results;
 `src/engine/execution/completion.ts` validates final output and settles interruption and
 completion. Preserve the order of durable attempt, tool-result and message writes.
-`src/engine/instant/requests.ts` owns instant/eval request state and deadlines;
+`src/engine/instant/requests.ts` owns instant request state and deadlines;
 `runner.ts` owns generation and settlement.
 `src/engine/execution/context.ts` owns model-visible history projection, skill catalog
 injection and transcript storage-limit checks. `src/engine/compaction/coordinator.ts` owns
@@ -70,16 +70,16 @@ Persisted runs use one discriminated `execution` record; mutable engine working 
 `src/engine/supervision.ts` owns output-validation configuration/execution, loop detection
 and derived run outcomes, effective hook receipt chains. Keep validation evidence durable and never equate schema
 validation or hook execution with factual correctness or confirmed external delivery.
-`src/engine/evals/runner.ts` owns suite execution and create-only result bundles;
-`format.ts` owns versioned schemas, `tools.ts` exact mock argument dispatch, and
-`results.ts` assertions and executable end-of-case graders. Graders
-are trusted local programs, separate from intercepted model tools. Snapshot their
-identity, bound execution, and preserve failures and unreviewed criteria. Keep
-agent-specific fixtures, tests, and TypeScript graders beside the example agent.
-Keep tests of Nightcrew runtime, CLI contracts, and reusable infrastructure under
-`test/`, even when their fixtures use named mock agents. Eval sampling in `src/engine/instant/requests.ts` uses the instant
-scheduler but never executes tools, skills, hooks or compaction. Keep evaluation
-expectations out of model inputs and unreviewed criteria distinct from passes.
+`src/engine/evals/format.ts` owns eval definitions and grading schemas;
+`definitions.ts` owns tool/transcript edits, `tools.ts` substitutes tool results,
+and `results.ts` grades accepted output. `src/storage/evals.ts` owns definition files
+using the shared transaction queue. Evals execute through ordinary runs, including
+model selection, finish validation, repair, continuation and compaction. Never override
+an agent's finish schema or expose grader expectations in model input. Eval tools
+must not fall through to real execution; delivery hooks are suppressed. Graders
+are trusted executables: snapshot identity, bound execution and retain uncertain outcomes
+without replay. Schema grading precedes executable grading. Keep example fixtures and
+TypeScript graders beside their agents, and generic engine/CLI tests under `test/`.
 `src/engine/models/runtime.ts` coordinates model admission and residency.
 `server.ts` owns llama.cpp process lifecycle; `client.ts` owns generation and
 tokenization; `stream.ts` decodes streamed responses; `cache.ts` owns slot
@@ -137,12 +137,11 @@ behavior without an actual model-specific check.
 Real-model tests live under `test/live/`, outside the default suite. Do not run
 them without explicit authorization for inference.
 
-The public contract is frozen at schema 43; follow `docs/compatibility.md`.
+The public contract is frozen at schema 44; follow `docs/compatibility.md`.
 Do not remove or rename public commands, tighten accepted inputs, or change
 execution semantics without explicitly reopening the freeze. Schema increments
 alone do not authorize breaking changes. Keep
-scheduler, cache and eval response schemas explicit. Eval suite CLI deadlines
-are separate from individual case limits and ordinary management deadlines.
+scheduler, cache and eval response schemas explicit. Eval submission and optional wait use ordinary run command deadlines.
 
 Run-state reads are deadline-bounded; discard late read results without indexing
 or mutating state. Never apply that timeout pattern to serialized writes, which
@@ -152,8 +151,7 @@ must not reread every archived transcript. Record operational scheduler failures
 separately from actual presence sampling failures.
 
 Schema 31 consolidates public CLI lifecycle under daemon, interactive calls under
-instant, and fleet/presence/scheduling inspection under status. Internal eval
-sample/release procedures must not be exposed in CLI or HTTP discovery.
+instant, and fleet/presence/scheduling inspection under status. Evals expose shared management operations; there is no separate instant eval API.
 
 Command names must use separate words, never hyphens. Flags may use hyphens.
 HTTP listening is controlled by config.httpEnabled; never require an HTTP listener

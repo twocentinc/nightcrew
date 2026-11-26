@@ -127,9 +127,11 @@ export class Completion {
     }
     const finishedState = terminal(r.state) ? r.state : null;
     if (finishedState)
-      r.deliveryExpected = this.ports.storage.store.config.hooks.some(
-        (h) => h.event === `run.${finishedState}` && h.purpose === "delivery",
-      );
+      r.deliveryExpected =
+        !r.evaluation &&
+        this.ports.storage.store.config.hooks.some(
+          (h) => h.event === `run.${finishedState}` && h.purpose === "delivery",
+        );
     const storagePaused =
       (!finishedState || finishedState === "completed") &&
       this.ports.context.atStorageLimit(r);

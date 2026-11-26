@@ -178,13 +178,7 @@ export async function runDaemon(home: string, quiet = false) {
           if (closing) throw Error("Daemon stopping");
           const input = controlSchema.parse(JSON.parse(buffer.split("\n")[0]!));
           const { getCommand } = await import("../utils/commands/registry.js");
-          const definition =
-            getCommand(input.command) ??
-            (["evals sample", "evals release"].includes(input.command)
-              ? (await import("../utils/commands/operations.js")).getOperation(
-                  input.command,
-                )
-              : undefined);
+          const definition = getCommand(input.command);
           if (
             !definition ||
             !["management", "daemon"].includes(definition.scope)

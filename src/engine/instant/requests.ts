@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { type Agent, type Skill } from "../../schemas/agent.js";
+import { type Skill } from "../../schemas/agent.js";
 import {
   now,
   terminal,
@@ -22,7 +22,6 @@ import { executionSlots, instantModelID } from "../scheduling/policy.js";
 import { InstantRunner } from "./runner.js";
 
 export type Chat = {
-  evalOptions?: { sampling?: Agent["sampling"] };
   requestID: string;
   input: ChatInput & { modelID: string };
   skills: Skill[];
@@ -111,10 +110,7 @@ export class Instant {
     for (const [id, c] of this.chats)
       if (terminal(c.state) && c.expires < Date.now()) this.chats.delete(id);
   }
-  async submitChat(
-    request: ChatInput,
-    evalOptions?: { sampling?: Agent["sampling"] },
-  ) {
+  async submitChat(request: ChatInput) {
     if (this.unloading) fail("instant_unload_in_progress", 409);
     const out = await this.ports.storage.exclusive(async () => {
       if (this.unloading) fail("instant_unload_in_progress", 409);
@@ -128,9 +124,9 @@ export class Instant {
       const input = { ...request, skillIDs: request.skillIDs ?? [], modelID };
       if (new Set(input.skillIDs).size !== input.skillIDs.length)
         fail("duplicate_identity");
-      if (!evalOptions && input.tools.some((t) => t.name === "load_skills"))
+      if (input.tools.some((t) => t.name === "load_skills"))
         fail("reserved_tool_name");
-      const selectedSkills = (evalOptions ? [] : input.skillIDs).map((id) =>
+      const selectedSkills = input.skillIDs.map((id) =>
         structuredClone(
           this.ports.registry.skills.get(id) ?? fail("skill_not_found", 404),
         ),
@@ -177,10 +173,7 @@ export class Instant {
         (c) => c.input.messages.at(-1)?.messageID === latest.messageID,
       );
       if (old) {
-        if (
-          canonical(old.input) !== canonical(input) ||
-          canonical(old.evalOptions ?? null) !== canonical(evalOptions ?? null)
-        )
+        if (canonical(old.input) !== canonical(input))
           fail("message_conflict", 409);
         return {
           requestID: old.requestID,
@@ -224,7 +217,6 @@ export class Instant {
       )
         fail("request_capacity", 429);
       const c: Chat = {
-        ...(evalOptions ? { evalOptions } : {}),
         requestID: randomUUID(),
         input,
         skills: selectedSkills,

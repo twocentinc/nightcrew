@@ -93,9 +93,18 @@ export class Runner {
         const currentMessages = r.messages.slice(
           r.messages.map((m) => m.role).lastIndexOf("user") + 1,
         );
-        const lastAssistant = [...currentMessages]
+        let lastAssistant = [...currentMessages]
           .reverse()
           .find((m) => m.role === "assistant");
+        if (
+          r.evaluation &&
+          lastAssistant &&
+          r.messages.indexOf(lastAssistant) < r.evaluation.initialMessages &&
+          lastAssistant.toolCalls.every((c) =>
+            r.messages.some((m) => m.toolCallID === c.callID),
+          )
+        )
+          lastAssistant = undefined;
         const continuation = this.ports.response.responseContinuation(r);
         const prefix = continuation.map((a) => a.text).join("");
         const priorReasoning = continuation
@@ -118,6 +127,8 @@ export class Runner {
           currentMessages.filter(
             (m) =>
               m.role === "assistant" &&
+              (!r.evaluation ||
+                r.messages.indexOf(m) >= r.evaluation.initialMessages) &&
               (!m.toolCalls.length ||
                 m.toolCalls.some((c) => c.name === "finish")),
           ).length >= 3 &&

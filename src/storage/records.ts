@@ -47,6 +47,7 @@ export class RunRecords {
   detail(r: Run) {
     return {
       ...publicSummary(summarize(r)),
+      ...(r.evaluation ? { evaluation: r.evaluation } : {}),
       contextUsage: r.contextUsage,
       capabilityRefreshes: r.capabilityRefreshes,
       validations: r.validations,
@@ -221,6 +222,16 @@ export class RunRecords {
     for (const summary of this.ports.storage.summaries.values()) {
       const r = await this.ports.storage.read(summary.runID);
       let changed = false;
+      if (r.evaluation?.grade.status === "running") {
+        r.evaluation.grade = {
+          status: "error",
+          reason:
+            "Daemon stopped during grading; executable outcome is unknown and was not retried",
+          finishedAt: now(),
+        };
+        this.event(r, "evalGraded", r.evaluation.grade);
+        changed = true;
+      }
       for (const receipt of r.hookReceipts)
         if (receipt.status === "started" || receipt.status === "pending") {
           receipt.status = "unknown";

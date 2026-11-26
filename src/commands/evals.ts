@@ -1,114 +1,269 @@
 import { z } from "zod";
 import {
-  evalRunResultSchema,
-  evalRunSchema,
-  evalSampleSchema,
-  evalSuiteSchema,
+  evalSchema,
+  normalizeEval,
+  overrideSchema,
+  graderSchema,
+  evalRecordSchema,
+  authorMessage,
+  toolOverrideSchema,
 } from "../engine/evals/format.js";
-import { runEval } from "../engine/evals/runner.js";
-import { remainingTimeout } from "../engine/execution/process.js";
-import type { Service } from "../engine/service.js";
-import { fail } from "../engine/service.js";
-import { id } from "../schemas/common.js";
-import { chatAcceptanceSchema } from "../schemas/run.js";
+import { editTools, editTranscript } from "../engine/evals/definitions.js";
+import { EvalStore } from "../storage/evals.js";
+import { id, uuid } from "../schemas/common.js";
+import { acceptanceSchema } from "../schemas/run.js";
 import { createOperations } from "../utils/commands/definition.js";
-import type { Define } from "../utils/commands/registry.js";
-import { type ManagementInput } from "../utils/commands/resources.js";
-
-const control: typeof import("../server/daemon.js").control = async (...args) =>
-  (await import("../server/daemon.js")).control(...args);
+import type { Service } from "../engine/service.js";
+import { fail } from "../engine/protocol.js";
+import type { ManagementInput } from "../utils/commands/resources.js";
+const revision = { expectedRevision: z.number().int().positive().optional() };
 export const operationInputs = {
-  "evals release": z.strictObject({}),
-  "evals sample": evalSampleSchema,
+  "evals create": z.strictObject({ eval: evalSchema }),
+  "evals update": z.strictObject({
+    ...revision,
+    changes: z.strictObject({
+      agentID: id.optional(),
+      overrides: overrideSchema.optional(),
+      messages: z.array(authorMessage).max(1000).optional(),
+      tools: z.array(toolOverrideSchema).max(1000).optional(),
+      grader: graderSchema.nullish(),
+    }),
+  }),
+  "evals delete": z.strictObject(revision),
+  "evals tools set": toolOverrideSchema.extend(revision),
+  "evals tools delete": z.strictObject({
+    ...revision,
+    tool: id,
+    input: z.record(z.string(), z.json()).optional(),
+  }),
+  "evals transcript set": z.strictObject({
+    ...revision,
+    messages: z.array(authorMessage).max(1000),
+  }),
+  "evals transcript append": z.strictObject({
+    ...revision,
+    messages: z.array(authorMessage).min(1).max(1000),
+  }),
+  "evals transcript update": z.strictObject({
+    ...revision,
+    messageID: uuid,
+    message: authorMessage,
+  }),
+  "evals transcript delete": z.strictObject({ ...revision, messageID: uuid }),
+  "evals transcript clear": z.strictObject(revision),
 };
 export async function handle(
   service: Service,
   input: ManagementInput,
 ): Promise<unknown> {
   const { command, resourceID, dryRun = false } = input;
-  const [] = command.split(" ");
-  const name = resourceID === undefined ? undefined : id.parse(resourceID);
+  const store = new EvalStore(service.storage.home);
+  if (command === "evals list") return { items: await store.list() };
   const raw = input.request ?? {};
-  if (command === "evals release") {
-    const chat = service.chat(name ?? fail("missing_id"));
+  if (command === "evals create")
+    return service.storage.exclusive(async () => {
+      const definition = normalizeEval(
+        operationInputs["evals create"].parse(raw).eval,
+      );
+      const existing = await store.get(definition.evalID).catch((error) => {
+        if (error.message === "eval_not_found") return null;
+        throw error;
+      });
+      if (existing) fail("eval_exists", 409);
+      if (!dryRun) await store.save(definition, 1);
+      return { item: { definition, revision: 1 }, changed: !dryRun };
+    });
+  const evalID = id.parse(resourceID);
+  if (command === "evals run") {
+    const record = await store.get(evalID);
+    return service.submitEval(record.definition, record.revision, dryRun);
+  }
+  if (
+    ["evals get", "evals tools list", "evals transcript get"].includes(command)
+  ) {
+    const record = await store.get(evalID);
+    return command === "evals get"
+      ? { item: record }
+      : command === "evals tools list"
+        ? { items: record.definition.tools, revision: record.revision }
+        : { messages: record.definition.messages, revision: record.revision };
+  }
+  return service.storage.exclusive(async () => {
+    const record = await store.get(evalID);
+    const request = (operationInputs as Record<string, z.ZodType>)[
+      command
+    ]?.parse(raw) as Record<string, unknown> | undefined;
+    if (!request) fail("unknown_command");
     if (
-      !chat.evalOptions ||
-      !["completed", "failed", "cancelled", "timedOut"].includes(chat.state)
+      request.expectedRevision !== undefined &&
+      request.expectedRevision !== record.revision
     )
-      fail("eval_not_terminal");
-    if (!dryRun) service.chats.delete(chat.requestID);
-    return { changed: !dryRun };
-  }
-  if (command === "evals sample") {
-    const request = operationInputs["evals sample"].parse(raw);
-    if (dryRun) return { changed: false, request };
-    return service.submitChat(request, { sampling: request.sampling });
-  }
-  return fail("unknown_command");
+      fail("revision_conflict", 409);
+    if (command === "evals delete") {
+      if (!dryRun) await store.delete(evalID);
+      return { changed: !dryRun };
+    }
+    let definition = structuredClone(record.definition);
+    if (command === "evals update")
+      definition = normalizeEval({
+        ...definition,
+        ...(request.changes as object),
+      });
+    else if (command.startsWith("evals tools "))
+      definition = editTools(
+        definition,
+        command.endsWith("set") ? "set" : "delete",
+        request as Parameters<typeof editTools>[2],
+      );
+    else
+      definition = editTranscript(
+        definition,
+        command.split(" ").at(-1)!,
+        request,
+      );
+    const item = { definition, revision: record.revision + 1 };
+    if (!dryRun) await store.save(definition, item.revision);
+    return { item, changed: !dryRun };
+  });
 }
-const defineOperation = createOperations(operationInputs, handle);
+const define = createOperations(operationInputs, handle);
+const mutation = z.strictObject({
+  item: evalRecordSchema,
+  changed: z.boolean(),
+});
 export const operations = {
-  "evals release": defineOperation(
-    "evals release",
-    "Release a terminal eval sample after saving its result",
-    z.object({ changed: z.boolean() }),
+  "evals list": define(
+    "evals list",
+    "List saved eval definitions",
+    z.strictObject({ items: z.array(evalRecordSchema) }),
+  ),
+  "evals get": define(
+    "evals get",
+    "Read an eval definition",
+    z.strictObject({ item: evalRecordSchema }),
+    false,
+    "required",
+  ),
+  "evals create": define(
+    "evals create",
+    "Create an eval definition",
+    mutation,
+    true,
+    "none",
+    false,
+    "management",
+    ["file"],
+  ),
+  "evals update": define(
+    "evals update",
+    "Update eval parameters",
+    mutation,
+    true,
+    "required",
+  ),
+  "evals delete": define(
+    "evals delete",
+    "Delete an eval definition; retain its runs",
+    z.strictObject({ changed: z.boolean() }),
+    true,
+    "required",
+    true,
+  ),
+  "evals run": define(
+    "evals run",
+    "Submit an ordinary run with eval tool overrides and grading",
+    acceptanceSchema,
     true,
     "required",
     false,
     "daemon",
   ),
-  "evals sample": defineOperation(
-    "evals sample",
-    "Generate one eval turn; return all tool calls without executing any",
-    z.union([
-      chatAcceptanceSchema,
-      z.object({
-        changed: z.literal(false),
-        request: operationInputs["evals sample"],
-      }),
-    ]),
-    true,
-    "none",
+  "evals tools list": define(
+    "evals tools list",
+    "List exact and default tool responses",
+    z.strictObject({
+      items: z.array(toolOverrideSchema),
+      revision: z.number().int(),
+    }),
     false,
-    "daemon",
+    "required",
+  ),
+  "evals tools set": define(
+    "evals tools set",
+    "Set an exact or default tool response",
+    mutation,
+    true,
+    "required",
+    false,
+    "management",
+    ["tool", "input", "output"],
+  ),
+  "evals tools delete": define(
+    "evals tools delete",
+    "Delete an exact or default tool response",
+    mutation,
+    true,
+    "required",
+    false,
+    "management",
+    ["tool", "input"],
+  ),
+  "evals transcript get": define(
+    "evals transcript get",
+    "Read the starting transcript",
+    z.strictObject({
+      messages: z.array(authorMessage),
+      revision: z.number().int(),
+    }),
+    false,
+    "required",
+  ),
+  "evals transcript set": define(
+    "evals transcript set",
+    "Replace the starting transcript",
+    mutation,
+    true,
+    "required",
+    false,
+    "management",
+    ["file"],
+  ),
+  "evals transcript append": define(
+    "evals transcript append",
+    "Append messages to the starting transcript",
+    mutation,
+    true,
+    "required",
+    false,
+    "management",
+    ["file"],
+  ),
+  "evals transcript update": define(
+    "evals transcript update",
+    "Replace a starting message by UUID",
+    mutation,
+    true,
+    "required",
+    false,
+    "management",
+    ["file", "message"],
+  ),
+  "evals transcript delete": define(
+    "evals transcript delete",
+    "Delete a message and its paired tool results",
+    mutation,
+    true,
+    "required",
+    false,
+    "management",
+    ["message"],
+  ),
+  "evals transcript clear": define(
+    "evals transcript clear",
+    "Clear the starting transcript",
+    mutation,
+    true,
+    "required",
+    true,
   ),
 };
-export function registerLocal(define: Define) {
-  define(
-    "evals validate",
-    "Validate an eval suite without inference",
-    "static",
-    "none",
-    false,
-    z.object({
-      suiteID: z.string(),
-      cases: z.number(),
-      valid: z.literal(true),
-    }),
-    async (c) => {
-      const suite = evalSuiteSchema.parse(c.request);
-      return { suiteID: suite.suiteID, cases: suite.cases.length, valid: true };
-    },
-    { request: evalSuiteSchema },
-  );
-  define(
-    "evals run",
-    "Run a suite with mocked tools and save a create-only result bundle",
-    "local",
-    "none",
-    true,
-    evalRunResultSchema,
-    async (c) =>
-      runEval(
-        c.request,
-        (command, request = {}, resourceID) =>
-          control(
-            c.home,
-            { command, request, ...(resourceID ? { resourceID } : {}) },
-            remainingTimeout(90000),
-          ),
-        c.dryRun,
-      ),
-    { request: evalRunSchema },
-  );
-}

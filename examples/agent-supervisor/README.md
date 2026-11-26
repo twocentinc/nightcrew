@@ -92,20 +92,18 @@ incident. The exporter rejects incomplete coverage before saving/checkpointing.
 
 ## Colocated evals
 
-`eval.json` supplies synthetic scenarios. `grade.ts` checks the resulting answer
-and trace; semantic criteria remain marked for review. `test.ts` tests the grader
-without loading a model.
+- `eval.json` is one saved eval definition; additional `eval-*.json` files are independent scenarios.
+- Install this agent and its model/capabilities first. Evals keep its real finish contract and run through the ordinary scheduler.
+- `grade.ts` checks the example's deterministic criteria; a passing check is not a general factual or semantic review.
+- `eval.ts` resolves the optional TypeScript grader to absolute paths. It does not run inference.
 
 ```sh
-node --experimental-strip-types --test examples/agent-supervisor/test.ts
-nightcrew evals validate --request examples/agent-supervisor/eval.json
-node --experimental-strip-types examples/agent-supervisor/eval.ts /tmp/agent-supervisor-eval > /tmp/agent-supervisor-request.json
-nightcrew evals run --request /tmp/agent-supervisor-request.json --dry-run
+node --experimental-strip-types examples/agent-supervisor/eval.ts > /tmp/eval.json
+nightcrew evals create --file /tmp/eval.json
+nightcrew evals list
+nightcrew evals run EVAL_ID --dry-run
 # Explicit real-model evaluation:
-nightcrew evals run --request /tmp/agent-supervisor-request.json
+nightcrew evals run EVAL_ID --wait
 ```
 
-The agent must be installed and its model must match Nightcrew's instant model.
-Use a fresh destination for each evaluation. The builder only creates a request;
-it does not install agents or run inference. See [the eval contract](../../docs/eval-format.md)
-for grading, snapshots, and the controlled loop's differences from production.
+Pass another fixture file to `eval.ts` to install a different scenario. Inspect the returned run ID with `runs get` and `runs transcript`. See [the eval contract](../../docs/eval-format.md).

@@ -126,6 +126,15 @@ export class CompactionRecovery {
               throw Error("Compactor request is too large; compact earlier");
             child = {
               ...parent,
+              ...(parent.evaluation
+                ? {
+                    evaluation: {
+                      ...structuredClone(parent.evaluation),
+                      initialMessages: 2,
+                      grade: { status: "ungraded" as const },
+                    },
+                  }
+                : {}),
               runID: pending.childRunID,
               revision: 1,
               createdAt: now(),

@@ -276,7 +276,7 @@ export class RequestBuilder {
           (m) => m.modelID === r.agent.modelID,
         )?.kind === "audio"
           ? undefined
-          : r.agent.contextMode === "persistent"
+          : !r.evaluation && r.agent.contextMode === "persistent"
             ? "agent-" +
               createHash("sha256").update(r.agent.agentID).digest("hex")
             : "run-" + r.runID,

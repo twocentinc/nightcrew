@@ -3,14 +3,9 @@ import { createReadStream } from "node:fs";
 import { realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
-import {
-  checkpoint,
-  executionSignal,
-  remainingTimeout,
-  runExecutable,
-} from "../execution/process.js";
-import { evalGraderSchema, evalGradeSchema, EvalSuite } from "./format.js";
-import { digest } from "./runner.js";
+import { checkpoint, runExecutable } from "../execution/process.js";
+import { graderExecSchema, gradeSchema } from "./format.js";
+import { fingerprint as digest } from "../../utils/json.js";
 
 export async function hashGraderFile(file: string) {
   const resolvedPath = await realpath(file),
@@ -24,7 +19,7 @@ export async function hashGraderFile(file: string) {
   }
   return { path: file, resolvedPath, sha256: hash.digest("hex") };
 }
-export async function snapshotGrader(grader: z.infer<typeof evalGraderSchema>) {
+export async function snapshotGrader(grader: z.infer<typeof graderExecSchema>) {
   const paths = new Set([grader.executablePath, ...grader.sourceFiles]);
   // Capture script arguments automatically; declared sourceFiles cover imports/data.
   for (const arg of grader.argv) {
@@ -36,157 +31,114 @@ export async function snapshotGrader(grader: z.infer<typeof evalGraderSchema>) {
   const snapshot = { ...grader, workingDirectory: process.cwd(), files };
   return { ...snapshot, identityHash: digest(snapshot) };
 }
-export function checkEvalAnswer(
-  c: EvalSuite["cases"][number],
-  answer: string,
-  counts: Record<string, number>,
-) {
-  return c.expectations.assertions.map((a) => {
-    let passed = false;
-    if (a.type === "finalContains") passed = answer.includes(a.text);
-    if (a.type === "finalNotContains") passed = !answer.includes(a.text);
-    if (a.type === "mockCallCount")
-      passed =
-        (counts[a.mockID] ?? 0) >= a.min && (counts[a.mockID] ?? 0) <= a.max;
-    if (a.type === "finalJSONSchema") {
-      try {
-        passed = z
-          .fromJSONSchema(a.schema)
-          .safeParse(JSON.parse(answer)).success;
-      } catch {}
-    }
-    return { assertionID: a.assertionID, passed };
-  });
-}
-export async function gradeCase({
-  record,
-  graders,
-  suite,
-  c,
-  snapshot,
-  answer,
-  counts,
-  save,
-}: {
-  record: Record<string, unknown>;
-  graders: Awaited<ReturnType<typeof snapshotGrader>>[];
-  suite: EvalSuite;
-  c: EvalSuite["cases"][number];
-  snapshot: unknown;
-  answer: string;
-  counts: Record<string, number>;
-  save: () => Promise<void>;
-}) {
-  const executionStatus = record.status;
-  if (graders.length) {
-    record.gradingComplete = false;
-    if (executionStatus === "passed") record.status = "needs_review";
-  }
-  await save();
-  const grades: Array<Record<string, unknown>> = [];
-  record.graders = grades;
-  const reviewed = new Map<string, string>();
-  let graderError = false,
-    graderFailed = false,
-    graderNeedsReview = false;
-  for (const grader of graders) {
-    try {
-      checkpoint();
-      for (const original of grader.files) {
-        const current = await hashGraderFile(original.path);
-        if (
-          current.sha256 !== original.sha256 ||
-          current.resolvedPath !== original.resolvedPath
-        )
-          throw Error("Grader changed after snapshot");
-      }
-      const input = JSON.stringify({
-        version: 1,
-        suiteID: suite.suiteID,
-        graderID: grader.graderID,
-        case: c,
-        snapshot,
-        result: { ...record, graders: undefined, status: executionStatus },
-      });
-      if (Buffer.byteLength(input) > 16 * 1024 * 1024)
-        throw Error("Grader input limit");
-      const output = await runExecutable({
-        executable: grader.executablePath,
-        argv: grader.argv,
-        input,
-        env: { PATH: process.env.PATH ?? "" },
-        timeoutMs: remainingTimeout(grader.timeoutMs),
-        signal: executionSignal(),
-        errors: {
-          timeout: "Grader timed out",
-          interrupted: "Grader interrupted",
-          limit: "Grader output limit",
-          failed: (code, signal) =>
-            "Grader process failed (exit " + code + ", signal " + signal + ")",
-        },
-      });
-      const grade = evalGradeSchema.parse(JSON.parse(output.toString("utf8")));
-      for (const check of grade.checks)
-        if (
-          check.criterionID &&
-          !c.expectations.criteria.some(
-            (x) => x.criterionID === check.criterionID,
-          )
-        )
-          throw Error("Unknown grader criterionID: " + check.criterionID);
-      for (const check of grade.checks) {
-        graderFailed ||= check.status === "failed";
-        graderNeedsReview ||= check.status === "needs_review";
-        if (check.criterionID) {
-          const old = reviewed.get(check.criterionID);
-          reviewed.set(
-            check.criterionID,
-            old === "failed" || check.status === "failed"
-              ? "failed"
-              : old === "needs_review" || check.status === "needs_review"
-                ? "needs_review"
-                : "passed",
-          );
-        }
-      }
-      grades.push({
-        graderID: grader.graderID,
-        identityHash: grader.identityHash,
-        status: "completed",
-        ...grade,
-      });
-    } catch (error) {
-      graderError = true;
-      grades.push({
-        graderID: grader.graderID,
-        identityHash: grader.identityHash,
+
+import type { Run } from "../../schemas/run.js";
+import { encodeRun } from "../../schemas/run.js";
+import { now } from "../../schemas/common.js";
+import { parseOutputJSON } from "../supervision.js";
+export async function gradeRun(run: Run): Promise<z.infer<typeof gradeSchema>> {
+  const evaluation = run.evaluation!;
+  const startedAt = now();
+  const finish = (
+    value: Omit<z.infer<typeof gradeSchema>, "startedAt" | "finishedAt">,
+  ) => ({ ...value, startedAt, finishedAt: now() });
+  if (run.state !== "completed")
+    return finish({
+      status: "failed",
+      reason: "Execution did not complete successfully",
+    });
+  const latestValidation = [...run.validations]
+    .reverse()
+    .find((v) => v.segment === run.segment);
+  if (latestValidation && latestValidation.status !== "passed")
+    return finish({
+      status: "failed",
+      reason: "Agent output validation failed",
+    });
+  const grader = evaluation.definition.grader;
+  if (!grader) return finish({ status: "ungraded" });
+  let result: unknown = run.result;
+  if (run.agent.finishSchema) {
+    const completed = [...run.events]
+      .reverse()
+      .find((e) => e.type === "completed" && e.segment === run.segment);
+    const messageID =
+      completed && "messageID" in completed.data
+        ? completed.data.messageID
+        : undefined;
+    const final = run.messages.find((m) => m.messageID === messageID);
+    if (!final)
+      return finish({
         status: "error",
-        error:
-          error instanceof Error
-            ? error.message.slice(0, 2000)
-            : "Grader failed",
+        reason: "Missing accepted finish result",
       });
+    result = parseOutputJSON(final.content);
+  }
+  let schema: z.infer<typeof gradeSchema>["schema"];
+  if (grader.schema) {
+    const parsed = z.fromJSONSchema(grader.schema).safeParse(result);
+    schema = {
+      passed: parsed.success,
+      issues: parsed.success
+        ? []
+        : parsed.error.issues
+            .slice(0, 100)
+            .map((i) => ({ path: i.path.join("."), message: i.message })),
+    };
+    if (!parsed.success)
+      return finish({
+        status: "failed",
+        schema,
+        reason: "Finish result does not satisfy the expected schema",
+      });
+  }
+  if (!grader.exec) return finish({ status: "passed", schema });
+  try {
+    const snapshot = evaluation.grader;
+    if (!snapshot) throw Error("Missing grader identity snapshot");
+    for (const original of snapshot.files) {
+      const current = await hashGraderFile(original.path);
+      if (
+        current.sha256 !== original.sha256 ||
+        current.resolvedPath !== original.resolvedPath
+      )
+        throw Error("Grader changed after run admission");
     }
-    await save();
+    const input = JSON.stringify({
+      eval: evaluation.definition,
+      run: encodeRun(run),
+      result,
+    });
+    if (Buffer.byteLength(input) > 64 * 1024 * 1024)
+      throw Error("Grader input exceeds 64 MB");
+    const output = await runExecutable({
+      executable: snapshot.executablePath,
+      argv: snapshot.argv,
+      cwd: snapshot.workingDirectory,
+      input,
+      env: { PATH: process.env.PATH ?? "" },
+      timeoutMs: snapshot.timeoutMs,
+      errors: {
+        timeout: "Grader timed out",
+        interrupted: "Grader interrupted",
+        limit: "Grader output limit",
+        failed: (code, signal) =>
+          `Grader failed (${code}, ${signal ?? "none"})`,
+      },
+    });
+    const exec = z
+      .strictObject({
+        passed: z.boolean(),
+        reason: z.string().min(1).max(8000),
+      })
+      .parse(JSON.parse(output.toString("utf8")));
+    return finish({ status: exec.passed ? "passed" : "failed", schema, exec });
+  } catch (error) {
+    return finish({
+      status: "error",
+      schema,
+      reason:
+        error instanceof Error ? error.message.slice(0, 8000) : "Grader failed",
+    });
   }
-  if (graders.length) record.gradingComplete = true;
-  record.criteria = c.expectations.criteria.map((criterion) => ({
-    ...criterion,
-    status: reviewed.get(criterion.criterionID) ?? "unreviewed",
-  }));
-  if (graderError) {
-    record.status = "error";
-    record.error ??= "grader_error";
-  } else if (executionStatus !== "error") {
-    const checks = checkEvalAnswer(c, answer, counts);
-    record.status =
-      checks.some((x) => !x.passed) || graderFailed
-        ? "failed"
-        : graderNeedsReview ||
-            c.expectations.criteria.some((x) => !reviewed.has(x.criterionID)) ||
-            (!checks.length && !grades.length)
-          ? "needs_review"
-          : "passed";
-  }
-  await save();
 }

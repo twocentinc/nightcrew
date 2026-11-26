@@ -133,13 +133,12 @@ test(
             await exec(process.execPath, [
               "--experimental-strip-types",
               path.join(example, "eval.ts"),
-              path.join(temp, folder + "-result"),
             ])
           ).stdout,
         );
-        assert.equal(request.suite.graders[0].executablePath, process.execPath);
+        assert.equal(request.grader.exec.executablePath, process.execPath);
         assert.equal(
-          request.suite.graders[0].argv[1],
+          request.grader.exec.argv[1],
           await realpath(path.join(example, "grade.ts")),
         );
         const grade = JSON.parse(
@@ -148,13 +147,12 @@ test(
             ["--experimental-strip-types", path.join(example, "grade.ts")],
             {
               input: JSON.stringify({
-                version: 1,
-                case: { caseID: "smoke", expectations: { criteria: [] } },
-                result: {
-                  answer: '{"summary":"Ready."}',
-                  status: "passed",
-                  messages: [],
-                },
+                eval: { evalID: "summarizer-budget-not-invented" },
+                run: { messages: [] },
+                result:
+                  folder === "summarizer"
+                    ? { summary: "Budget $50/day" }
+                    : "A review report.",
               }),
               encoding: "utf8",
               stdio: ["pipe", "pipe", "pipe"],
@@ -162,9 +160,7 @@ test(
             },
           ),
         );
-        assert.ok(
-          grade.checks.every((check?: any) => check.status === "passed"),
-        );
+        assert.equal(grade.passed, true);
         await exec(process.execPath, [
           "--experimental-strip-types",
           "--test",

@@ -5,7 +5,7 @@
 - Prioritize interactive requests; pause background work until the interaction cooldown expires.
 - Manage everything through a JSON-first CLI or the optional HTTP API.
 - Keep transcripts, configuration and caches in your runtime home, separate from this repository.
-- Current release: **0.42.0**, protocol **1**, schema **43**. See the [compatibility policy](docs/compatibility.md) before upgrading or changing public contracts.
+- Current release: **0.43.0**, protocol **1**, schema **44**. See the [compatibility policy](docs/compatibility.md) before upgrading or changing public contracts.
 
 ## Get started
 
@@ -228,7 +228,7 @@
 - `safe` permits retry without an ambiguous mutation; `unsafe` requires inspection first; `never` requires resolving the request or reported condition.
 - Ordinary finite commands default to 90 seconds, maximum five minutes. Durations accept `ms`, `s`, or `m`.
 - Waits default to 120 minutes and allow up to 1440 minutes; tails run until interrupted unless given a timeout.
-- `evals run` has a separate 120-minute overall maximum; individual cases retain their own execution limits.
+- `evals run ID` submits ordinary queued work; `--wait` observes completion and grading with the same deadline behavior as `agents run --wait`.
 - `status --doctor` checks configuration, references, dependencies and daemon readiness without loading models. It also works when the daemon is stopped.
 - Diagnostic success does not imply health: inspect the returned checks and `healthy` fields.
 - Exit codes: `0` success; `1` internal/result failure; `2` invalid input; `3` configuration/storage; `4` platform; `5` dependency; `6` deadline; `7` unavailable resource; `8` confirmation; `9` conflict.
@@ -237,7 +237,7 @@
 
 - Copy and customize [examples](examples/README.md), including [hello world](examples/hello-world), [summarizer](examples/summarizer), and [agent supervisor](examples/agent-supervisor).
 - Application-specific agents, tools and delivery scripts belong outside this repository.
-- Use `evals validate` and `evals run` with JSON requests; see the [eval format](docs/eval-format.md) for fixtures, mocks and executable TypeScript graders.
+- Use `evals create --file eval.json` and `evals run ID --wait`; edit fixtures with `evals tools` and `evals transcript`. Evals use regular runs, model selection, compaction and `finish`, with mocked tool results and optional schema-then-executable grading. See the [eval format](docs/eval-format.md).
 - `npm run lint` — strict type checks for source, tests and examples.
 - `npm test` — mocked runtime, example and contract tests; no production-model inference.
 - `npm run test:package` — pack, install and verify the CLI, exports and examples in a temporary directory.

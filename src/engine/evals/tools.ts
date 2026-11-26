@@ -1,38 +1,29 @@
 import { z } from "zod";
-import type { ChatInput, Message } from "../../schemas/common.js";
 import { canonical } from "../../utils/json.js";
-import type { EvalSuite } from "./format.js";
-
-export function dispatchMock(
-  call: Message["toolCalls"][number],
-  c: EvalSuite["cases"][number],
-  tools: ChatInput["tools"],
-  callIDs: Set<string>,
-  counts: Record<string, number>,
+import type { ToolDefinition } from "../../schemas/tool.js";
+import type { EvalDefinition } from "./format.js";
+export function overrideTool(
+  definition: ToolDefinition | undefined,
+  name: string,
+  args: string,
+  evaluation: EvalDefinition,
 ) {
-  if (callIDs.has(call.callID))
-    throw Error("fixture_mismatch: duplicate callID");
-  callIDs.add(call.callID);
-  const tool = (c.mocks.length ? tools : []).find((t) => t.name === call.name);
-  if (!tool) throw Error("fixture_mismatch: unavailable tool " + call.name);
-  let args;
+  const error = (message: string) => ({
+    ok: false,
+    error: { code: "eval_tool_mismatch", outcome: "not_started", message },
+  });
+  if (!definition) return error("Tool is not available to this agent");
+  let input: unknown;
   try {
-    args = JSON.parse(call.arguments);
-    z.fromJSONSchema(tool.parameters).parse(args);
+    input = JSON.parse(args);
+    z.fromJSONSchema(definition.parameters).parse(input);
   } catch {
-    throw Error("fixture_mismatch: invalid arguments");
+    return error("Tool arguments do not match its schema");
   }
-  const mock = c.mocks.find(
-    (m) => m.tool === call.name && canonical(m.arguments) === canonical(args),
-  );
-  if (!mock)
-    throw Error("fixture_mismatch: unmatched arguments for " + call.name);
-  const index = counts[mock.mockID] ?? 0;
-  const response =
-    mock.responses[index] ??
-    (mock.afterExhausted === "repeatLast" ? mock.responses.at(-1) : undefined);
-  if (!response) throw Error("fixture_mismatch: exhausted " + mock.mockID);
-  counts[mock.mockID] = index + 1;
-
-  return response;
+  const rules = evaluation.tools.filter((t) => t.tool === name);
+  const rule =
+    rules.find(
+      (t) => t.input !== undefined && canonical(t.input) === canonical(input),
+    ) ?? rules.find((t) => t.input === undefined);
+  return rule ? rule.output : error("No eval response matches this tool input");
 }

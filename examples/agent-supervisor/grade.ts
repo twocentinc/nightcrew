@@ -1,32 +1,19 @@
 import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
-export type Check = {
-  checkID: string;
-  status: "passed" | "failed" | "needs_review";
-  reason: string;
-  criterionID?: string;
-};
 export type Input = {
-  version: 1;
-  case: {
-    caseID: string;
-    expectations: {
-      criteria: Array<{ criterionID: string; description: string }>;
-    };
-  };
-  result: {
-    answer: string;
-    status: string;
-    messages: Array<{ role: string; content: string }>;
-  };
+  result: unknown;
+  run: { messages: Array<{ role: string; content: string }> };
 };
-export function grade(input: Input): { checks: Check[] } {
-  const answer = input.result.answer;
+export function grade(input: Input) {
+  const answer =
+    typeof input.result === "string"
+      ? input.result
+      : String((input.result as { report?: string })?.report ?? "");
   const issues = new Map<
     string,
     { runID: string; execution: string; output: string; delivery: string }
   >();
-  for (const message of input.result.messages) {
+  for (const message of input.run.messages) {
     if (message.role !== "tool") continue;
     try {
       const value = JSON.parse(message.content);
@@ -38,7 +25,7 @@ export function grade(input: Input): { checks: Check[] } {
       /* Plain-text fixture responses are allowed. */
     }
   }
-  const checks: Check[] = [];
+  const checks: Array<{ checkID: string; status: string; reason: string }> = [];
   const parts = answer
     .replace(/```[\s\S]*?```/g, "")
     .split(/^###\s+(.+?)\s*$/m);
@@ -74,16 +61,12 @@ export function grade(input: Input): { checks: Check[] } {
       status: answer.trim() ? "passed" : "failed",
       reason: "The agent must produce a report.",
     });
-  for (const criterion of input.case.expectations.criteria)
-    checks.push({
-      checkID: criterion.criterionID,
-      criterionID: criterion.criterionID,
-      status: "needs_review",
-      reason:
-        "Requires semantic review of the trace and report: " +
-        criterion.description,
-    });
-  return { checks };
+  return {
+    passed: checks.every((c) => c.status === "passed"),
+    reason:
+      checks.map((c) => c.reason).join("; ") +
+      ". Checks cover status reporting, not causal accuracy.",
+  };
 }
 if (
   process.argv[1] &&

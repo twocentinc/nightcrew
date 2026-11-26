@@ -1,3 +1,4 @@
+import type { EvalDefinition } from "./evals/format.js";
 import { type Agent } from "../schemas/agent.js";
 import { type ChatInput, type UserMessage } from "../schemas/common.js";
 import { type Config } from "../schemas/config.js";
@@ -173,6 +174,9 @@ export class Service {
       runs,
     });
   }
+  submitEval(definition: EvalDefinition, revision: number, dryRun = false) {
+    return this.runs.submitEval(definition, revision, dryRun);
+  }
   get skills() {
     return this.registry.skills;
   }
@@ -330,11 +334,8 @@ export class Service {
   chatDetail(c: Chat) {
     return this.instant.chatDetail(c);
   }
-  submitChat(
-    request: ChatInput,
-    evalOptions?: { sampling?: Agent["sampling"] },
-  ) {
-    return this.instant.submitChat(request, evalOptions);
+  submitChat(request: ChatInput) {
+    return this.instant.submitChat(request);
   }
   unloadInstant(dryRun = false) {
     return this.instant.unloadInstant(dryRun);
@@ -368,6 +369,14 @@ export class Service {
         await this.records.recoverInterrupted();
       });
       for (const a of this.storage.store.agents) this.validateAgent(a);
+      for (const summary of this.storage.summaries.values()) {
+        const r = await this.records.run(summary.runID);
+        if (
+          r.evaluation?.grade.status === "pending" &&
+          ["completed", "failed", "cancelled", "timedOut"].includes(r.state)
+        )
+          this.hooks.scheduleHooks(r);
+      }
       await this.dispatch.start();
     } catch (e) {
       await this.storage.close();

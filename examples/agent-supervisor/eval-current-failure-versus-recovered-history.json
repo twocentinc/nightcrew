@@ -1,0 +1,145 @@
+{
+  "evalID": "agent-supervisor-current-failure-versus-recovered-history",
+  "agentID": "agent-supervisor",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Review the supplied snapshot. Address every priority incident with its canonical statuses. Distinguish a recovered compactor child from current output/delivery failures. Take no action."
+    }
+  ],
+  "tools": [
+    {
+      "tool": "load_skills",
+      "input": {
+        "skillIDs": [
+          "agent-supervisor"
+        ]
+      },
+      "output": {
+        "skills": [
+          {
+            "skillID": "agent-supervisor",
+            "name": "agent supervisor",
+            "description": "Inspect synthetic run metrics",
+            "instructions": "Use nightcrew_inspect overview, then each page through nextPage=null. Optionally inspect a concerning run. Cite exact run IDs and measured metrics. Repeated calls are not necessarily bugs; completed does not establish output correctness. Never mutate anything. For every coverage.priorityIssues item, include ### RUN_ID followed by exact Execution: VALUE, Output: VALUE, Delivery: VALUE lines, then Assessment: explanation and Next action: recommendation.",
+            "files": []
+          }
+        ],
+        "files": []
+      }
+    },
+    {
+      "tool": "nightcrew_inspect",
+      "input": {
+        "action": "overview"
+      },
+      "output": {
+        "capturedAt": "2026-11-12T00:00:20Z",
+        "previousReport": null,
+        "firstReview": true,
+        "totalRuns": 3,
+        "totalPages": 1,
+        "unreadableRuns": 0,
+        "omittedRuns": 0,
+        "scope": "Synthetic metrics only, not a factual audit.",
+        "nextPage": 0,
+        "coverage": {
+          "priorityIssues": [
+            {
+              "runID": "run-invalid",
+              "execution": "completed",
+              "output": "failed",
+              "delivery": "failed"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tool": "nightcrew_inspect",
+      "input": {
+        "action": "page",
+        "page": 0
+      },
+      "output": {
+        "page": 0,
+        "items": [
+          {
+            "runID": "run-invalid",
+            "execution": "completed",
+            "output": "failed",
+            "delivery": "failed",
+            "agentID": "worker",
+            "state": "completed",
+            "validationFailures": 1,
+            "hookFailures": 1,
+            "errorCode": null
+          },
+          {
+            "runID": "recovered-child",
+            "parentRunID": "recovered-parent",
+            "state": "failed",
+            "execution": "failed",
+            "output": "unknown",
+            "delivery": "not_required",
+            "currentProblem": false,
+            "recoveryEvidence": "Parent has a committed replacement compaction and completed successfully."
+          },
+          {
+            "runID": "recovered-parent",
+            "state": "completed",
+            "execution": "completed",
+            "output": "valid",
+            "delivery": "not_required",
+            "compactions": 1
+          }
+        ],
+        "nextPage": null,
+        "complete": true,
+        "coverage": {
+          "priorityIssues": [
+            {
+              "runID": "run-invalid",
+              "execution": "completed",
+              "output": "failed",
+              "delivery": "failed"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "tool": "nightcrew_inspect",
+      "input": {
+        "action": "run",
+        "runID": "run-invalid"
+      },
+      "output": {
+        "runID": "run-invalid",
+        "execution": "completed",
+        "output": "failed",
+        "delivery": "failed",
+        "state": "completed",
+        "coverage": {
+          "priorityIssues": [
+            {
+              "runID": "run-invalid",
+              "execution": "completed",
+              "output": "failed",
+              "delivery": "failed"
+            }
+          ]
+        },
+        "validationFailures": 1,
+        "hookFailures": 1,
+        "failures": [
+          {
+            "type": "output_validation",
+            "message": "Required report section missing."
+          }
+        ],
+        "caveat": "Generation completed, but the report failed validation and export."
+      }
+    }
+  ]
+}

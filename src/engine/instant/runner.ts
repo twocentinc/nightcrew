@@ -36,38 +36,6 @@ export class InstantRunner {
       Math.max(1, c.deadline - Date.now()),
     );
     try {
-      if (c.evalOptions) {
-        const input = {
-          ...c.input,
-          slotID,
-          persistContext: false,
-          sampling: c.evalOptions.sampling,
-          thinking: [...c.input.messages]
-            .reverse()
-            .find((m) => m.role === "user")?.thinking,
-        };
-        if (!this.ports.dependencies.runtime.countTokens)
-          throw Error("context_count_unavailable");
-        const tokens = await this.ports.dependencies.runtime.countTokens(
-          input,
-          controller.signal,
-        );
-        const slot = executionSlots(
-          this.ports.dependencies.storage.store.config,
-        ).find((s) => s.slotID === slotID)!;
-        if (tokens + input.maxOutputTokens > slot.contextTokens)
-          throw Error("context_full");
-        c.result = await this.ports.dependencies.runtime.generate(
-          input,
-          controller.signal,
-          this.ports.dependencies.inference.deltas(c.requestID),
-        );
-        controller.signal.throwIfAborted();
-        if (Buffer.byteLength(JSON.stringify(c.result)) > 1024 * 1024)
-          throw Error("output_limit");
-        finishedState = "completed";
-        return;
-      }
       const tool = this.ports.dependencies.registry.tools.get("load_skills")!;
       const messages = withSkillCatalog(
         structuredClone(c.input.messages),
@@ -156,20 +124,9 @@ export class InstantRunner {
           ? "timedOut"
           : "cancelled"
         : "failed";
-      const evalCode =
-        c.evalOptions && error instanceof Error
-          ? (
-              {
-                context_full: "context_full",
-                context_count_unavailable: "context_count_unavailable",
-                "Incomplete generation": "output_incomplete",
-                output_limit: "output_limit",
-              } as Record<string, string>
-            )[error.message]
-          : undefined;
       c.error = {
-        code: evalCode ?? finishedState,
-        message: evalCode ?? "Inference did not complete",
+        code: finishedState,
+        message: "Inference did not complete",
       };
     } finally {
       clearTimeout(timeout);

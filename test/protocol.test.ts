@@ -136,11 +136,12 @@ test("diagnostics report missing configuration without creating a runtime home",
   }
 });
 
-test("eval CLI deadline accommodates suites while ordinary command limits remain bounded", async () => {
+test("eval submission uses ordinary deadlines and optional wait", async () => {
   const { parseCLI } = await import("../dist/cli.js");
-  assert.equal(parseCLI(["evals", "run"]).timeoutMs, 7200000);
+  assert.equal(parseCLI(["evals", "run", "sample"]).timeoutMs, 90000);
   assert.equal(
-    parseCLI(["evals", "run", "--timeout", "120m"]).timeoutMs,
+    parseCLI(["evals", "run", "sample", "--wait", "--timeout", "120m"])
+      .timeoutMs,
     7200000,
   );
   assert.equal(parseCLI(["agents", "list"]).timeoutMs, 90000);
@@ -149,7 +150,7 @@ test("eval CLI deadline accommodates suites while ordinary command limits remain
     /Timeout/,
   );
   assert.throws(
-    () => parseCLI(["evals", "run", "--timeout", "121m"]),
+    () => parseCLI(["evals", "run", "sample", "--timeout", "6m"]),
     /Timeout/,
   );
 });

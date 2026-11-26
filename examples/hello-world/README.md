@@ -32,16 +32,20 @@ send `turn.json` again to exercise fallback. The override does not edit the agen
 The UUIDs in the sample files are placeholders; submitting them repeatedly tests
 deduplication rather than starting fresh turns.
 
-## Model eval
+## Colocated evals
 
-The colocated eval checks that the installed agent produces exactly `Hello world!`.
-It uses the instant model and does not execute tools or delivery hooks.
+- `eval.json` is one saved eval definition; additional `eval-*.json` files are independent scenarios.
+- Install this agent and its model/capabilities first. Evals keep its real finish contract and run through the ordinary scheduler.
+- `grade.ts` checks the example's deterministic criteria; a passing check is not a general factual or semantic review.
+- `eval.ts` resolves the optional TypeScript grader to absolute paths. It does not run inference.
 
 ```sh
-node --experimental-strip-types examples/hello-world/eval.ts /tmp/hello-world-eval > /tmp/hello-world-request.json
-nightcrew evals run --request /tmp/hello-world-request.json --dry-run
-nightcrew evals run --request /tmp/hello-world-request.json
+node --experimental-strip-types examples/hello-world/eval.ts > /tmp/eval.json
+nightcrew evals create --file /tmp/eval.json
+nightcrew evals list
+nightcrew evals run EVAL_ID --dry-run
+# Explicit real-model evaluation:
+nightcrew evals run EVAL_ID --wait
 ```
 
-Use a fresh result directory for each evaluation. `grade.ts` rejects extra text;
-`test.ts` checks the configuration and grader without inference.
+Pass another fixture file to `eval.ts` to install a different scenario. Inspect the returned run ID with `runs get` and `runs transcript`. See [the eval contract](../../docs/eval-format.md).

@@ -37,10 +37,7 @@ export const operationRouter = Object.fromEntries(
 ) as { [K in keyof typeof operations]: (typeof operations)[K]["procedure"] };
 export const httpOperationRouter = Object.fromEntries(
   operationDefinitions
-    .filter(
-      (d) =>
-        !d.localOnly && !["evals sample", "evals release"].includes(d.name),
-    )
+    .filter((d) => !d.localOnly)
     .map((d) => [d.name, d.procedure]),
 );
 export type ManagementRouter = typeof operationRouter;

@@ -22,4 +22,4 @@ by another agent's compaction handler without adding a recurring trigger.
 ## Eval fixtures
 
 [Converted regression evals](evals/README.md) exercise summarizer and supervisor
-answers through the mocked eval CLI.
+answers through ordinary runs with eval tool overrides.

@@ -1,15 +1,7 @@
 # Agent evals
 
-Eval fixtures and TypeScript graders live alongside their agents:
-
-- [Summarizer](../summarizer/README.md): preserve confirmed facts and timestamps.
-- [Agent supervisor](../agent-supervisor/README.md): distinguish historical failures
-  from current problems and cover priority incidents.
-
-Each directory contains `eval.json`, `eval.ts`, `grade.ts`, and `test.ts`.
-The supervisor also keeps deterministic inspector/exporter tests in `inspect.test.ts`.
-Core eval runner tests stay in `test/evals.test.ts`.
-
-The model sees synthetic fixtures; executable tools are intercepted. Graders run
-after each case and leave semantic judgments marked for review. See the
-[eval format](../../docs/eval-format.md) for the protocol and runtime limitations.
+- Example-specific eval definitions, TypeScript graders and grader tests live beside each agent: [hello world](../hello-world/README.md), [summarizer](../summarizer/README.md), [supervisor](../agent-supervisor/README.md).
+- Each JSON definition represents one ordinary run with mocked tool results and optional grading. Extra scenarios use separate `eval-*.json` files.
+- `eval.ts` prints a portable fixture with its grader executable paths resolved for this installation; create it with `evals create --file`.
+- Generic eval engine/CLI tests remain in `test/evals.test.ts`. These use a fake runtime and do not load a model.
+- See [the eval format](../../docs/eval-format.md) for schemas, commands, grading order and executable protocol.

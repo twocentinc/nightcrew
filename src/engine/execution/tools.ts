@@ -1,3 +1,4 @@
+import { overrideTool } from "../evals/tools.js";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { type Message } from "../../schemas/common.js";
@@ -40,6 +41,8 @@ export class ToolExecution {
       this.ports.registry.tools.has(name)
         ? this.ports.registry.runTools(r).find((t) => t.toolID === name)
         : undefined;
+    if (r.evaluation)
+      return overrideTool(definition, name, args, r.evaluation.definition);
     return executeModelTool(definition, args, signal, {
       home: this.ports.storage.home,
       agentID: r.agent.agentID,
@@ -171,7 +174,10 @@ export class ToolExecution {
         const m: Message = {
           messageID: randomUUID(),
           role: "tool",
-          content: JSON.stringify(output),
+          content:
+            r.evaluation && typeof output === "string"
+              ? output
+              : JSON.stringify(output),
           attachments: [],
           toolCalls: [],
           toolCallID: call.callID,

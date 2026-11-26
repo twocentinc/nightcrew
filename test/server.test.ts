@@ -1033,26 +1033,14 @@ test("management HTTP and CLI share every oRPC operation contract", async (t) =>
   const { getCommand } = await import("../dist/utils/commands/registry.js");
   for (const op of operationDefinitions) {
     const command = getCommand(op.name);
-    if (["evals sample", "evals release"].includes(op.name)) {
-      assert.equal(command, undefined);
-      assert.equal(
-        Boolean(
-          f.app.document.paths[
-            "/v1/operations/" + op.name.replaceAll(" ", "/")
-          ],
-        ),
-        false,
-      );
-      continue;
-    }
     assert.equal(command!.request, op.request, op.name);
-    if (["agents run", "instant create"].includes(op.name)) {
+    if (["agents run", "evals run", "instant create"].includes(op.name)) {
       const options = Reflect.get(command!.result, "options");
       assert.ok(Array.isArray(options));
       assert.ok(options.includes(op.result));
       assert.ok(
         options.includes(
-          getCommand(op.name === "agents run" ? "runs get" : "instant get")!
+          getCommand(op.name === "instant create" ? "instant get" : "runs get")!
             .result,
         ),
       );
@@ -1065,10 +1053,7 @@ test("management HTTP and CLI share every oRPC operation contract", async (t) =>
       .filter((p) => p.startsWith("/v1/operations/"))
       .sort(),
     operationDefinitions
-      .filter(
-        (op) =>
-          !op.localOnly && !["evals sample", "evals release"].includes(op.name),
-      )
+      .filter((op) => !op.localOnly)
       .map((op) => "/v1/operations/" + op.name.replaceAll(" ", "/"))
       .sort(),
     "OpenAPI must expose exactly the public shared operations",
@@ -2083,4 +2068,70 @@ test("instant HTTP delete discards a result and removed operations stay absent",
     "/v1/chat/requests/{requestID}/cancel",
   ])
     assert.equal(schema.paths[route], undefined);
+});
+
+test("HTTP eval definitions create ordinary runs and expose completed grading", async (t) => {
+  const f = await fixture(t);
+  const route = "/v1/operations/evals/";
+  const definition = {
+    evalID: "http-eval",
+    agentID: "researcher",
+    messages: [{ role: "user", content: "hello" }],
+    grader: { schema: { type: "string", const: "done" } },
+  };
+  assert.equal(
+    (
+      await f.request(
+        "POST",
+        route + "create",
+        { request: { eval: definition } },
+        false,
+      )
+    ).status,
+    401,
+  );
+  const created = await f.request("POST", route + "create", {
+    request: { eval: definition },
+  });
+  assert.equal(created.status, 200);
+  assert.ok(created.body.item.definition.messages[0].messageID);
+  const submit = await f.request("POST", route + "run", {
+    resourceID: "http-eval",
+    request: {},
+  });
+  assert.equal(submit.status, 200);
+  f.state.away = true;
+  let completed: any;
+  for (let i = 0; i < 500; i++) {
+    const result = await f.request("POST", "/v1/operations/runs/get", {
+      resourceID: submit.body.runID,
+      request: {},
+    });
+    if (result.body.run.evaluation.grade.status === "passed") {
+      completed = result.body.run;
+      break;
+    }
+    await delay(10);
+  }
+  assert.equal(completed?.execution.state, "completed");
+  assert.equal(completed?.evaluation.definition.evalID, "http-eval");
+  assert.equal(
+    (
+      await f.request("POST", route + "delete", {
+        resourceID: "http-eval",
+        request: {},
+        yes: true,
+      })
+    ).status,
+    200,
+  );
+  assert.equal(
+    (
+      await f.request("POST", "/v1/operations/runs/get", {
+        resourceID: submit.body.runID,
+        request: {},
+      })
+    ).status,
+    200,
+  );
 });

@@ -130,6 +130,7 @@ export function spawnOwned(
   argv: string[],
   options: {
     env: NodeJS.ProcessEnv;
+    cwd?: string;
     stdin?: "pipe" | "ignore";
     stdout?: "pipe" | "ignore";
     extraInputs?: string[];
@@ -141,6 +142,7 @@ export function spawnOwned(
     ["-e", ownedProcessGuard, executable, ...argv],
     {
       detached: true,
+      cwd: options.cwd,
       env: { ...options.env, NIGHTCREW_OWNER_FD: String(3 + extras.length) },
       stdio: [
         options.stdin ?? "pipe",
@@ -161,6 +163,7 @@ export function spawnOwned(
 
 export async function runExecutable(options: {
   executable: string;
+  cwd?: string;
   argv?: string[];
   env: NodeJS.ProcessEnv;
   input: string;
@@ -181,6 +184,7 @@ export async function runExecutable(options: {
   return new Promise((resolve, reject) => {
     const child = spawnOwned(options.executable, options.argv ?? [], {
       env: options.env,
+      cwd: options.cwd,
       extraInputs: options.extraInputs,
       stdout: options.discardOutput ? "ignore" : "pipe",
     });

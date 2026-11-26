@@ -203,6 +203,11 @@ export class RunTriggers {
         )
           continue;
         const r = await this.ports.dependencies.records.run(summary.runID);
+        if (
+          r.evaluation &&
+          ["pending", "running"].includes(r.evaluation.grade.status)
+        )
+          continue;
         const index = r.pendingInputs.findIndex((p) => !p.cancelled);
         if (index < 0) continue;
         const [pending] = r.pendingInputs.splice(index, 1);
@@ -210,8 +215,10 @@ export class RunTriggers {
         if (pending!.skills) r.skills = pending!.skills;
         if (pending!.tools) r.toolSnapshots = pending!.tools;
         r.interactive =
+          !r.evaluation &&
           pending!.source?.admission !== "timer" &&
           this.ports.dependencies.dispatch.instantSlot(r.agent.slotID);
+        if (r.evaluation) r.evaluation.grade = { status: "pending" };
         r.deliveryExpected = false;
         r.segment++;
         r.activeMs = 0;

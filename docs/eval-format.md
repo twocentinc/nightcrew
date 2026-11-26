@@ -1,344 +1,115 @@
-# Eval format v1
+# Evals
 
-Executable graders added in Nightcrew 0.39.0 (schema 40). `src/engine/evals/format.ts` owns validation; `runner.ts`, `tools.ts` and
-`results.ts` own suite execution, mock dispatch and grading.
+- An eval is an ordinary Nightcrew run with a saved starting transcript, substituted tool responses, and optional grading.
+- The agent's configured model, system prompt, `finishSchema`, output validation, tool loop, output continuation, scheduler, timeouts, interruption recovery, and compaction remain in use. No instant model is required.
+- Each invocation creates a separate run, including for persistent agents. Eval caches do not overwrite the persistent agent cache.
+- The eval definition and revision are snapshotted in `run.evaluation`. Later edits affect new runs only.
+- Ordinary tool calls (including `load_skills`) use only the eval's responses. Unmatched/invalid calls return ordinary tool errors; they never execute a production tool. The runtime-owned `finish` tool cannot be mocked.
+- Production lifecycle/delivery hooks are suppressed. Compaction handlers and agent output validators still run normally. An executable grader is an explicitly trusted program with the daemon user's permissions, not a sandbox.
 
-An eval suite supplies an agent with initial context, substitutes deterministic
-responses for every tool, and records expectations separately from model-visible
-input. The same loop supports tool-free summarization and multi-step agents.
-The CLI exposes `evals validate` and `evals run`; protocol schema 29 adds
-shared daemon sampling and release operations.
-
-## Document structure
-
-| Field                    | Meaning                                                                               |
-| ------------------------ | ------------------------------------------------------------------------------------- |
-| `format`                 | Literal `nightcrew.eval`                                                              |
-| `version`                | Eval document version, initially `1`                                                  |
-| `suiteID`                | Stable suite identifier                                                               |
-| `description`            | Human-facing purpose, not injected into context                                       |
-| `agent.agentID`          | Installed agent to evaluate                                                           |
-| `agent.expectedRevision` | Optional guard against testing an unintended revision                                 |
-| `overrides.systemPrompt` | Optional complete prompt replacement for a candidate; never edits the installed agent |
-| `limits.maxToolCalls`    | Finite call budget, including failed calls and skill loads                            |
-| `limits.maxOutputTokens` | Per-generation output limit                                                           |
-| `limits.timeoutMs`       | Finite active test runtime budget                                                     |
-| `cases`                  | Nonempty collection of independent cases                                              |
-
-Agent model, sampling, prompt, mode, and effective tool schemas are resolved and
-snapshotted at run admission. Different candidates run against the same suite;
-candidate overrides are recorded with the results. No unrestricted spread of
-configuration overrides in v1. All state resets between cases. Run the suite again for independent repetitions.
-
-Each case has `caseID`, optional description, `context.messages`, `mocks`, and
-`expectations`. Context is ordered input, not hidden setup prose: every piece of
-information the agent is supposed to use must appear there, in its snapshotted
-prompt, or in a tool response. Objectives and expected answers are not silently
-appended from the evaluator's metadata.
-
-Reuse the semantic fields of `messageSchema` from `src/schemas/common.ts` for context
-messages: role, content, attachments, tool calls, and tool-call linkage. The
-authoring form may omit generated message IDs and empty arrays. Validate tool
-history as complete linked exchanges, rather than allowing orphan tool results.
-Case-level system messages are excluded in v1; candidate system prompt changes
-belong in `overrides`. A tool-free case has no mocked calls and exposes no tools.
-
-## Mock rules
-
-Each rule has:
-
-- `mockID`: unique within the case, also used by call-count assertions.
-- `tool`: the model-visible function name.
-- `arguments`: exact parsed JSON object expected from the model.
-- `responses`: nonempty ordered list of outcomes for this argument match.
-- `afterExhausted`: `fail` or `repeatLast`; default `fail`.
-
-Match tool name and deep JSON equality after validating arguments against the
-snapshotted tool schema. Object key order does not matter; array order does.
-Absent fields differ from explicit null. Do not silently remove extra fields,
-insert defaults, coerce types, or ignore a malformed arguments string. Duplicate
-rules for the same tool/arguments are invalid; use a response sequence instead.
-
-Rules are independently matchable: their array order does not impose a global
-tool-call order. Each matching call consumes the next response from its rule.
-This supports a first-call error followed by success without preventing valid
-alternative exploration orders. Process calls in model-emitted order, serially
-for v1, so response counters do not depend on wall-clock races.
-
-An outcome is either:
-
-- `{ "type": "result", "content": "exact model-visible tool text" }`
-- `{ "type": "error", "message": "synthetic tool failure" }`
-
-`result.content` is a string because tools can return JSON, plain text, or
-Markdown. JSON-producing fixtures contain the serialized JSON that the model
-would actually see. This avoids inventing a universal domain-output wrapper.
-A successful tool returning a domain error inside its JSON is still a `result`;
-`error` represents executor failure and uses the normal runtime error formatting.
-Expected errors are delivered to the model and can be recovered from.
-
-An unknown tool, unmatched arguments, malformed arguments, or exhausted rule is
-a recorded fixture mismatch and ends that attempt. It never calls a real tool
-or supplies fabricated success. Distinguish fixture mismatch from a completed
-answer that failed a content expectation. For intentional retry tests, provide
-the expected error in `responses` rather than relying on fixture mismatch.
-
-## Skills and other runtime inputs
-
-Snapshot the effective tool names, descriptions, and parameter schemas using
-the existing model-visible function-tool contract. Mock rules do not carry tool
-executable paths or argv. Configured model tools and lifecycle hooks never execute;
-only explicitly configured evaluator graders may execute after a case.
-This interception includes built-ins such as `load_skills`, `runs_list`, and
-`runs_transcript`. A case for an agent that loads skills needs matching
-`load_skills` responses containing the intended skill text and reference content.
-Installed skill names and descriptions are snapshotted for the catalog. Skill
-instructions must come from mock responses; production transcripts are not read.
-
-V1 runs fresh cases with compaction disabled. If a case exceeds the model's
-context budget, report that explicitly. Compaction endurance should be a later
-explicit capability, with its child-agent configuration and outputs captured,
-rather than a hidden extra model affecting a basic answer-quality comparison.
-
-## Expectations
-
-Expectations are evaluator-only data and are never sent to the tested agent.
-Keep deterministic assertions separate from semantic review criteria.
-
-Deterministic v1 assertion kinds:
-
-- `finalContains`: literal substring in the final answer.
-- `finalNotContains`: literal substring absent from the final answer.
-- `finalJSONSchema`: final answer is JSON satisfying the supplied schema.
-- `mockCallCount`: a named mock was consumed between `min` and `max` times.
-
-Each assertion has an `assertionID`. Literal assertions are case-sensitive;
-they check text occurrence, not meaning. In particular, do not use absence of
-the word "completed" to infer absence of a false completion claim.
-
-Semantic criteria have `criterionID`, `description`, and `severity` (`critical`
-or `normal`). Criteria remain `unreviewed` unless an executable grader returns an explicit criterion verdict; there is no manual review-writing command.
-Manual review should identify the reviewer and cite evidence alongside the bundle. A future
-judge model must be an explicit, snapshotted reviewer and its findings must stay
-distinguishable from deterministic checks. Unreviewed criteria never become an
-overall pass. Reviewers must see the relevant context and tool trace as well as
-the final answer, while treating all of it as data.
-
-For Loose Threads, a semantic criterion might be: "Do not report Bob's task as
-unresolved: message m-203 explicitly completes it." A call-count assertion can
-separately verify that the agent actually requested the page containing m-203.
-
-## Illustrative case fragment
-
-This is a fragment, not a runnable suite: a complete Loose Threads case also
-needs the skill-loading and overview fixtures, with the real reader's output
-shape. Its page-call arguments below match the installed `discord_activity`
-tool contract; the short result text is deliberately synthetic.
+## Definition
 
 ```json
 {
-  "caseID": "resolution-on-later-page",
-  "context": {
-    "messages": [
-      {
-        "role": "user",
-        "content": "Find unresolved commitments in the supplied conversations."
-      }
-    ]
-  },
-  "mocks": [
+  "evalID": "record-answer",
+  "agentID": "researcher",
+  "overrides": { "modelID": "qwen-9b", "thinking": true },
+  "messages": [
+    { "role": "user", "content": "Read record 42 and report its status." }
+  ],
+  "tools": [
+    { "tool": "read_record", "output": { "error": "not found" } },
     {
-      "mockID": "first-page",
-      "tool": "discord_activity",
-      "arguments": { "action": "page", "page": 0 },
-      "responses": [
-        {
-          "type": "result",
-          "content": "m-101 Alice: I will send the draft.\nm-102 Bob: I will fix the link.\nnextPage: 1"
-        }
-      ],
-      "afterExhausted": "repeatLast"
-    },
-    {
-      "mockID": "resolution-page",
-      "tool": "discord_activity",
-      "arguments": { "action": "page", "page": 1 },
-      "responses": [
-        {
-          "type": "result",
-          "content": "m-203 Bob: The link is fixed and verified.\nnextPage: null"
-        }
-      ],
-      "afterExhausted": "repeatLast"
+      "tool": "read_record",
+      "input": { "id": 42 },
+      "output": { "status": "ready" }
     }
   ],
-  "expectations": {
-    "assertions": [
-      {
-        "assertionID": "read-resolution",
-        "type": "mockCallCount",
-        "mockID": "resolution-page",
-        "min": 1,
-        "max": 1
-      }
-    ],
-    "criteria": [
-      {
-        "criterionID": "alice-open",
-        "description": "Report Alice's draft as unresolved within the supplied window, citing m-101.",
-        "severity": "normal"
-      },
-      {
-        "criterionID": "bob-resolved",
-        "description": "Do not report Bob's link task as open; m-203 resolves m-102.",
-        "severity": "critical"
-      }
-    ]
+  "grader": {
+    "schema": {
+      "type": "object",
+      "properties": { "status": { "const": "ready" } },
+      "required": ["status"]
+    }
   }
 }
 ```
 
-`repeatLast` makes a reread return the same data, while the call-count assertion
-can still flag unnecessary repetition. For a transient-error case, the same
-rule can instead contain an `error` followed by a `result`.
+- `evalID` and `agentID` are required. Definitions are stored as `{revision, definition}` in `~/.nightcrew/evals/<evalID>.json` (or the selected home).
+- Optional `overrides`: `modelID`, `systemPrompt`, `thinking`, `temperature`, `sampling`, `maxOutputTokens`, `maxToolCalls`, `timeoutMs`. Omitted fields retain agent settings. Changing model selects an automatic slot when the agent's fixed slot belongs to another model.
+- Overrides cannot replace `finishSchema`, output validation, or configured tools/skills. The eval tests those real contracts.
+- `messages` defaults to `[]`; at least one user message is required to run. Roles are `user`, `assistant`, `tool`. The agent supplies the system message. Message UUIDs can be omitted during authoring; Nightcrew assigns them. Each run gets fresh message UUIDs.
+- Messages support ordinary `thinking`, `reasoningContent`, `attachments`, `toolCalls`, and `toolCallID` fields. Tool calls retain their call IDs for pairing. Only user messages carry attachments; only assistants call tools. Tool results must follow their calls. An unfinished tool exchange may appear only at the end and resumes through the normal tool loop. A seeded `finish` call must already have its result; it cannot complete the new eval without model generation.
+- A seeded assistant answer is context, not the new run's final answer. Historical tool calls still contribute to the ordinary conversation's loop/tool budget checks.
+- `tools` defaults to `[]`. A rule with `input` matches exact JSON structure (object key order is irrelevant; array order matters). Omitting `input` supplies the fallback for that tool. Exact matches win. Duplicate matches are rejected. `output` can be any JSON value up to 1 MB; strings are returned verbatim, other values are JSON-encoded. To simulate errors, supply the tool's normal error-shaped output.
+- `grader` can be omitted or `null` for no grading. Expected schemas and executable details are never added to model context or supplied as repair feedback.
 
-## Run artifacts, separate from input documents
+## Grading
 
-A result bundle records suite and resolved-agent hashes, effective prompt/model/
-sampling/limits, mock outcomes consumed, complete model/tool trace, final answer,
-stop reason, tokens and timing, deterministic check results, and semantic reviews.
-Fixture errors, context overflow, timeout, output truncation, and answer failures
-remain distinct outcomes. Persist the exact inputs needed to reproduce a run.
-Model inference can vary even with identical fixtures; comparisons should retain
-individual repetitions rather than only an average score.
-
-## Running a suite
-
-Validate without a daemon or model:
-
-```sh
-nightcrew evals validate --request examples/summarizer/eval.json
-```
-
-`evals run` takes a request object with `suite` (the complete document) and
-`destination` (a new absolute directory whose parent already exists). For example,
-prepare a request with the adjacent TypeScript builder, which resolves the grader
-and Node executable to absolute paths:
-
-```sh
-node --experimental-strip-types examples/summarizer/eval.ts /tmp/nightcrew-compaction-eval > /tmp/eval-request.json
-nightcrew evals run --request /tmp/eval-request.json --dry-run
-nightcrew evals run --request /tmp/eval-request.json --timeout 5m
-```
-
-Use the installation's `--home` when needed. The daemon must run the updated
-version. Dry-run resolves and validates installed resources without inference or
-creating the destination. Execution refuses to overwrite an existing directory.
-
-V1 requires the agent model to match the configured instant model. Sampling uses
-the daemon's instant scheduler and actual agent temperature, thinking and sampling
-settings. Per-case limits are capped by agent limits; the CLI deadline also bounds
-the whole suite. The snapshot includes model configuration, not weight-file hashes.
-JSON output-validation schemas are included in the prompt. Production repair,
-loop recovery, compaction, executable tools and hooks are disabled: this evaluates
-the model's responses under a controlled loop, not all production orchestration.
-
-`result.json` stores the resolved inputs, samples, trace, checks and errors. A CLI
-`ok: true` means the command ran; inspect `result.status` for `passed`, `failed`,
-or `needs_review`. Unreviewed semantic criteria prevent a pass even when all
-literal checks pass. A failed assertion is distinct from a fixture mismatch or
-inference error. Automatic fixture generation and a built-in model judge are not implemented.
-Configured graders can evaluate specific criteria; bundled graders leave semantic
-interpretation for review.
-
-The converted examples are documented in [examples/evals](../examples/evals/README.md).
-
-The CLI suite deadline defaults to 120 minutes and accepts `--timeout` up to
-`120m`; individual cases retain their own limits. Ordinary management commands
-keep their 90-second default and five-minute maximum. Result schemas cover both
-dry-run snapshots and completed suite summaries.
-
-## Executable graders
-
-A suite may configure up to eight `graders`, executed serially after **each case**.
-These are trusted local programs on the CLI host, not model tools or daemon hooks.
-They run even after a recorded case failure when the CLI deadline permits.
-Dry-run hashes their files but never executes them.
-
-Each definition has:
-
-- `graderID`: unique identifier.
-- `executablePath`: absolute executable path.
-- `argv`: literal argument array; no shell expansion.
-- `timeoutMs`: 100–60,000 milliseconds, default 10,000.
-- `sourceFiles`: optional absolute paths for imported modules or data to hash.
-
-The runner snapshots the working directory, executable, existing file arguments,
-and declared source files, including resolved paths and SHA-256 hashes. It checks
-these files again before execution and records an identity hash with each grade.
-Declare imported dependencies explicitly: Nightcrew does not discover transitive
-imports or provide an immutable execution sandbox. Graders inherit only PATH,
-run with the user's permissions, and should avoid external side effects.
-
-The bundled graders are standalone TypeScript, run with the existing Node 22.12+
-runtime using `--experimental-strip-types`. No TypeScript runtime dependency is
-needed. Copy installed examples out of `node_modules` before running or editing
-them; Node does not strip TypeScript within dependency directories. Other executables use the same protocol.
-
-Stdin is one JSON document (maximum 16 MB):
+1. The ordinary run must complete and satisfy its own output validation. Execution/validation failures cannot pass an eval.
+2. If `grader.schema` exists, validate the **accepted finish arguments** using the existing Zod `z.fromJSONSchema` validator. For an agent without `finishSchema`, validate its final answer as a string. Nothing rewrites the real agent schema or changes the accepted output.
+3. A schema mismatch fails grading and skips the executable.
+4. If `grader.exec` exists, execute it after schema success (or directly when no grading schema is configured).
+5. With neither grader configured, a successful run is `ungraded`.
 
 ```json
 {
-  "version": 1,
-  "suiteID": "example",
-  "graderID": "checks",
-  "case": {},
-  "snapshot": {},
-  "result": {}
+  "schema": { "type": "object", "required": ["report"] },
+  "exec": {
+    "executablePath": "/absolute/path/to/node",
+    "argv": ["--experimental-strip-types", "/absolute/path/to/grade.ts"],
+    "timeoutMs": 10000,
+    "sourceFiles": []
+  }
 }
 ```
 
-`case` contains the full normalized case, including hidden expectations.
-`snapshot` contains resolved agent/model configuration and grader identities.
-`result` contains the execution status, error, messages, samples, final answer,
-mock counts, assertions, criteria, and execution timing. Expectations and grader
-configuration never enter model input.
+- Executable stdin is one JSON object: `{eval, run, result}`. `run` is the persisted ordinary run record, including its transcript and attempts. `result` is the accepted finish value (or final text for agents without a finish schema).
+- Stdout must contain exactly `{ "passed": true, "reason": "Explanation" }` (or `passed: false`). A nonzero exit, malformed output, changed source, timeout, or process failure records grading `error`.
+- `timeoutMs` defaults to 10 seconds, maximum 60 seconds. Grader input is bounded to 64 MB and output to 1 MB.
+- The executable, existing file arguments, and optional additional `sourceFiles` are hashed at admission and checked before execution. Declare imported source/data files when their identity matters. The captured daemon working directory is used at execution.
+- The latest grade is in `run.evaluation.grade`; each settled grade is also recorded as an `evalGraded` event. Execution status and grading status are separate: a completed run may fail grading.
+- A daemon restart can grade a terminal run that has not started grading. An interrupted grader is marked `error` with an unknown-outcome explanation and is never automatically replayed.
+- Checks establish only what they test. Schema conformance or literal presence does not establish factual accuracy. An executable can perform richer deterministic checks or invoke a separate reviewer; Nightcrew does not provide a built-in judge model.
 
-Stdout must be a single JSON document (maximum 1 MB):
+## CLI
 
-```json
-{
-  "checks": [
-    {
-      "checkID": "preserved-budget",
-      "status": "passed",
-      "reason": "The final summary preserves the fixture budget.",
-      "criterionID": "budget"
-    }
-  ]
-}
+```sh
+nightcrew evals create --file eval.json
+nightcrew evals list
+nightcrew evals get record-answer
+nightcrew evals update record-answer --request changes.json
+nightcrew evals run record-answer --dry-run
+nightcrew evals run record-answer --wait
+nightcrew runs get RUN_ID
+nightcrew runs transcript RUN_ID
+nightcrew evals delete record-answer --yes
 ```
 
-Return 1–100 checks. Check IDs must be unique, statuses are `passed`, `failed`,
-or `needs_review`, and reasons are required. Optional `criterionID` must name a
-case criterion and occur at most once per grader. Without it, the check supplements
-the deterministic assertions but does not resolve semantic review.
+- `evals run` submits immediately; it does not wait for the scheduler by default. `--wait` observes ordinary completion and grading without cancelling the run on disconnection. A completed execution with failed grading is returned with that grade; inspect `evaluation.grade.status`.
+- Presence, interaction cooldown, queue holds, and model residency policies apply. Use ordinary `runs` controls for inspection and recovery.
+- Updates use `{ "expectedRevision": 1, "changes": { "overrides": { "thinking": false } } }`. Revision checks are optional. Specified fields replace those fields; omitted fields remain unchanged. Use `grader: null`, `tools: []`, or `messages: []` to clear them.
+- Replies/retries reuse the eval snapshot and grade each new segment; wait for grading to settle before reopening a terminal run. Historical verdicts remain in events.
+- Delete removes only the definition; previous runs retain their snapshots.
 
-Any failed check fails the case; a review-needed check prevents a pass. Conflicting
-criterion verdicts combine conservatively: failed, then needs_review, then passed.
-Unaddressed criteria remain unreviewed. Passing grades never override execution
-errors or failed deterministic assertions.
+```sh
+nightcrew evals tools list record-answer
+nightcrew evals tools set record-answer --tool read_record --output fallback.json
+nightcrew evals tools set record-answer --tool read_record --input input.json --output response.json
+nightcrew evals tools delete record-answer --tool read_record --input input.json
+nightcrew evals tools delete record-answer --tool read_record
 
-Timeouts, nonzero exits, invalid JSON/schema, unknown criterion IDs, changed files,
-and output limits become grader errors, distinct from failed quality checks.
-The model trace is saved before grading and every completed grade is saved.
-While grading, the bundle records `gradingComplete: false` and cannot show a
-passing case; completion sets it to true. A killed CLI therefore leaves visible
-incomplete grading evidence.
-The grader timeout is separate from the model's case timeout and is also bounded
-by the remaining CLI suite deadline. `elapsedMs` measures model execution before
-grading. A grader error makes the case `error` and the suite `failed`.
+nightcrew evals transcript get record-answer
+nightcrew evals transcript set record-answer --file messages.json
+nightcrew evals transcript append record-answer --file message.json
+nightcrew evals transcript update record-answer MESSAGE_UUID --file message.json
+nightcrew evals transcript delete record-answer MESSAGE_UUID
+nightcrew evals transcript clear record-answer --yes
+```
 
-Keep fixtures (`eval.json`), request builder (`eval.ts`), grader (`grade.ts`), and
-grader tests (`test.ts`) beside their example agent. Deterministic inspector and
-exporter tests stay there too; core runner tests remain under `test/`.
+- `--file`, `--input`, and `--output` read JSON; `-` reads stdin. Only one input can read stdin. String outputs must be JSON strings in their files.
+- Transcript set/append accept one message or an array through `--file`. Update accepts one message and preserves its UUID. Delete cascades an assistant message's paired tool results. Invalid pairing is rejected atomically.
+- `--message MESSAGE_UUID` is also available for update/delete. Flags and `--request` cannot specify the same field twice.
+- CLI shortcuts assemble the same typed oRPC requests used by HTTP/control clients. All `evals` operations are public management operations; there is no private instant sampling API.
+
+`src/engine/evals/format.ts` owns the schema; `definitions.ts` owns edits and override validation, `tools.ts` mock matching, and `results.ts` grading. `src/storage/evals.ts` owns definition files using the shared storage transaction queue. The ordinary run engine owns execution. Examples and their TypeScript graders live beside each example agent.

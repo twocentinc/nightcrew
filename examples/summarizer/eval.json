@@ -1,103 +1,17 @@
 {
-  "format": "nightcrew.eval",
-  "version": 1,
-  "suiteID": "compaction-regressions",
-  "agent": {
-    "agentID": "summarizer"
-  },
-  "limits": {
-    "maxToolCalls": 12,
-    "maxOutputTokens": 1024,
-    "timeoutMs": 120000
-  },
-  "cases": [
+  "evalID": "summarizer-budget-not-invented",
+  "agentID": "summarizer",
+  "messages": [
     {
-      "caseID": "budget-not-invented",
-      "description": "Derived from test/compaction.test.ts",
-      "context": {
-        "messages": [
-          {
-            "role": "user",
-            "content": "{\"previousSummary\":null,\"targetTokens\":400,\"instructions\":\"Return JSON with a summary string. Preserve the exact verified facts, uncertainty, and next action. Do not invent quantities.\",\"messages\":[{\"role\":\"user\",\"content\":\"Budget $50/day; confirmed. The approval request remains pending. Next check approval status. No count of pages or messages was supplied.\"}]}"
-          }
-        ]
-      },
-      "mocks": [],
-      "expectations": {
-        "assertions": [
-          {
-            "assertionID": "json",
-            "type": "finalJSONSchema",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "summary": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "required": ["summary"],
-              "additionalProperties": false
-            }
-          }
-        ],
-        "criteria": [
-          {
-            "criterionID": "budget",
-            "description": "Preserve $50/day; do not invent $98/day, 98%, page counts, or message counts.",
-            "severity": "critical"
-          },
-          {
-            "criterionID": "pending",
-            "description": "Approval remains pending and the next action is to check its status, not spend money.",
-            "severity": "critical"
-          }
-        ]
-      }
-    },
-    {
-      "caseID": "timestamp-not-a-count",
-      "description": "Derived from test/compaction.test.ts",
-      "context": {
-        "messages": [
-          {
-            "role": "user",
-            "content": "{\"previousSummary\":null,\"targetTokens\":400,\"instructions\":\"Return JSON with a summary string. Preserve the exact verified facts, uncertainty, and next action. Do not invent quantities.\",\"messages\":[{\"role\":\"user\",\"content\":\"Window begins 2026-11-11T05:42:35.293Z. Preserve that timestamp exactly for the next query. No record count is known. Next query the window; it has not been queried yet.\"}]}"
-          }
-        ]
-      },
-      "mocks": [],
-      "expectations": {
-        "assertions": [
-          {
-            "assertionID": "json",
-            "type": "finalJSONSchema",
-            "schema": {
-              "type": "object",
-              "properties": {
-                "summary": {
-                  "type": "string",
-                  "minLength": 1
-                }
-              },
-              "required": ["summary"],
-              "additionalProperties": false
-            }
-          }
-        ],
-        "criteria": [
-          {
-            "criterionID": "timestamp",
-            "description": "Preserve 2026-11-11T05:42:35.293Z exactly; do not turn timestamp components into counts.",
-            "severity": "critical"
-          },
-          {
-            "criterionID": "query-pending",
-            "description": "The query is pending, not completed; do not invent results.",
-            "severity": "critical"
-          }
-        ]
-      }
+      "role": "user",
+      "content": "{\"previousSummary\":null,\"targetTokens\":400,\"instructions\":\"Return JSON with a summary string. Preserve the exact verified facts, uncertainty, and next action. Do not invent quantities.\",\"messages\":[{\"role\":\"user\",\"content\":\"Budget $50/day; confirmed. The approval request remains pending. Next check approval status. No count of pages or messages was supplied.\"}]}"
     }
-  ]
+  ],
+  "tools": [],
+  "grader": {
+    "schema": {
+      "type": "string",
+      "minLength": 1
+    }
+  }
 }

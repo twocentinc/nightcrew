@@ -2,7 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 test("bundled examples use ordinary validated commands and remain opt-in", async () => {
-  const { requestSchemas } = await import("../../dist/utils/commands/inputs.js");
+  const { requestSchemas } =
+    await import("../../dist/utils/commands/inputs.js");
   const request = JSON.parse(
     await readFile(new URL("./agent.json", import.meta.url), "utf8"),
   );
@@ -19,10 +20,7 @@ test("bundled examples use ordinary validated commands and remain opt-in", async
 
 test("hello world grader requires the exact greeting", async () => {
   const { grade } = await import("./grade.ts");
-  assert.equal(
-    grade({ result: { answer: "Hello world!" } }).checks[0]?.status,
-    "passed",
-  );
+  assert.equal(grade({ result: "Hello world!" }).passed, true);
   for (const answer of ["", "Hello world! Extra explanation.", " Hello world!"])
-    assert.equal(grade({ result: { answer } }).checks[0]?.status, "failed");
+    assert.equal(grade({ result: answer }).passed, false);
 });

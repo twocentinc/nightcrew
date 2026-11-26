@@ -1,7 +1,7 @@
 # Public contract and compatibility
 
-The current frozen public contract is protocol 1, schema 43, introduced in
-0.42.0 through an owner-approved run-schema redesign. The freeze began at schema 34;
+The current frozen public contract is protocol 1, schema 44, introduced in
+0.43.0 through an owner-approved eval redesign. The freeze began at schema 34;
 owner-approved changes since then are recorded below. This is the baseline for
 the upcoming 1.0 release, not a claim that acceptance work is complete.
 
@@ -16,7 +16,7 @@ the upcoming 1.0 release, not a claim that acceptance work is complete.
 - Configuration and agent/model/trigger/tool/skill definitions accepted at this
   baseline, including defaults that affect execution or side effects.
 - Documented executable tool, skill resource, lifecycle hook, scheduler hook,
-  compaction hook, eval suite, and exported run-bundle formats.
+  compaction hook, eval definition/grader, and exported run-bundle formats.
 - Readability and safe continuation of durable run/configuration data created by
   supported releases. Transcripts, IDs, tool outcomes, and uncertain delivery
   records must survive upgrades.
@@ -100,19 +100,6 @@ Owner-approved validation now rejects duplicate object keys in generated structu
 results and finish arguments, with repair guidance. This prevents silent data loss
 from JSON parsing. CLI request schemas and other tool arguments are unchanged.
 
-## Executable eval graders (0.39.0, schema 40)
-
-Optional suite graders execute after each case through the bounded executable
-runner. They receive hidden expectations, the complete trace and execution outcome,
-then return named pass/fail/review checks. Execution errors and deterministic
-failures cannot become passes through grading. Grader failures are recorded as eval
-errors; unaddressed semantic criteria remain unreviewed. Existing suites without
-graders retain their behavior.
-
-This is an approved additive contract change. Agent-specific fixtures, TypeScript
-graders and checks are colocated under their example directories. See
-[the eval format](eval-format.md) for the canonical executable protocol.
-
 ## Owner-approved parser adoption (November 24, 2026)
 
 Version 0.40.0 / schema 41 adopts Commander, cron-parser and eventsource-parser
@@ -147,7 +134,7 @@ The owner explicitly reopened the contract for these changes. There are no alias
 
 Online `status --doctor` invokes the same authenticated status operation as HTTP and TypeScript. When the control socket is unavailable, the CLI runs read-only local diagnostics, reports the daemon as unavailable, and does not create a runtime home. Other daemon errors are preserved rather than replaced with local results.
 
-Generated `/v1/operations/...` routes are the complete remote management surface, except local filesystem operations and internal eval procedures. Older resource routes are explicitly shaped adapters (for example, `/v1/status` returns runtime status only); they are not a second management inventory. Clients needing the CLI-shaped result use the operation routes.
+Generated `/v1/operations/...` routes are the complete remote management surface, except local-only filesystem operations. Older resource routes are explicitly shaped adapters (for example, `/v1/status` returns runtime status only); they are not a second management inventory. Clients needing the CLI-shaped result use the operation routes.
 
 ## Approved run schema redesign (0.42.0 / schema 43)
 
@@ -172,3 +159,11 @@ Generated `/v1/operations/...` routes are the complete remote management surface
   evidence, receipt outcomes, compaction links and run IDs. Migration never
   dispatches hooks. Update external consumers to read execution.state before
   restarting. There is no old-format reader or compatibility alias.
+
+## Approved eval redesign (0.43.0 / schema 44)
+
+- Replaces suites/cases, assertion lists, semantic criterion statuses, result destinations, and instant sample/release with saved eval definitions and ordinary runs. No compatibility aliases or old-suite importer.
+- Adds shared eval CRUD/run, tool-response editing, and starting-transcript editing commands.
+- Grading uses optional expected JSON Schema followed by optional executable `{passed, reason}` grading; expected schemas never override the agent finish schema.
+- Run records gain optional `evaluation` snapshots/grade and `evalGraded` events. Existing ordinary run/config files remain readable; no migration is required for them. Prior standalone eval artifacts remain files and are not new saved definitions.
+- The complete current protocol is documented in [eval-format.md](eval-format.md). Earlier immutable command archives remain historical evidence only.

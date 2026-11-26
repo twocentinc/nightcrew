@@ -1,3 +1,4 @@
+import { gradeRun } from "./evals/results.js";
 import { randomUUID } from "node:crypto";
 import { now, terminal } from "../schemas/common.js";
 import { type Run } from "../schemas/run.js";
@@ -10,7 +11,7 @@ import type { Dispatch } from "./scheduling/dispatch.js";
 
 interface Dependencies {
   readonly storage: Storage;
-  readonly records: Pick<RunRecords, "run" | "detail" | "save">;
+  readonly records: Pick<RunRecords, "run" | "detail" | "save" | "event">;
   readonly dispatch: Pick<Dispatch, "hasActivity">;
   readonly runner: Pick<Runner, "liveRun">;
 }
@@ -19,10 +20,47 @@ export class Hooks {
   private hookWork = new Set<Promise<void>>();
   scheduleHooks(run: Run, eventType?: string) {
     const task = withoutExecution(() =>
-      this.deliverHooks(run, eventType),
+      run.evaluation
+        ? this.gradeEval(run.runID)
+        : this.deliverHooks(run, eventType),
     ).catch(() => {});
     this.hookWork.add(task);
     void task.finally(() => this.hookWork.delete(task));
+  }
+  private async gradeEval(runID: string) {
+    const run = await this.ports.storage.exclusive(async () => {
+      const current = await this.ports.records.run(runID);
+      if (
+        !current.evaluation ||
+        current.parentRunID ||
+        !terminal(current.state) ||
+        current.evaluation.grade.status !== "pending"
+      )
+        return null;
+      current.evaluation.grade = { status: "running", startedAt: now() };
+      await this.ports.records.save(current);
+      return current;
+    });
+    if (!run) return;
+    const grade = await gradeRun(run).catch((error) => ({
+      status: "error" as const,
+      reason:
+        error instanceof Error
+          ? error.message.slice(0, 8000)
+          : "Grading failed",
+      finishedAt: now(),
+    }));
+    await this.ports.storage.exclusive(async () => {
+      const current = await this.ports.records.run(runID);
+      if (
+        current.segment !== run.segment ||
+        current.evaluation?.grade.status !== "running"
+      )
+        return;
+      current.evaluation.grade = grade;
+      this.ports.records.event(current, "evalGraded", grade);
+      await this.ports.records.save(current);
+    });
   }
   async retryHook(
     runID: string,

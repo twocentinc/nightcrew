@@ -1,587 +1,674 @@
-import { settings, agentDraft } from "./fixtures.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
-  mkdtemp,
-  writeFile,
-  readFile,
-  chmod,
-  rm,
-  access,
-} from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile, access } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { spawn } from "node:child_process";
-import { createServer } from "node:net";
 import { randomUUID } from "node:crypto";
-import {evalSuiteSchema} from "../dist/engine/evals/format.js";
-import {runEval as rawRunEval} from "../dist/engine/evals/runner.js";
+import { execFileSync } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
+import { settings, agentDraft } from "./fixtures.ts";
+import { evalSchema } from "../dist/engine/evals/format.js";
 import { Storage } from "../dist/storage/store.js";
 import { initializeHome } from "../dist/storage/config.js";
 import { Service } from "../dist/engine/service.js";
-import { callOperation as rawcallOperation } from "../dist/utils/commands/operations.js";
-const callOperation: (
-  ...args: Parameters<typeof rawcallOperation>
-) => Promise<any> = rawcallOperation;
-import { normalizeError } from "../dist/engine/protocol.js";
-const runEval: (...args: Parameters<typeof rawRunEval>) => Promise<any> =
-  rawRunEval;
-const suite = (): any => ({
-  format: "nightcrew.eval",
-  version: 1,
-  suiteID: "retry",
-  agent: { agentID: "reviewer" },
-  limits: { maxToolCalls: 4, maxOutputTokens: 64, timeoutMs: 5000 },
-  cases: [
+import { callOperation as rawOperation } from "../dist/utils/commands/operations.js";
+import { gradeRun, snapshotGrader } from "../dist/engine/evals/results.js";
+import { EvalStore } from "../dist/storage/evals.js";
+const operation: (...args: Parameters<typeof rawOperation>) => Promise<any> =
+  rawOperation;
+const finishSchema = {
+  type: "object",
+  properties: { answer: { type: "string" } },
+  required: ["answer"],
+  additionalProperties: false,
+};
+const finish = (answer: string) => ({
+  text: "",
+  toolCalls: [
     {
-      caseID: "retry",
-      context: {
-        messages: [
-          {
-            role: "user" as const,
-            content:
-              "Read the record. Retry one transient error. Return its exact code.",
-          },
-        ],
-      },
-      mocks: [
-        {
-          mockID: "read",
-          tool: "inspect",
-          arguments: { page: 0 },
-          responses: [
-            { type: "error" as const, message: "temporary" },
-            { type: "result" as const, content: "code: AZ-41" },
-          ],
-        },
-      ],
-      expectations: {
-        assertions: [
-          {
-            assertionID: "answer",
-            type: "finalContains" as const,
-            text: "AZ-41",
-          },
-          {
-            assertionID: "twice",
-            type: "mockCallCount" as const,
-            mockID: "read",
-            min: 2,
-            max: 2,
-          },
-        ],
-        criteria: [
-          {
-            criterionID: "honest",
-            description: "JUDGE_ONLY_SENTINEL: do not invent another code",
-            severity: "critical",
-          },
-        ],
-      },
+      callID: randomUUID(),
+      name: "finish",
+      arguments: JSON.stringify({ answer }),
     },
   ],
 });
-const call = (home: string, args: string[], request?: any) =>
-  new Promise<any>((resolve, reject) => {
-    const p = spawn(
-      process.execPath,
-      [
-        new URL("../dist/cli.js", import.meta.url).pathname,
-        ...args,
-        "--home",
-        home,
-        "--request",
-        "-",
-      ],
-      { stdio: ["pipe", "pipe", "pipe"] },
-    );
-    let out = "",
-      err = "";
-    p.stdout.on("data", (c) => (out += c));
-    p.stderr.on("data", (c) => (err += c));
-    p.on("error", reject);
-    p.on("close", (code) => {
-      try {
-        resolve({ code, ...JSON.parse(out) });
-      } catch {
-        reject(Error(out + err));
-      }
-    });
-    p.stdin.end(JSON.stringify(request));
-  });
-async function fixture(t: import("node:test").TestContext, override?: any) {
+const seed = () => ({
+  evalID: "example",
+  agentID: "worker",
+  messages: [{ role: "user", content: "Read and answer." }],
+});
+async function until<T>(fn: () => Promise<T | false>): Promise<T> {
+  for (let i = 0; i < 500; i++) {
+    const v = await fn();
+    if (v !== false) return v;
+    await delay(10);
+  }
+  throw Error("Timed out");
+}
+async function fixture(
+  t: import("node:test").TestContext,
+  generate: (r: any, n: number, s: AbortSignal) => Promise<any> | any,
+  extra: any = {},
+) {
   const home = await mkdtemp(path.join(tmpdir(), "nc-eval-"));
-  const inputs: any[] = [];
+  const marker = path.join(home, "production-side-effect");
   await initializeHome(
     home,
     settings.parse({
       host: "127.0.0.1",
       port: 6970,
-      interactionCooldownMs: 0,
-      scheduler: { instantModelID: "qwen", contextTokens: 2048 },
+      slots: [],
+      scheduler: { instantModelID: "interactive" },
       models: [
         {
-          modelID: "qwen",
-          kind: "chat" as const,
+          modelID: "interactive",
+          kind: "chat",
           weightsPath: "/unused",
           projectorPath: null,
-          idleUnloadMs: 1000,
+          idleUnloadMs: 0,
+        },
+        {
+          modelID: "background",
+          kind: "chat",
+          weightsPath: "/unused",
+          projectorPath: null,
+          idleUnloadMs: 0,
         },
       ],
-      slots: [],
-      hooks: [],
+      interactionCooldownMs: 0,
+      hooks: [
+        {
+          hookID: "delivery",
+          event: "run.completed",
+          purpose: "delivery",
+          executablePath: "/usr/bin/false",
+          timeoutMs: 1000,
+        },
+      ],
     }),
   );
+  const calls: any[] = [];
   const runtime = {
+    countTokens: async (_r: any) => 10,
     status: () => [],
     close: async () => {},
-    countTokens: async () => 20,
-    generate: async (input?: any) => {
-      inputs.push(structuredClone(input));
-      if (override) return override(input);
-      const results = input.messages.filter((m?: any) => m.role === "tool");
+    generate: async (r: any, s: AbortSignal) => {
+      calls.push(structuredClone(r));
       return {
-        text: results.length < 2 ? "" : "AZ-41",
-        toolCalls:
-          results.length < 2
-            ? [
-                {
-                  callID: randomUUID(),
-                  name: "inspect",
-                  arguments: '{"page":0}',
-                },
-              ]
-            : [],
-        usage: { inputTokens: 12, outputTokens: 3 },
+        text: "",
+        toolCalls: [],
+        usage: { inputTokens: 2, outputTokens: 2 },
+        ...(await generate(r, calls.length, s)),
       };
     },
   };
   const service = new Service(new Storage(home), runtime, async () => ({
-    state: "present",
-    reason: "test",
+    state: "away",
+    reason: "fixture",
     samplingHealthy: true,
     observedAt: new Date().toISOString(),
     diagnostic: null,
   }));
   await service.initialize();
-  service.tools.set("inspect", {
-    toolID: "inspect",
-    description: "Read a record",
-    parameters: {
-      type: "object" as const,
-      properties: { page: { type: "integer" as const } },
-      required: ["page"],
-      additionalProperties: false,
-    },
-    executablePath: "/must-never-execute",
-    argv: [],
-    timeoutMs: 100,
-  });
-  await service.createAgent(
-    agentDraft.parse({
-      agentID: "reviewer",
-      name: "reviewer",
-      systemPrompt: "Follow the user request.",
-      modelID: "qwen",
-      mode: "agent-loop",
-      skillIDs: [],
-      toolIDs: ["inspect"],
-      enabled: false,
-      thinking: false,
-      maxOutputTokens: 64,
-      timeoutMs: 5000,
-      sampling: { topP: 0.8 },
-    }),
-  );
-  const transport = (
-    command: string,
-    request: unknown = {},
-    resourceID: string | undefined = undefined,
-  ) =>
-    callOperation(service, {
-      command,
-      request,
-      ...(resourceID ? { resourceID } : {}),
-    });
-  const server = createServer((socket) => {
-    let buf = "";
-    socket.on("data", async (chunk) => {
-      buf += chunk;
-      if (!buf.includes("\n")) return;
-      const input = JSON.parse(buf.split("\n")[0]);
-      buf = "";
-      try {
-        socket.end(
-          JSON.stringify({
-            ok: true,
-            result: await callOperation(service, input),
-          }) + "\n",
-        );
-      } catch (e) {
-        socket.end(
-          JSON.stringify({ ok: false, error: normalizeError(e, false) }) + "\n",
-        );
-      }
-    });
-  });
-  await new Promise<void>((resolve) =>
-    server.listen(path.join(home, "control.sock"), resolve),
-  );
-  await chmod(path.join(home, "control.sock"), 0o600);
   t.after(async () => {
-    await new Promise<any>((resolve) => server.close(resolve));
     await service.close();
     await rm(home, { recursive: true, force: true });
   });
-  return { home, service, inputs, transport, runtime };
-}
-test("eval schema rejects ambiguous mocks, orphan history, extra keys and invalid assertions", () => {
-  const s = suite();
-  assert.ok(evalSuiteSchema.safeParse(s).success);
-  const duplicate = structuredClone(s);
-  duplicate.cases[0].mocks.push({
-    ...duplicate.cases[0].mocks[0],
-    mockID: "duplicate",
-  });
-  assert.equal(evalSuiteSchema.safeParse(duplicate).success, false);
-  const orphan = structuredClone(s);
-  orphan.cases[0].context.messages = [
-    { role: "tool" as const, content: "fake", toolCallID: "absent" },
-  ];
-  assert.equal(evalSuiteSchema.safeParse(orphan).success, false);
-  const invalid = structuredClone(s);
-  invalid.cases[0].expectations.assertions[1].min = 3;
-  assert.equal(evalSuiteSchema.safeParse(invalid).success, false);
-  assert.equal(
-    evalSuiteSchema.safeParse({ ...s, executeRealTools: true }).success,
-    false,
-  );
-});
-test("CLI validates offline and reports invalid input in JSON", async (t) => {
-  const home = await mkdtemp(path.join(tmpdir(), "nc-eval-validation-"));
-  t.after(() => rm(home, { recursive: true, force: true }));
-  assert.equal(
-    (await call(home, ["evals", "validate"], suite())).result.valid,
-    true,
-  );
-  const bad = await call(home, ["evals", "validate"], {
-    ...suite(),
-    version: 2,
-  });
-  assert.equal(bad.ok, false);
-  assert.equal(bad.code, 2);
-});
-test("CLI runs agent loop, mocks retries, hides rubric, snapshots sampling and saves review-required artifact", async (t) => {
-  const f = await fixture(t);
-  const destination = path.join(f.home, "eval-result");
-  const dry = await call(f.home, ["evals", "run", "--dry-run"], {
-    suite: suite(),
-    destination,
-  });
-  assert.equal(dry.ok, true);
-  assert.equal(f.inputs.length, 0);
-  await assert.rejects(access(destination));
-  const out = await call(f.home, ["evals", "run"], {
-    suite: suite(),
-    destination,
-  });
-  assert.equal(out.ok, true, JSON.stringify(out));
-  assert.equal(out.result.status, "needs_review");
-  const saved = JSON.parse(
-    (await readFile(path.join(destination, "result.json"), "utf8")).toString(),
-  );
-  assert.equal(saved.cases[0].counts.read, 2);
-  assert.ok(saved.cases[0].assertions.every((a?: any) => a.passed));
-  assert.equal(saved.cases[0].criteria[0].status, "unreviewed");
-  assert.equal(f.inputs.length, 3);
-  assert.equal(f.service.chats.size, 0);
-  assert.ok(!JSON.stringify(f.inputs).includes("JUDGE_ONLY_SENTINEL"));
-  assert.equal(f.inputs[0].sampling.topP, 0.8);
-  assert.equal(
-    saved.snapshot.tools.some(
-      (t: import("node:test").TestContext) => "executablePath" in t,
-    ),
-    false,
-  );
-  const again = await call(f.home, ["evals", "run"], {
-    suite: suite(),
-    destination,
-  });
-  assert.equal(again.ok, false);
-  assert.equal(f.inputs.length, 3);
-});
-test("unexpected arguments stop eval without tool execution and preserve attempted call", async (t) => {
-  const f = await fixture(t, async () => ({
-    text: "",
-    toolCalls: [
-      { callID: "unexpected", name: "inspect", arguments: '{"page":9}' },
-    ],
-    usage: { inputTokens: 1, outputTokens: 1 },
-  }));
-  const out = await runEval(
-    { suite: suite(), destination: path.join(f.home, "mismatch") },
-    f.transport,
-  );
-  assert.equal(out.status, "failed");
-  assert.match(out.cases[0].error, /fixture_mismatch/);
-  assert.equal(f.inputs.length, 1);
-  const saved = JSON.parse((await readFile(out.resultFile, "utf8")).toString());
-  assert.equal(
-    saved.cases[0].messages.at(-1).toolCalls[0].arguments,
-    '{"page":9}',
-  );
-});
-test("eval sample never executes reserved load_skills and checks context before generation", async (t) => {
-  const f = await fixture(t, async () => ({
-    text: "",
-    toolCalls: [
-      {
-        callID: "skill",
-        name: "load_skills",
-        arguments: '{"skillIDs":["nonexistent"]}',
+  await operation(service, {
+    command: "tools create",
+    request: {
+      tool: {
+        toolID: "inspect",
+        description: "Read a record",
+        parameters: {
+          type: "object",
+          properties: { page: { type: "number" } },
+          required: ["page"],
+          additionalProperties: false,
+        },
+        executablePath: process.execPath,
+        argv: [
+          "-e",
+          `require('fs').writeFileSync(${JSON.stringify(marker)},'tool')`,
+        ],
       },
-    ],
-    usage: { inputTokens: 1, outputTokens: 1 },
-  }));
-  const s = suite();
-  s.cases[0].mocks = [
-    {
-      mockID: "skill",
-      tool: "load_skills",
-      arguments: { skillIDs: ["nonexistent"] },
-      responses: [{ type: "result" as const, content: "fixture instructions" }],
     },
-  ];
-  s.limits.maxToolCalls = 1;
-  s.cases[0].expectations.assertions = [];
-  const out = await runEval(
-    { suite: s, destination: path.join(f.home, "reserved") },
-    f.transport,
+  });
+  await service.createAgent(
+    agentDraft.parse({
+      agentID: "worker",
+      name: "Worker",
+      modelID: "background",
+      mode: "agent-loop",
+      systemPrompt: "Read records and finish.",
+      enabled: true,
+      skillIDs: [],
+      toolIDs: ["inspect"],
+      finishSchema,
+      maxOutputTokens: 128,
+      timeoutMs: 30000,
+      ...extra,
+    }),
   );
-  assert.equal(out.cases[0].error, "tool_budget");
-  assert.equal(f.inputs[1].messages.at(-1).content, "fixture instructions");
-  f.runtime.countTokens = async () => 999999;
-  const before = f.inputs.length;
-  const overflow = await runEval(
-    { suite: s, destination: path.join(f.home, "overflow") },
-    f.transport,
-  );
-  assert.equal(overflow.cases[0].error, "context_full");
-  assert.equal(f.inputs.length, before);
-});
-test("tool-free cases expose no tools; deterministic failures differ from fixture errors", async (t) => {
-  const f = await fixture(t, async () => ({
-    text: "WRONG",
-    toolCalls: [],
-    usage: { inputTokens: 1, outputTokens: 1 },
-  }));
-  const s = suite();
-  s.cases[0].mocks = [];
-  s.cases[0].expectations.assertions = s.cases[0].expectations.assertions.slice(
-    0,
-    1,
-  );
-  const out = await runEval(
-    { suite: s, destination: path.join(f.home, "wrong") },
-    f.transport,
-  );
-  assert.equal(out.cases[0].status, "failed");
-  assert.equal(out.cases[0].error, null);
-  assert.deepEqual(f.inputs[0].tools, []);
-});
-test("fixtures never conflate absent and null arguments", async (t) => {
-  const f = await fixture(t, async () => ({
-    text: "",
-    toolCalls: [
-      {
-        callID: randomUUID(),
-        name: "inspect",
-        arguments: '{"page":0,"optional":null}',
-      },
-    ],
-    usage: { inputTokens: 1, outputTokens: 1 },
-  }));
-  f.service.tools.get("inspect")!.parameters = {
-    type: "object" as const,
-    properties: {
-      page: { type: "integer" as const },
-      optional: { type: ["string", "null"] },
-    },
-    required: ["page"],
-    additionalProperties: false,
+  const submit = async (def: any = seed()) => {
+    const accepted = await service.submitEval(evalSchema.parse(def), 1);
+    const run = await until(async () => {
+      const r = await service.run(accepted.runID);
+      return !["pending", "running"].includes(r.evaluation!.grade.status)
+        ? r
+        : false;
+    });
+    return run;
   };
-  const out = await runEval(
-    { suite: suite(), destination: path.join(f.home, "null") },
-    f.transport,
+  return { home, marker, service, calls, submit, runtime };
+}
+test("eval uses ordinary background execution, real finish repair, exact/default mocks, and hidden schema then executable grading", async (t) => {
+  const f = await fixture(t, (_r, n) =>
+    n === 1
+      ? {
+          toolCalls: [
+            { callID: "a", name: "inspect", arguments: '{"page":1}' },
+            { callID: "b", name: "inspect", arguments: '{"page":2}' },
+          ],
+        }
+      : n === 2
+        ? {
+            toolCalls: [
+              { callID: "c", name: "finish", arguments: '{"wrong":"value"}' },
+            ],
+          }
+        : finish("correct"),
   );
-  assert.match(out.cases[0].error, /unmatched arguments/);
-});
-test("mock exhaustion is explicit and cannot fall through to an executable", async (t) => {
-  const f = await fixture(t, async () => ({
-    text: "",
-    toolCalls: [
-      { callID: randomUUID(), name: "inspect", arguments: '{"page":0}' },
+  const script = path.join(f.home, "grade.ts");
+  await writeFile(
+    script,
+    `export {};let text='';for await(const chunk of process.stdin)text+=chunk;const input=JSON.parse(text);console.log(JSON.stringify({passed:input.result.answer==='correct',reason:'checked finish'}));`,
+  );
+  const r = await f.submit({
+    ...seed(),
+    tools: [
+      { tool: "inspect", output: "default result" },
+      { tool: "inspect", input: { page: 1 }, output: { value: 41 } },
     ],
-    usage: { inputTokens: 1, outputTokens: 1 },
-  }));
-  const s = suite();
-  s.cases[0].mocks[0].responses = [
-    { type: "result" as const, content: "once" },
-  ];
-  const out = await runEval(
-    { suite: s, destination: path.join(f.home, "exhausted") },
-    f.transport,
+    grader: {
+      schema: { ...finishSchema, properties: { answer: { const: "correct" } } },
+      exec: {
+        executablePath: process.execPath,
+        argv: ["--experimental-strip-types", script],
+      },
+    },
+  });
+  assert.equal(r.state, "completed");
+  assert.equal(
+    r.evaluation!.grade.status,
+    "passed",
+    JSON.stringify(r.evaluation!.grade),
   );
-  assert.match(out.cases[0].error, /exhausted read/);
-  assert.equal(f.inputs.length, 2);
+  assert.equal(r.evaluation!.grade.schema!.passed, true);
+  assert.equal(r.evaluation!.grade.exec!.passed, true);
+  assert.equal(f.calls.length, 3);
+  assert.equal(f.calls[0].modelID, "background");
+  assert.equal(f.calls[0].persistContext, false);
+  assert.deepEqual(r.agent.finishSchema, finishSchema);
+  assert.equal(
+    r.messages.find((m) => m.toolCallID === "a")!.content,
+    '{"value":41}',
+  );
+  assert.equal(
+    r.messages.find((m) => m.toolCallID === "b")!.content,
+    "default result",
+  );
+  assert.ok(
+    r.messages.find((m) => m.toolCallID === "c")!.content.includes("false"),
+  );
+  assert.ok(!JSON.stringify(f.calls).includes("checked finish"));
+  assert.ok(!JSON.stringify(f.calls).includes(script));
+  assert.equal(r.deliveryExpected, false);
+  assert.equal(r.hookReceipts.length, 0);
+  await assert.rejects(access(f.marker));
+  assert.ok(r.events.some((e) => e.type === "evalGraded"));
+});
+test("schema failure skips executable and is not sent back as repair feedback", async (t) => {
+  const f = await fixture(t, () => finish("wrong"));
+  const r = await f.submit({
+    ...seed(),
+    grader: {
+      schema: {
+        ...finishSchema,
+        properties: { answer: { const: "EXPECTED_HIDDEN" } },
+      },
+      exec: {
+        executablePath: process.execPath,
+        argv: [
+          "-e",
+          `require('fs').writeFileSync(${JSON.stringify(f.marker)},'grader')`,
+        ],
+      },
+    },
+  });
+  assert.equal(r.state, "completed");
+  assert.equal(r.evaluation!.grade.status, "failed");
+  assert.equal(r.evaluation!.grade.exec, undefined);
+  assert.equal(f.calls.length, 1);
+  assert.ok(!JSON.stringify(f.calls).includes("EXPECTED_HIDDEN"));
+  await assert.rejects(access(f.marker));
+});
+test("unmatched and invalid tool calls are nonfatal mocked errors and never execute", async (t) => {
+  const f = await fixture(t, (_r, n) =>
+    n === 1
+      ? {
+          toolCalls: [
+            { callID: "a", name: "inspect", arguments: '{"page":3}' },
+            { callID: "b", name: "inspect", arguments: '{"page":"invalid"}' },
+            { callID: "c", name: "load_skills", arguments: "{}" },
+          ],
+        }
+      : finish("no data"),
+  );
+  const r = await f.submit({
+    ...seed(),
+    tools: [{ tool: "inspect", input: { page: 1 }, output: "unused" }],
+  });
+  assert.equal(r.evaluation!.grade.status, "ungraded");
+  assert.equal(r.state, "completed");
+  for (const callID of ["a", "b", "c"])
+    assert.equal(
+      JSON.parse(r.messages.find((m) => m.toolCallID === callID)!.content).ok,
+      false,
+    );
+  await assert.rejects(access(f.marker));
+});
+test("seeded transcript continues instead of completing; unfinished tools resume normally; snapshots and persistent IDs stay isolated", async (t) => {
+  const f = await fixture(t, () => finish("new"), {
+    contextMode: "persistent",
+  });
+  const messages = [
+    { role: "user", content: "question" },
+    { role: "assistant", content: "old answer" },
+    {
+      role: "assistant",
+      content: "",
+      toolCalls: [
+        { callID: "seed-call", name: "inspect", arguments: '{"page":0}' },
+      ],
+    },
+  ];
+  const def = {
+    ...seed(),
+    messages,
+    tools: [{ tool: "inspect", output: "seed tool result" }],
+  };
+  const first = await f.submit(def),
+    second = await f.submit(def);
+  assert.notEqual(first.runID, second.runID);
+  assert.ok(!first.runID.startsWith("persistent-"));
+  assert.equal(first.result, '{"answer":"new"}');
+  assert.equal(f.calls.length, 2);
+  assert.equal(
+    f.calls[0].messages.find((m: any) => m.toolCallID === "seed-call").content,
+    "seed tool result",
+  );
+  assert.notEqual(first.messages[1]!.messageID, second.messages[1]!.messageID);
+  assert.equal(first.evaluation!.definition.messages[0]!.content, "question");
+});
+test("grading errors and changed executables retain failure evidence", async (t) => {
+  const f = await fixture(t, () => finish("yes"));
+  const script = path.join(f.home, "grader.ts");
+  await writeFile(script, "console.log('not json')");
+  const r = await f.submit({
+    ...seed(),
+    grader: {
+      exec: {
+        executablePath: process.execPath,
+        argv: ["--experimental-strip-types", script],
+      },
+    },
+  });
+  assert.equal(r.evaluation!.grade.status, "error");
+  assert.ok(r.evaluation!.grade.reason);
+  await writeFile(script, "console.log('{}')");
+  const grade = await gradeRun(r);
+  assert.equal(grade.status, "error");
+  assert.match(grade.reason!, /changed/);
+});
+test("definition CRUD and transcript edits use one shared operation contract", async (t) => {
+  const f = await fixture(t, () => finish("ok"));
+  const op = (command: string, request: any = {}) =>
+    operation(f.service, {
+      command,
+      yes: true,
+      resourceID: command === "evals create" ? undefined : "example",
+      request,
+    });
+  const created = await op("evals create", { eval: seed() });
+  assert.equal(created.item.revision, 1);
+  await op("evals tools set", { tool: "inspect", output: "default" });
+  await op("evals tools set", {
+    tool: "inspect",
+    input: { page: 2 },
+    output: 42,
+  });
+  assert.equal((await op("evals tools list")).items.length, 2);
+  await op("evals tools delete", { tool: "inspect" });
+  assert.equal((await op("evals tools list")).items.length, 1);
+  await assert.rejects(
+    op("evals update", { expectedRevision: 1, changes: { agentID: "worker" } }),
+    /revision_conflict/,
+  );
+  await assert.rejects(
+    op("evals update", { changes: { overrides: { finishSchema: {} } } }),
+  );
+  const messageID = (await op("evals transcript get")).messages[0].messageID;
+  await op("evals transcript update", {
+    messageID,
+    message: { role: "user", content: "changed" },
+  });
+  assert.equal(
+    (await op("evals transcript get")).messages[0].messageID,
+    messageID,
+  );
+  await op("evals transcript append", {
+    messages: [
+      {
+        role: "assistant",
+        content: "",
+        toolCalls: [{ callID: "paired", name: "inspect", arguments: "{}" }],
+      },
+      { role: "tool", toolCallID: "paired", content: "done" },
+    ],
+  });
+  const assistantID = (await op("evals transcript get")).messages[1].messageID;
+  await op("evals transcript delete", { messageID: assistantID });
+  assert.equal((await op("evals transcript get")).messages.length, 1);
+  await assert.rejects(
+    op("evals transcript append", {
+      messages: [{ role: "tool", toolCallID: "orphan", content: "bad" }],
+    }),
+  );
+  await op("evals transcript clear");
+  assert.equal((await op("evals transcript get")).messages.length, 0);
+  await assert.rejects(op("evals run"), /eval_transcript_requires_user/);
+  await op("evals delete");
+  assert.equal(
+    (await operation(f.service, { command: "evals list", request: {} })).items
+      .length,
+    0,
+  );
+});
+test("CLI file shortcuts create/edit offline definitions and reject conflicting flags", async (t) => {
+  const f = await fixture(t, () => finish("ok"));
+  await f.service.close();
+  const cli = (...args: string[]) =>
+    JSON.parse(
+      execFileSync(
+        process.execPath,
+        [path.resolve("dist/cli.js"), ...args, "--home", f.home],
+        { encoding: "utf8" },
+      ),
+    );
+  const file = path.join(f.home, "example.json"),
+    output = path.join(f.home, "output.json");
+  await writeFile(file, JSON.stringify(seed()));
+  await writeFile(output, '{"found":true}');
+  assert.equal(cli("evals", "create", "--file", file).ok, true);
+  cli(
+    "evals",
+    "tools",
+    "set",
+    "example",
+    "--tool",
+    "inspect",
+    "--output",
+    output,
+  );
+  assert.deepEqual(
+    cli("evals", "tools", "list", "example").result.items[0].output,
+    { found: true },
+  );
+  const id = cli("evals", "transcript", "get", "example").result.messages[0]
+    .messageID;
+  await writeFile(
+    file,
+    JSON.stringify({ role: "user", content: "new prompt" }),
+  );
+  cli("evals", "transcript", "update", "example", id, "--file", file);
+  assert.equal(
+    cli("evals", "transcript", "get", "example").result.messages[0].content,
+    "new prompt",
+  );
+  assert.throws(() =>
+    cli("evals", "transcript", "delete", "example", id, "--message", id),
+  );
+  const defs = await new EvalStore(f.home).list();
+  assert.equal(defs.length, 1);
+});
+test("parameter-only updates preserve tools, transcript, and agent defaults", async (t) => {
+  const f = await fixture(t, () => finish("ok"), {
+    thinking: false,
+    temperature: 0.1,
+    maxOutputTokens: 99,
+  });
+  const def = evalSchema.parse({ ...seed(), overrides: { temperature: 0.2 } });
+  assert.deepEqual(def.overrides, { temperature: 0.2 });
+  await operation(f.service, {
+    command: "evals create",
+    request: { eval: def },
+  });
+  const result = await operation(f.service, {
+    command: "evals update",
+    resourceID: "example",
+    request: { changes: { agentID: "worker" } },
+  });
+  assert.equal(
+    result.item.definition.messages[0].content,
+    def.messages[0]!.content,
+  );
+  assert.deepEqual(result.item.definition.overrides, { temperature: 0.2 });
+  const r = await f.submit(def);
+  assert.equal(r.agent.thinking, false);
+  assert.equal(r.agent.temperature, 0.2);
+  assert.equal(r.agent.maxOutputTokens, 99);
+});
+test("eval compaction uses a linked agent and resumes the parent before grading", async (t) => {
+  const f = await fixture(t, (r) =>
+    r.messages[0].content.includes("Summarize the supplied")
+      ? {
+          text: JSON.stringify({
+            summary: "Remember the prior facts; answer the question.",
+          }),
+        }
+      : finish("done"),
+  );
+  await f.service.createAgent(
+    agentDraft.parse({
+      agentID: "summarizer",
+      name: "Summarizer",
+      mode: "single-turn",
+      modelID: "background",
+      systemPrompt: "Summarize the supplied conversation.",
+      skillIDs: [],
+      toolIDs: [],
+      enabled: true,
+      thinking: false,
+      maxOutputTokens: 128,
+    }),
+  );
+  await operation(f.service, {
+    command: "agents update",
+    resourceID: "worker",
+    request: {
+      expectedRevision: 1,
+      changes: {
+        compaction: { handler: { type: "agent", agentID: "summarizer" } },
+      },
+    },
+  });
+  // Make the original parent exceed capacity; child and checkpointed input fit.
+  f.runtime.countTokens = async (r) =>
+    r.messages.some((m: any) => m.content === "OLD_EVIDENCE") ? 4000 : 20;
+  const r = await f.submit({
+    ...seed(),
+    messages: [
+      { role: "user", content: "OLD_EVIDENCE" },
+      { role: "assistant", content: "Previous answer" },
+      { role: "user", content: "Now answer." },
+    ],
+  });
+  assert.equal(r.state, "completed");
+  assert.equal(r.compactions.length, 1);
+  assert.equal(r.evaluation!.grade.status, "ungraded");
+  const child = await f.service.run(r.compactions[0]!.childRunID!);
+  assert.equal(child.state, "completed");
+  assert.equal(child.parentRunID, r.runID);
+  assert.equal(child.evaluation!.grade.status, "ungraded");
+  assert.equal(r.events.filter((e) => e.type === "evalGraded").length, 1);
+  assert.ok(
+    f.calls
+      .at(-1)
+      .messages.some((m: any) =>
+        m.content.includes("Remember the prior facts"),
+      ),
+  );
+});
+test("restart grades pending completions but does not replay an uncertain executable grader", async (t) => {
+  const f = await fixture(t, () => finish("ok"));
+  const one = await f.submit({ ...seed(), grader: { schema: finishSchema } }),
+    two = await f.submit({ ...seed(), grader: { schema: finishSchema } });
+  await f.service.close();
+  const store = new Storage(f.home);
+  await store.initialize();
+  one.evaluation!.grade = { status: "pending" };
+  two.evaluation!.grade = { status: "running" };
+  await store.exclusive(async () => {
+    await store.write(one);
+    await store.write(two);
+  });
+  await store.close();
+  const restarted = new Service(new Storage(f.home), f.runtime, async () => ({
+    state: "away",
+    reason: "fixture",
+    samplingHealthy: true,
+    observedAt: new Date().toISOString(),
+    diagnostic: null,
+  }));
+  await restarted.initialize();
+  try {
+    const r = await until(async () => {
+      const r = await restarted.run(one.runID);
+      return r.evaluation!.grade.status === "passed" ? r : false;
+    });
+    assert.equal(r.state, "completed");
+    const unknown = await restarted.run(two.runID);
+    assert.equal(unknown.evaluation!.grade.status, "error");
+    assert.match(unknown.evaluation!.grade.reason!, /not retried/);
+    assert.equal(f.calls.length, 2);
+  } finally {
+    await restarted.close();
+  }
 });
 
-async function graded(
-  t: import("node:test").TestContext,
-  source?: any,
-  options: { generate?: any; timeoutMs?: number } = {},
-) {
-  const f = await fixture(t, options.generate);
-  const script = path.join(f.home, "grade.ts");
-  await writeFile(script, source);
-  const s = suite();
-  s.graders = [
-    {
-      graderID: "check",
-      executablePath: process.execPath,
-      argv: ["--experimental-strip-types", script],
-      timeoutMs: options.timeoutMs ?? 2000,
-    },
-  ];
-  return { ...f, script, suite: s };
-}
-const passingGrade =
-  'console.log(JSON.stringify({checks:[{checkID:"semantic",criterionID:"honest",status:"passed",reason:"Checked against the fixture."}]}));';
-async function evaluate(f?: any, name = "graded") {
-  const out = await runEval(
-    { suite: f.suite, destination: path.join(f.home, name) },
-    f.transport,
-  );
-  return {
-    out,
-    saved: JSON.parse((await readFile(out.resultFile, "utf8")).toString()),
+test("eval waits include grading and return its verdict without rerunning work", async (t) => {
+  const f = await fixture(t, () => finish("done"));
+  const run = await f.submit();
+  const { getCommand } = await import("../dist/utils/commands/registry.js");
+  const { waitForWork } = await import("../dist/cli.js");
+  const command = getCommand("runs get")!;
+  const original = command.handler;
+  let reads = 0;
+  command.handler = async () => {
+    const detail = f.service.detail(run);
+    detail.evaluation!.grade = {
+      status: ++reads === 1 ? "running" : "failed",
+      reason: "fixture verdict",
+    };
+    return { run: detail };
   };
-}
-test("TypeScript graders receive hidden expectations and complete trace without exposing them to the model", async (t) => {
-  const f = await graded(
-    t,
-    `
-    import process from "node:process";
-    let data:string="";for await(const chunk of process.stdin)data+=chunk;
-    const input=JSON.parse(data);
-    if(input.version!==1 || input.result.counts.read!==2 ||
-       !JSON.stringify(input.case).includes("JUDGE_ONLY_SENTINEL") ||
-       input.result.answer!=="AZ-41")throw Error("Missing evidence");
-    ${passingGrade}
-  `,
-  );
-  const dry = await runEval(
-    { suite: f.suite, destination: path.join(f.home, "dry") },
-    f.transport,
-    true,
-  );
-  assert.equal(f.inputs.length, 0);
-  const { out, saved } = await evaluate(f);
-  assert.equal(out.status, "passed", JSON.stringify(saved.cases));
-  assert.equal(saved.cases[0].criteria[0].status, "passed");
-  assert.equal(saved.cases[0].graders[0].status, "completed");
-  assert.equal(saved.cases[0].gradingComplete, true);
-  assert.equal(saved.snapshot.graders[0].files.length, 2);
-  assert.match(saved.snapshot.graders[0].identityHash, /^[a-f0-9]{64}$/);
-  assert.ok(!JSON.stringify(f.inputs).includes("JUDGE_ONLY_SENTINEL"));
-});
-test("dry run never executes graders", async (t) => {
-  const f = await graded(t, 'throw Error("MUST_NOT_RUN");');
-  const result = await runEval(
-    { suite: f.suite, destination: path.join(f.home, "dry") },
-    f.transport,
-    true,
-  );
-  assert.equal(f.inputs.length, 0);
-  await assert.rejects(access(path.join(f.home, "dry")));
-  assert.ok(result.snapshot!.graders.length);
-});
-test("grader verdicts preserve deterministic failure and execution errors", async (t) => {
-  for (const error of [false, true]) {
-    const f = await graded(t, passingGrade, {
-      generate: async () =>
-        error
-          ? {
-              text: "",
-              toolCalls: [
-                { callID: "bad", name: "inspect", arguments: '{"page":9}' },
-              ],
-              usage: { inputTokens: 1, outputTokens: 1 },
-            }
-          : {
-              text: "WRONG",
-              toolCalls: [],
-              usage: { inputTokens: 1, outputTokens: 1 },
-            },
-    });
-    const { saved } = await evaluate(f);
-    assert.equal(saved.cases[0].status, error ? "error" : "failed");
-    assert.equal(saved.cases[0].graders[0].status, "completed");
-    assert.ok(saved.cases[0].messages.length);
-  }
-});
-test("grader failures, malformed output, duplicate checks, unknown criteria and timeouts are eval errors", async (t) => {
-  const scripts = [
-    'throw Error("crash");',
-    'console.log("not json");',
-    "console.log(JSON.stringify({checks:[]}));",
-    'console.log(JSON.stringify({checks:[{checkID:"x",status:"passed",reason:"ok"},{checkID:"x",status:"passed",reason:"ok"}]}));',
-    'console.log(JSON.stringify({checks:[{checkID:"x",criterionID:"missing",status:"passed",reason:"ok"}]}));',
-    "setInterval(()=>{},1000);",
-  ];
-  for (const source of scripts) {
-    const f = await graded(t, source, { timeoutMs: 200 });
-    const { out, saved } = await evaluate(f);
-    assert.equal(out.status, "failed");
-    assert.equal(saved.cases[0].status, "error");
-    assert.equal(saved.cases[0].error, "grader_error");
-    assert.equal(saved.cases[0].answer, "AZ-41");
-    assert.equal(saved.cases[0].graders[0].status, "error");
-  }
-});
-test("a changed grader is rejected before execution", async (t) => {
-  let script: any;
-  const f = await graded(t, passingGrade, {
-    generate: async () => {
-      await writeFile(script, 'throw Error("changed executable ran");');
-      return {
-        text: "AZ-41",
-        toolCalls: [],
-        usage: { inputTokens: 1, outputTokens: 1 },
-      };
-    },
-  });
-  script = f.script;
-  const { saved } = await evaluate(f);
-  assert.match(saved.cases[0].graders[0].error, /changed after snapshot/);
-});
-test("grading conflicts are conservative and unreviewed semantics never pass", async (t) => {
-  for (const status of ["failed", "needs_review"]) {
-    const f = await graded(t, passingGrade);
-    const other = path.join(f.home, "other.ts");
-    await writeFile(
-      other,
-      passingGrade.replace('status:"passed"', 'status:"' + status + '"'),
+  try {
+    const result: any = await waitForWork(
+      { home: f.home, request: {}, values: {}, dryRun: false, yes: false },
+      "run",
+      run.runID,
     );
-    f.suite.graders.push({
-      ...f.suite.graders[0],
-      graderID: "second",
-      argv: ["--experimental-strip-types", other],
-    });
-    const { out, saved } = await evaluate(f);
-    assert.equal(out.status, status);
-    assert.equal(saved.cases[0].criteria[0].status, status);
+    assert.equal(reads, 2);
+    assert.equal(result.run.evaluation.grade.status, "failed");
+    assert.equal(f.calls.length, 1);
+  } finally {
+    command.handler = original;
   }
-  const f = await graded(t, passingGrade.replace('criterionID:"honest",', ""));
-  assert.equal((await evaluate(f)).out.status, "needs_review");
+});
+
+test("seeded finish calls cannot stand in for model generation", () => {
+  assert.throws(() =>
+    evalSchema.parse({
+      ...seed(),
+      messages: [
+        ...seed().messages,
+        {
+          role: "assistant",
+          content: "",
+          toolCalls: [
+            { callID: "old", name: "finish", arguments: '{"answer":"cheat"}' },
+          ],
+        },
+      ],
+    }),
+  );
+  assert.throws(() =>
+    evalSchema.parse({ ...seed(), tools: [{ tool: "finish", output: {} }] }),
+  );
+});
+
+test("eval model overrides select a different configured model without changing the installed agent", async (t) => {
+  const f = await fixture(t, () => finish("done"));
+  const r = await f.submit({
+    ...seed(),
+    overrides: { modelID: "interactive" },
+  });
+  assert.equal(r.agent.modelID, "interactive");
+  assert.equal(f.calls[0].modelID, "interactive");
+  assert.equal(r.interactive, false);
+  assert.equal(
+    (
+      await operation(f.service, {
+        command: "agents get",
+        resourceID: "worker",
+        request: {},
+      })
+    ).item.modelID,
+    "background",
+  );
+  await assert.rejects(
+    f.service.submitEval(
+      evalSchema.parse({ ...seed(), overrides: { modelID: "missing" } }),
+      1,
+    ),
+  );
+});
+
+test("replies preserve eval overrides and prior grades while regrading the new segment", async (t) => {
+  const f = await fixture(t, () => finish("ok"), {
+    contextMode: "persistent",
+    thinking: true,
+  });
+  const first = await f.submit({
+    ...seed(),
+    overrides: { thinking: false },
+    grader: { schema: finishSchema },
+  });
+  await f.service.submit(
+    first.runID,
+    { messageID: randomUUID(), content: "another turn", attachments: [] },
+    true,
+  );
+  const second = await until(async () => {
+    const r = await f.service.run(first.runID);
+    return r.segment === 1 && r.evaluation!.grade.status === "passed"
+      ? r
+      : false;
+  });
+  assert.equal(second.agent.thinking, false);
+  assert.equal(second.interactive, false);
+  assert.equal(second.events.filter((e) => e.type === "evalGraded").length, 2);
+  assert.ok(f.calls.every((c) => c.contextID === `run-${first.runID}`));
+  assert.ok(f.calls.every((c) => c.persistContext));
 });

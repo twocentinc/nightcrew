@@ -1,3 +1,4 @@
+import { evalRunStateSchema } from "../engine/evals/format.js";
 import { eventSchema } from "./event.js";
 import {
   executionSchema,
@@ -75,6 +76,7 @@ export const contextUsageSchema = z.strictObject({
   segment: z.number().int().nonnegative(),
 });
 export const runSchema = z.strictObject({
+  evaluation: evalRunStateSchema.optional(),
   capabilityRefreshes: z
     .array(
       z.strictObject({
@@ -161,6 +163,7 @@ export const runSummarySchema = runSchema
     outcome: outcomeSchema,
   });
 export const runDetailSchema = runSummarySchema.extend({
+  evaluation: evalRunStateSchema.optional(),
   capabilityRefreshes: runSchema.shape.capabilityRefreshes,
   contextUsage: runSchema.shape.contextUsage,
   validations: runSchema.shape.validations,

@@ -19,7 +19,6 @@ import { control } from "../../server/daemon.js";
 import { readJSON } from "../../storage/files.js";
 import { Storage } from "../../storage/store.js";
 import { registerLocal as registerdaemon } from "../../commands/daemon.js";
-import { registerLocal as registerevals } from "../../commands/evals.js";
 import { registerLocal as registerhelp } from "../../commands/help.js";
 import { registerLocal as registerinit } from "../../commands/init.js";
 import { requestSchemas } from "./inputs.js";
@@ -162,7 +161,6 @@ async function management(
 }
 
 export type Define = typeof define;
-registerevals(define);
 registerhelp(define);
 registerversion(define);
 registerschema(define);
@@ -170,7 +168,6 @@ registerinit(define);
 registerpresence(define);
 registerdaemon(define);
 for (const operation of operationDefinitions) {
-  if (["evals sample", "evals release"].includes(operation.name)) continue;
   const {
     name,
     description,
@@ -188,12 +185,13 @@ for (const operation of operationDefinitions) {
     scope,
     operand,
     mutates,
-    ["agents run", "instant create"].includes(name)
+    ["agents run", "evals run", "instant create"].includes(name)
       ? z.union([
           result,
           operationDefinitions.find(
             (d) =>
-              d.name === (name === "agents run" ? "runs get" : "instant get"),
+              d.name ===
+              (name === "instant create" ? "instant get" : "runs get"),
           )!.result,
         ])
       : result,
@@ -202,7 +200,7 @@ for (const operation of operationDefinitions) {
       confirmation,
       options: [
         ...options,
-        ...(["agents run", "instant create"].includes(name)
+        ...(["agents run", "evals run", "instant create"].includes(name)
           ? ["wait"]
           : name === "runs transcript"
             ? ["tail"]

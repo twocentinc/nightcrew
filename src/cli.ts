@@ -36,6 +36,11 @@ export const version = packageVersion;
 const optionTypes: Record<string, string | false> = {
   ...globalOptions,
   request: "file-or-dash",
+  file: "file-or-dash",
+  tool: "toolID",
+  input: "file-or-dash",
+  output: "file-or-dash",
+  message: "messageID",
   "dry-run": false,
   yes: false,
   lines: "count",
@@ -95,6 +100,19 @@ export function parseCLI(argv: string[]) {
   }
   const definition = getCommand(selected)!;
   if (
+    ["evals transcript update", "evals transcript delete"].includes(selected) &&
+    remaining.length === 2
+  ) {
+    if (values.message) throw invalidInput("Duplicate message ID");
+    values.message = remaining.pop()!;
+  }
+  if (
+    [values.request, values.file, values.input, values.output].filter(
+      (v) => v === "-",
+    ).length > 1
+  )
+    throw invalidInput("Only one input may read stdin");
+  if (
     selected !== "help" &&
     remaining.length !== (definition.operand === "required" ? 1 : 0)
   )
@@ -145,15 +163,8 @@ export function parseCLI(argv: string[]) {
       values.tail && !values.timeout
         ? Infinity
         : parseDuration(
-            String(
-              values.timeout ??
-                (selected === "evals run" || values.wait ? "120m" : "90s"),
-            ),
-            values.wait || values.tail
-              ? 86400000
-              : selected === "evals run"
-                ? 7200000
-                : 300000,
+            String(values.timeout ?? (values.wait ? "120m" : "90s")),
+            values.wait || values.tail ? 86400000 : 300000,
           ),
     verbosity: verbosity as Verbosity,
   };
@@ -241,6 +252,26 @@ export async function main(argv = process.argv.slice(2)) {
         args.values.request as string | undefined,
         execution,
       );
+      if (command.startsWith("evals ")) {
+        const set = (field: string, value: unknown) => {
+          if (!raw || typeof raw !== "object" || Array.isArray(raw))
+            throw invalidInput("Request must be an object");
+          if (raw[field] !== undefined)
+            throw invalidInput("Duplicate request field " + field);
+          raw[field] = value;
+        };
+        if (args.values.file) {
+          const data = await inputJSON(String(args.values.file), execution);
+          if (command === "evals create") set("eval", data);
+          else if (command === "evals transcript update") set("message", data);
+          else set("messages", Array.isArray(data) ? data : [data]);
+        }
+        for (const field of ["input", "output"])
+          if (args.values[field])
+            set(field, await inputJSON(String(args.values[field]), execution));
+        if (args.values.tool) set("tool", args.values.tool);
+        if (args.values.message) set("messageID", args.values.message);
+      }
       if (command.startsWith("runs ") || command.startsWith("queue ")) {
         for (const [flag, field] of [
           ["limit", "limit"],
@@ -297,8 +328,8 @@ export async function main(argv = process.argv.slice(2)) {
       if (args.values.wait) {
         const value = output as { runID?: string; requestID?: string };
         accepted = {
-          kind: command === "agents run" ? "run" : "instant",
-          id: (command === "agents run" ? value.runID : value.requestID)!,
+          kind: command === "instant create" ? "instant" : "run",
+          id: (command === "instant create" ? value.requestID : value.runID)!,
         };
         output = await waitForWork(context, accepted.kind, accepted.id);
       }
@@ -380,11 +411,20 @@ export async function waitForWork(
       }),
     );
     const value = output as {
-      run?: { execution: { state: string } };
+      run?: {
+        execution: { state: string };
+        evaluation?: { grade: { status: string } };
+      };
       state?: string;
     };
     const state = value.run?.execution.state ?? value.state ?? "";
-    if (state === "completed") return output;
+    if (
+      state === "completed" &&
+      !["pending", "running"].includes(
+        value.run?.evaluation?.grade.status ?? "",
+      )
+    )
+      return output;
     if (["failed", "cancelled", "timedOut"].includes(state))
       throw new NightcrewError(
         "cli.workFailed",

@@ -1,17 +1,15 @@
+// Resolve the optional executable grader without embedding machine paths in fixtures.
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import path from "node:path";
-const destination = process.argv[2];
-if (!destination || !path.isAbsolute(destination))
-  throw Error(
-    "Usage: node --experimental-strip-types eval.ts /absolute/new/result-directory",
-  );
-const suite = JSON.parse(
-  await readFile(new URL("./eval.json", import.meta.url), "utf8"),
+const definition = JSON.parse(
+  await readFile(
+    process.argv[2] ?? new URL("./eval.json", import.meta.url),
+    "utf8",
+  ),
 );
-suite.graders = [
-  {
-    graderID: "agent-checks",
+definition.grader = {
+  ...definition.grader,
+  exec: {
     executablePath: process.execPath,
     argv: [
       "--experimental-strip-types",
@@ -19,5 +17,5 @@ suite.graders = [
     ],
     timeoutMs: 10000,
   },
-];
-console.log(JSON.stringify({ suite, destination }));
+};
+console.log(JSON.stringify(definition));

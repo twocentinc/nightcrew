@@ -1,6 +1,6 @@
 # Nightcrew specification
 
-Status: release 0.42.0, protocol 1, schema 43.
+Status: release 0.43.0, protocol 1, schema 44.
 See [compatibility.md](compatibility.md) for stable surfaces and change policy.
 Runtime schemas and registered procedures are authoritative; this document
 explains behavior rather than maintaining another endpoint inventory.
@@ -48,7 +48,7 @@ Components declare narrow dependencies and keep their state with its owner.
 | `engine/models/types.ts`     | Runtime adapter contracts                                                                      |
 | `engine/compaction/`         | Coordinator, recovery, format and source evidence                                              |
 | `engine/capabilities/`       | Tool registry, skill resources and bundled executable commands                                 |
-| `engine/evals/`              | Suite runner, schemas, mock tools and grading/results                                          |
+| `engine/evals/`              | Definition edits, mock tools, and ordinary-run grading                                         |
 | `schemas/`                   | Common primitives, agents, models, runs and configuration                                      |
 | `storage/store.ts`           | Home lock, lifecycle and the shared transaction queue                                          |
 | `storage/config.ts`          | Configuration initialization, validation and persistence                                       |
@@ -566,7 +566,7 @@ retain the reasoning draft and request an answer with thinking disabled.
 Active-time, context, transcript-storage and 1 MB assembled-response limits still
 apply; an empty length response fails rather than spinning. Transport truncation
 without a valid completed stream remains an error. Instant API requests and raw
-eval samples keep their existing behavior; continuation belongs to managed runs.
+instant requests keep their existing behavior; continuation belongs to managed runs, including eval runs.
 A fresh run snapshots its generation limit and scheduling slice, so configuration
 changes require a new fresh run; retry preserves that original agent snapshot.
 
@@ -712,18 +712,13 @@ Historical capability refreshes alone do not create incidents. Coverage checks
 do not establish factual accuracy, and recovered child failures must be described
 using their parent relationship evidence.
 
-## Executable eval graders (0.39.0, schema 40)
+## Evals (0.43.0, schema 44)
 
-Optional suite graders execute after each case through the bounded executable
-runner. They receive hidden expectations, the complete trace and execution outcome,
-then return named pass/fail/review checks. Execution errors and deterministic
-failures cannot become passes through grading. Grader failures are recorded as eval
-errors; unaddressed semantic criteria remain unreviewed. Existing suites without
-graders retain their behavior.
-
-This is an approved additive contract change. Agent-specific fixtures, TypeScript
-graders and checks are colocated under their example directories. See
-[the eval format](eval-format.md) for the canonical executable protocol.
+- Saved eval definitions create ordinary runs with a seeded transcript and exact/default tool responses.
+- The real agent finish contract, validation/repair, model choice, scheduler, interruption recovery and compaction remain active. Eval caches and run IDs are isolated; lifecycle delivery hooks are suppressed.
+- Hidden grading first checks an optional expected JSON Schema, then an optional executable. Schema failure skips the executable. No grader means ungraded; grading never sends repair feedback to the agent.
+- `evals` provides CRUD/run operations, `tools list/set/delete`, and `transcript get/set/append/update/delete/clear`. Shared oRPC contracts power HTTP, control socket and CLI.
+- See [the eval format](eval-format.md) for definition fields, executable protocol, CLI examples, and recovery semantics.
 
 ## CLI simplification (schema 42)
 
