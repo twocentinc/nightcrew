@@ -283,12 +283,6 @@
               {
                 "additionalProperties": false,
                 "properties": {
-                  "repairAttempts": {
-                    "default": 1,
-                    "maximum": 2,
-                    "minimum": 0,
-                    "type": "integer"
-                  },
                   "validator": {
                     "oneOf": [
                       {
@@ -721,12 +715,6 @@
               {
                 "additionalProperties": false,
                 "properties": {
-                  "repairAttempts": {
-                    "default": 1,
-                    "maximum": 2,
-                    "minimum": 0,
-                    "type": "integer"
-                  },
                   "validator": {
                     "oneOf": [
                       {
@@ -792,8 +780,7 @@
                   }
                 },
                 "required": [
-                  "validator",
-                  "repairAttempts"
+                  "validator"
                 ],
                 "type": "object"
               },
@@ -1667,12 +1654,6 @@
               {
                 "additionalProperties": false,
                 "properties": {
-                  "repairAttempts": {
-                    "default": 1,
-                    "maximum": 2,
-                    "minimum": 0,
-                    "type": "integer"
-                  },
                   "validator": {
                     "oneOf": [
                       {
@@ -1738,8 +1719,7 @@
                   }
                 },
                 "required": [
-                  "validator",
-                  "repairAttempts"
+                  "validator"
                 ],
                 "type": "object"
               },
@@ -2141,12 +2121,6 @@
                 {
                   "additionalProperties": false,
                   "properties": {
-                    "repairAttempts": {
-                      "default": 1,
-                      "maximum": 2,
-                      "minimum": 0,
-                      "type": "integer"
-                    },
                     "validator": {
                       "oneOf": [
                         {
@@ -2212,8 +2186,7 @@
                     }
                   },
                   "required": [
-                    "validator",
-                    "repairAttempts"
+                    "validator"
                   ],
                   "type": "object"
                 },
@@ -2802,12 +2775,6 @@
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "repairAttempts": {
-                            "default": 1,
-                            "maximum": 2,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
                           "validator": {
                             "oneOf": [
                               {
@@ -2873,8 +2840,7 @@
                           }
                         },
                         "required": [
-                          "validator",
-                          "repairAttempts"
+                          "validator"
                         ],
                         "type": "object"
                       },
@@ -4782,12 +4748,6 @@
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "repairAttempts": {
-                                  "default": 1,
-                                  "maximum": 2,
-                                  "minimum": 0,
-                                  "type": "integer"
-                                },
                                 "validator": {
                                   "oneOf": [
                                     {
@@ -4853,8 +4813,7 @@
                                 }
                               },
                               "required": [
-                                "validator",
-                                "repairAttempts"
+                                "validator"
                               ],
                               "type": "object"
                             },
@@ -6101,12 +6060,6 @@
               {
                 "additionalProperties": false,
                 "properties": {
-                  "repairAttempts": {
-                    "default": 1,
-                    "maximum": 2,
-                    "minimum": 0,
-                    "type": "integer"
-                  },
                   "validator": {
                     "oneOf": [
                       {
@@ -6527,12 +6480,6 @@
               {
                 "additionalProperties": false,
                 "properties": {
-                  "repairAttempts": {
-                    "default": 1,
-                    "maximum": 2,
-                    "minimum": 0,
-                    "type": "integer"
-                  },
                   "validator": {
                     "oneOf": [
                       {
@@ -6598,8 +6545,7 @@
                   }
                 },
                 "required": [
-                  "validator",
-                  "repairAttempts"
+                  "validator"
                 ],
                 "type": "object"
               },
@@ -10700,12 +10646,6 @@
                       {
                         "additionalProperties": false,
                         "properties": {
-                          "repairAttempts": {
-                            "default": 1,
-                            "maximum": 2,
-                            "minimum": 0,
-                            "type": "integer"
-                          },
                           "validator": {
                             "oneOf": [
                               {
@@ -10771,8 +10711,7 @@
                           }
                         },
                         "required": [
-                          "validator",
-                          "repairAttempts"
+                          "validator"
                         ],
                         "type": "object"
                       },
@@ -12680,12 +12619,6 @@
                             {
                               "additionalProperties": false,
                               "properties": {
-                                "repairAttempts": {
-                                  "default": 1,
-                                  "maximum": 2,
-                                  "minimum": 0,
-                                  "type": "integer"
-                                },
                                 "validator": {
                                   "oneOf": [
                                     {
@@ -12751,8 +12684,7 @@
                                 }
                               },
                               "required": [
-                                "validator",
-                                "repairAttempts"
+                                "validator"
                               ],
                               "type": "object"
                             },
@@ -22316,12 +22248,6 @@
                   {
                     "additionalProperties": false,
                     "properties": {
-                      "repairAttempts": {
-                        "default": 1,
-                        "maximum": 2,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
                       "validator": {
                         "oneOf": [
                           {
@@ -22387,8 +22313,7 @@
                       }
                     },
                     "required": [
-                      "validator",
-                      "repairAttempts"
+                      "validator"
                     ],
                     "type": "object"
                   },
@@ -24296,12 +24221,6 @@
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "repairAttempts": {
-                              "default": 1,
-                              "maximum": 2,
-                              "minimum": 0,
-                              "type": "integer"
-                            },
                             "validator": {
                               "oneOf": [
                                 {
@@ -24367,8 +24286,7 @@
                             }
                           },
                           "required": [
-                            "validator",
-                            "repairAttempts"
+                            "validator"
                           ],
                           "type": "object"
                         },
@@ -26174,12 +26092,6 @@
                   {
                     "additionalProperties": false,
                     "properties": {
-                      "repairAttempts": {
-                        "default": 1,
-                        "maximum": 2,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
                       "validator": {
                         "oneOf": [
                           {
@@ -26245,8 +26157,7 @@
                       }
                     },
                     "required": [
-                      "validator",
-                      "repairAttempts"
+                      "validator"
                     ],
                     "type": "object"
                   },
@@ -28154,12 +28065,6 @@
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "repairAttempts": {
-                              "default": 1,
-                              "maximum": 2,
-                              "minimum": 0,
-                              "type": "integer"
-                            },
                             "validator": {
                               "oneOf": [
                                 {
@@ -28225,8 +28130,7 @@
                             }
                           },
                           "required": [
-                            "validator",
-                            "repairAttempts"
+                            "validator"
                           ],
                           "type": "object"
                         },
@@ -29758,12 +29662,6 @@
                   {
                     "additionalProperties": false,
                     "properties": {
-                      "repairAttempts": {
-                        "default": 1,
-                        "maximum": 2,
-                        "minimum": 0,
-                        "type": "integer"
-                      },
                       "validator": {
                         "oneOf": [
                           {
@@ -29829,8 +29727,7 @@
                       }
                     },
                     "required": [
-                      "validator",
-                      "repairAttempts"
+                      "validator"
                     ],
                     "type": "object"
                   },
@@ -31738,12 +31635,6 @@
                         {
                           "additionalProperties": false,
                           "properties": {
-                            "repairAttempts": {
-                              "default": 1,
-                              "maximum": 2,
-                              "minimum": 0,
-                              "type": "integer"
-                            },
                             "validator": {
                               "oneOf": [
                                 {
@@ -31809,8 +31700,7 @@
                             }
                           },
                           "required": [
-                            "validator",
-                            "repairAttempts"
+                            "validator"
                           ],
                           "type": "object"
                         },

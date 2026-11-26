@@ -41,7 +41,7 @@ earlier choices where noted below.
 | 19 | Upstream revisions | No replacement of published upstream outputs within an execution. |
 | 20 | Failure | Pause the whole pipeline for supervisor review. |
 | 21 | Partial success | Never publish a successful final result unless every stage succeeds. |
-| 22 | Automatic retries | No automatic stage retries (follow-up supersedes earlier policy); one tool-free output repair is allowed. |
+| 22 | Automatic retries | No automatic stage retries (follow-up supersedes earlier policy); invalid final output fails immediately. |
 | 23 | Pause | Stop new admissions and interrupt active stages using normal recovery. |
 | 24 | Restart | Reconcile and automatically resume unfinished work under normal scheduling rules. |
 | 25 | Scheduling preference | Prefer a started pipeline until it finishes. |
@@ -178,8 +178,7 @@ No actual trigger is installed or enabled by this specification.
 Only per-stage execution budgets are configured. Do not add a pipeline-wide active
 time budget or wall-clock deadline. Paused time does not count toward stage active
 time, consistent with normal Nightcrew runs. Each explicit retry receives a fresh
-active-time budget. Output repair is part of its current attempt, not a fresh stage
-retry. Track total historical usage for inspection without imposing an aggregate
+active-time budget. Invalid final output fails the attempt without automatic repair. Track total historical usage for inspection without imposing an aggregate
 pipeline budget. Restart/interruption resume does not itself reset attempt time.
 
 ## Failure, retry, pause and restart
@@ -192,9 +191,8 @@ as success: every stage must succeed. Intermediate results remain inspectable.
 There are no automatic stage retries, even for transient failures. The owner's
 later explicit “no automatic retries” answer supersedes the preceding choice to
 retry safe failures before pausing. Invalid JSON or schema-invalid model output
-has one specific exception: one tool-free repair using the validation error, with
-original output retained. If repair fails, pause for review. Do not rerun the whole
-stage or replay tools as output repair. Executable failures pause for review.
+fails the stage immediately, with the original output retained. There is no
+output repair exception. Executable failures pause for review.
 
 Retry failed work with the latest configuration and the same published inputs.
 Keep each attempt and its actual configuration. Successful stages and their

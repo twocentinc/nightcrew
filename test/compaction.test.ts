@@ -586,7 +586,6 @@ test("compaction retains per-turn output constraints when replacing context", as
               required: ["answer"],
             },
           },
-          repairAttempts: 0,
         },
       },
     },

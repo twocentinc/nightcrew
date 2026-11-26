@@ -84,8 +84,8 @@ classified from mismatched evidence.
 
 Configure the agent output-validation hook with your Node path and copied
 `report.ts --validate` path. The inspector repeats recent priority incidents
-in every response; reports need one `### RUN_ID` section for each with exact
-Execution, Output and Delivery status lines, an Assessment and a Next action.
+in every response; finish data needs one incident object for each, with copied
+execution/output/delivery values, an assessment, and a next action.
 If the snapshot file is absent, validation uses the recorded successful overview
 tool response from the run transcript. This supports eval tool overrides without
 requiring simulated filesystem writes or weakening coverage checks.
@@ -110,3 +110,16 @@ nightcrew evals run EVAL_ID --wait
 ```
 
 Pass another fixture file to `eval.ts` to install a different scenario. Inspect the returned run ID with `runs get` and `runs transcript`. See [the eval contract](../../docs/eval-format.md).
+
+Completion uses the agent’s `finishSchema`: call `finish` with `{incidents, observations, uncertainties}`.
+The eval’s `grader.schema` independently checks the accepted arguments; it never
+replaces the agent schema or appears in model context. Invalid finish calls fail
+immediately.
+
+## Structured handoff
+
+- `incidents` contains exactly one object per `coverage.priorityIssues` entry: `runID`, `execution`, `output`, `delivery`, `assessment`, `nextAction`. Copy status values from the snapshot.
+- `observations` and `uncertainties` are arrays of strings covering reviewed scope, metrics, recovered history, and evidence gaps. Recovered children belong in observations, not the current incident list.
+- The agent finish schema owns structure and status enums. The coverage validator rejects missing, duplicate, extra, or mismatched priority incidents without parsing Markdown.
+- The exporter deterministically renders the accepted object into Markdown, retaining create-only/idempotent writes and checkpoint behavior. Other agents using the exporter retain their plain-text reports.
+- Eval schemas remain independent and check scenario expectations. Executable grading additionally checks recovery and uncertainty cues; it is not a general semantic judge. No repair is attempted.

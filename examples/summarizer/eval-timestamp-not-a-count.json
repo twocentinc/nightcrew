@@ -10,8 +10,18 @@
   "tools": [],
   "grader": {
     "schema": {
-      "type": "string",
-      "minLength": 1
+      "type": "object",
+      "properties": {
+        "summary": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "2026-11-11T05:42:35\\.293Z"
+        }
+      },
+      "required": [
+        "summary"
+      ],
+      "additionalProperties": false
     }
   }
 }

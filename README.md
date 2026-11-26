@@ -5,7 +5,7 @@
 - Prioritize interactive requests; pause background work until the interaction cooldown expires.
 - Manage everything through a JSON-first CLI or the optional HTTP API.
 - Keep transcripts, configuration and caches in your runtime home, separate from this repository.
-- Current release: **0.43.0**, protocol **1**, schema **44**. See the [compatibility policy](docs/compatibility.md) before upgrading or changing public contracts.
+- Current release: **0.44.0**, protocol **1**, schema **45**. See the [compatibility policy](docs/compatibility.md) before upgrading or changing public contracts.
 
 ## Get started
 
@@ -196,7 +196,7 @@
 - Recovery commands use revision-checked JSON requests. Discover fields with `schema get runs.resume`, `runs.retry`.
 - Restart never automatically replays uncertain delivery. Investigate the destination before repeating any side effect.
 - Recover compactor children through their parent run.
-- Optional output validators and bounded repair attempts can gate delivery. Hooks marked `purpose: "delivery"` contribute to the delivery outcome.
+- Invalid `finish` calls and rejected final outputs fail immediately, without automatic correction. Optional output validators gate completion. Hooks marked `purpose: "delivery"` contribute to the delivery outcome.
 - See [review and recovery](docs/spec.md#supervisor-review-and-recovery) and [hooks](docs/spec.md#hooks).
 
 ## Export and verify

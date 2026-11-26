@@ -130,5 +130,4 @@ export interface TurnHistory {
   continuation: Attempt[];
   prefix: string;
   priorReasoning: string;
-  finishBatch: boolean;
 }

@@ -27,7 +27,6 @@ export const outputValidationSchema = z.strictObject({
       timeoutMs: z.number().int().min(100).max(60000).default(10000),
     }),
   ]),
-  repairAttempts: z.number().int().min(0).max(2).default(1),
 });
 export const loopPolicySchema = z.strictObject({
   consecutiveErrors: z.number().int().min(2).max(20).default(3),

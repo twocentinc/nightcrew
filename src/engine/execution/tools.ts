@@ -108,26 +108,32 @@ export class ToolExecution {
             });
             if (verdict.status !== "passed") error = verdict.reason;
           }
-          const receipt: Message = {
-            messageID: randomUUID(),
-            role: "tool",
-            content: JSON.stringify(
-              error
-                ? {
-                    ok: false,
-                    error: { code: "invalid_finish", message: error },
-                  }
-                : { ok: true, finished: true },
-            ),
-            attachments: [],
-            toolCalls: [],
-            toolCallID: call.callID,
-          };
-          r.messages.push(receipt);
-          this.ports.records.event(r, "toolResult", {
-            messageID: receipt.messageID,
-          });
-          if (!error) {
+          for (const resultCall of error ? lastAssistant.toolCalls : [call]) {
+            const receipt: Message = {
+              messageID: randomUUID(),
+              role: "tool",
+              content: JSON.stringify(
+                error
+                  ? {
+                      ok: false,
+                      error: { code: "invalid_finish", message: error },
+                    }
+                  : { ok: true, finished: true },
+              ),
+              attachments: [],
+              toolCalls: [],
+              toolCallID: resultCall.callID,
+            };
+            r.messages.push(receipt);
+            this.ports.records.event(r, "toolResult", {
+              messageID: receipt.messageID,
+            });
+          }
+          if (error) {
+            r.state = "failed";
+            r.error = { code: "invalid_finish", message: error };
+            this.ports.records.event(r, "failed", {});
+          } else {
             r.messages.push(finalMessage);
             this.ports.records.event(r, "message", {
               messageID: finalMessage.messageID,
@@ -140,8 +146,7 @@ export class ToolExecution {
           }
           // Receipt, final result and terminal state commit together, so restart cannot replay finish.
           await this.ports.storage.exclusive(() => this.ports.records.save(r));
-          if (!error) break;
-          continue;
+          break;
         }
         if (this.ports.context.atStorageLimit(r)) break;
         if (r.messages.some((m) => m.toolCallID === call.callID)) continue;

@@ -113,7 +113,11 @@ test("supervisor freezes metrics, excludes itself and old healthy work, checkpoi
     agentID: "agent-supervisor",
     runID: "review",
     segment: 0,
-    result: "# Findings\nReview complete for first page.",
+    result: JSON.stringify({
+      incidents: [],
+      observations: ["Review complete for first page."],
+      uncertainties: [],
+    }),
   };
   await report(event, home);
   await report(event, home);
@@ -374,15 +378,40 @@ test("priority failures survive checkpoints and every page, and reports must add
       await validateReport(
         {
           runID: opts.runID,
-          text: "### new-failure\nExecution: completed\nOutput: notConfigured\nDelivery: succeeded\nAssessment: Everything is good now.\nNext action: No action required.",
+          text: JSON.stringify({
+            incidents: [
+              {
+                runID: "new-failure",
+                execution: "completed",
+                output: "notConfigured",
+                delivery: "succeeded",
+                assessment: "Everything is good now.",
+                nextAction: "No action required.",
+              },
+            ],
+            observations: [],
+            uncertainties: [],
+          }),
         },
         home,
       )
     ).valid,
     false,
   );
-  const text =
-    "### new-failure\nExecution: completed\nOutput: notConfigured\nDelivery: failed\nAssessment: Generation finished but its delivery hook failed.\nNext action: Inspect the destination before deciding whether to retry.";
+  const text = JSON.stringify({
+    incidents: [
+      {
+        runID: "new-failure",
+        execution: "completed",
+        output: "notConfigured",
+        delivery: "failed",
+        assessment: "Generation finished but its delivery hook failed.",
+        nextAction: "Inspect the destination before deciding whether to retry.",
+      },
+    ],
+    observations: [],
+    uncertainties: [],
+  });
   assert.equal(
     (await validateReport({ runID: opts.runID, text }, home)).valid,
     true,

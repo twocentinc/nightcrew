@@ -1,6 +1,6 @@
 # Nightcrew specification
 
-Status: release 0.43.0, protocol 1, schema 44.
+Status: release 0.44.0, protocol 1, schema 45.
 See [compatibility.md](compatibility.md) for stable surfaces and change policy.
 Runtime schemas and registered procedures are authoritative; this document
 explains behavior rather than maintaining another endpoint inventory.
@@ -439,8 +439,7 @@ Agents may configure `outputValidation` (null by default):
       "required": ["answer"],
       "additionalProperties": false
     }
-  },
-  "repairAttempts": 1
+  }
 }
 ```
 
@@ -453,11 +452,13 @@ normal limited tool environment, no shell, at most 1 MB stdout, and a bounded
 automatic hook retries. Interrupted checks can execute again on resume, so the
 validator must not deliver messages or mutate external state.
 
-Invalid output allows zero to two repair completions (default one), without
-tools or thinking. Originals and verdicts stay in the transcript/state; limits
-survive restart and reset per persistent segment. Validation errors are not
-promoted to factual claims. Repair instructions and output schemas survive
-context replacement. Lifecycle delivery hooks have explicit `purpose:delivery`;
+Invalid finish calls, malformed/mixed finish batches, final text without a required
+finish call, and failed/errored final-output validators fail the run immediately.
+There is no automatic correction generation or `repairAttempts` setting.
+The rejected answer/tool arguments and validator evidence remain inspectable.
+A later explicitly requested run/reply/retry is separate work, not automatic repair.
+Output schema instructions remain in the system prompt across compaction.
+Lifecycle delivery hooks have explicit `purpose:delivery`;
 other/legacy hooks default to notification. Delivery hooks are not dispatched
 when configured output validation failed or errored. Unknown delivery after a
 restart is never blindly retried. Hook success denotes successful hook execution,
@@ -701,8 +702,8 @@ inventing recommendations or promoting hypotheses into facts.
 ### Duplicate keys and supervisor coverage
 
 Structured finish arguments and JSON-schema-validated output reject duplicate
-object keys, including escaped spellings of the same key. They return repair
-guidance instead of silently accepting the last value. Separate objects may
+object keys, including escaped spellings of the same key. They fail the run and retain diagnostic
+evidence instead of silently accepting the last value. Separate objects may
 reuse field names. The original model response stays in the transcript.
 
 The portable supervisor repeats a frozen priority-incident list in each tool
@@ -715,7 +716,7 @@ using their parent relationship evidence.
 ## Evals (0.43.0, schema 44)
 
 - Saved eval definitions create ordinary runs with a seeded transcript and exact/default tool responses.
-- The real agent finish contract, validation/repair, model choice, scheduler, interruption recovery and compaction remain active. Eval caches and run IDs are isolated; lifecycle delivery hooks are suppressed.
+- The real agent finish contract, validation, model choice, scheduler, interruption recovery and compaction remain active. Eval caches and run IDs are isolated; lifecycle delivery hooks are suppressed.
 - Hidden grading first checks an optional expected JSON Schema, then an optional executable. Schema failure skips the executable. No grader means ungraded; grading never sends repair feedback to the agent.
 - `evals` provides CRUD/run operations, `tools list/set/delete`, and `transcript get/set/append/update/delete/clear`. Shared oRPC contracts power HTTP, control socket and CLI.
 - See [the eval format](eval-format.md) for definition fields, executable protocol, CLI examples, and recovery semantics.

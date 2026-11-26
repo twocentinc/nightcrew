@@ -152,7 +152,7 @@ test(
                 result:
                   folder === "summarizer"
                     ? { summary: "Budget $50/day" }
-                    : "A review report.",
+                    : { incidents: [], observations: ["A review report."], uncertainties: [] },
               }),
               encoding: "utf8",
               stdio: ["pipe", "pipe", "pipe"],

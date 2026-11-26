@@ -24,7 +24,6 @@ export class Completion {
     continuation: Attempt[],
     controller: AbortController,
   ) {
-    let repairReason: string | null = null;
     if (
       !r.agent.finishSchema &&
       lastAssistant &&
@@ -51,28 +50,24 @@ export class Completion {
         });
         await this.ports.storage.exclusive(() => this.ports.records.save(r));
       }
-      const failures = r.validations.filter(
-        (v) => v.segment === r.segment && v.status !== "passed",
-      ).length;
-      if (
-        validation &&
-        verdict?.status === "failed" &&
-        failures <= validation.repairAttempts
-      ) {
-        repairReason = verdict.reason;
+      if (verdict && verdict.status !== "passed") {
+        r.state = "failed";
+        r.error = { code: "output_validation_failed", message: verdict.reason };
+        this.ports.records.event(r, "failed", {});
       } else {
         r.state = "completed";
         r.result = lastAssistant.content;
         this.ports.records.event(r, "completed", {
           messageID: lastAssistant.messageID,
         });
-        return { completed: true, repairReason };
       }
+      return true;
     }
-    return { completed: false, repairReason };
+    return false;
   }
+
   settleInterrupted(r: Run, controller: AbortController, state: RunExecution) {
-    if (controller.signal.aborted) {
+    if (controller.signal.aborted && !terminal(r.state)) {
       const reason = controller.signal.reason;
       if (reason === "manual") r.held = true;
       if (reason === "cancelled")

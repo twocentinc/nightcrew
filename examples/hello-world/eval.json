@@ -10,8 +10,16 @@
   "tools": [],
   "grader": {
     "schema": {
-      "type": "string",
-      "const": "Hello world!"
+      "type": "object",
+      "properties": {
+        "greeting": {
+          "const": "Hello world!"
+        }
+      },
+      "required": [
+        "greeting"
+      ],
+      "additionalProperties": false
     }
   }
 }

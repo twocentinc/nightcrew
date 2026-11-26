@@ -12,6 +12,88 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+export type Incident = {
+  runID: string;
+  execution: string;
+  output: string;
+  delivery: string;
+  assessment: string;
+  nextAction: string;
+};
+export type Report = {
+  incidents: Incident[];
+  observations: string[];
+  uncertainties: string[];
+};
+export function parseReport(text: string): Report {
+  const value = JSON.parse(text);
+  const strings = (items: unknown): items is string[] =>
+    Array.isArray(items) &&
+    items.every((item) => typeof item === "string" && item.trim());
+  if (
+    !value ||
+    !Array.isArray(value.incidents) ||
+    !strings(value.observations) ||
+    !strings(value.uncertainties) ||
+    !value.incidents.every(
+      (item: unknown) =>
+        item &&
+        typeof item === "object" &&
+        [
+          "runID",
+          "execution",
+          "output",
+          "delivery",
+          "assessment",
+          "nextAction",
+        ].every(
+          (key) =>
+            typeof (item as Record<string, unknown>)[key] === "string" &&
+            String((item as Record<string, unknown>)[key]).trim(),
+        ),
+    )
+  )
+    throw Error(
+      "Expected structured incidents, observations and uncertainties",
+    );
+  return value as Report;
+}
+export function renderReport(report: Report): string {
+  const lines = [
+    "# Nightcrew operational review",
+    "",
+    "## Current incidents",
+    "",
+  ];
+  if (!report.incidents.length)
+    lines.push("No priority incidents reported.", "");
+  for (const item of report.incidents)
+    lines.push(
+      `### ${item.runID}`,
+      "",
+      `Execution: ${item.execution}`,
+      `Output: ${item.output}`,
+      `Delivery: ${item.delivery}`,
+      "",
+      `Assessment: ${item.assessment}`,
+      "",
+      `Next action: ${item.nextAction}`,
+      "",
+    );
+  for (const [heading, items] of [
+    ["Observations", report.observations],
+    ["Uncertainties", report.uncertainties],
+  ] as const)
+    lines.push(
+      `## ${heading}`,
+      "",
+      ...(items.length
+        ? items.map((item) => "- " + item.replace(/\n/g, "\n  "))
+        : ["None reported."]),
+      "",
+    );
+  return lines.join("\n").trimEnd();
+}
 export async function validateReport(
   input?: any,
   home = process.env.NIGHTCREW_HOME ?? path.join(homedir(), ".nightcrew"),
@@ -80,44 +162,40 @@ export async function validateReport(
       valid: false,
       reason: "Review snapshot lacks priority coverage; start a fresh review.",
     };
-  // Headings inside code fences are not report sections.
-  const text = input.text.replace(/```[\s\S]*?```/g, "");
-  const missing = [];
-  for (const issue of snapshot.priorityIssues) {
-    const parts = text.split(/^###\s+(.+?)\s*$/m);
-    let body;
-    for (let i = 1; i < parts.length; i += 2)
-      if (parts[i].trim() === issue.runID)
-        body = parts[i + 1].split(/^#{1,3}\s/m)[0];
-    const fields = {
-      Execution: issue.execution,
-      Output: issue.output,
-      Delivery: issue.delivery,
+  let report: Report;
+  try {
+    report = parseReport(input.text);
+  } catch {
+    return {
+      valid: false,
+      reason:
+        "Finish must contain structured incidents, observations and uncertainties.",
     };
-    if (
-      !body ||
-      Object.entries(fields).some(
-        ([key, value]) =>
-          !body
-            .split(/\r?\n/)
-            .some((line?: any) => line.trim() === `${key}: ${value}`),
-      ) ||
-      !/^Assessment: .{20,}$/m.test(body) ||
-      !/^Next action: .{10,}$/m.test(body)
-    )
-      missing.push(issue);
   }
-  return missing.length
-    ? {
-        valid: false,
-        reason:
-          "Address each priority incident in its own Markdown section: ### RUN_ID, then exact lines Execution: VALUE, Output: VALUE, Delivery: VALUE, Assessment: explanation, Next action: recommendation. Missing/incomplete: " +
-          JSON.stringify(missing).slice(0, 1500),
-      }
+  const expected = new Map<string, Incident>(
+    snapshot.priorityIssues.map((issue: Incident) => [issue.runID, issue]),
+  );
+  const seen = new Set<string>();
+  const errors: string[] = [];
+  for (const incident of report.incidents) {
+    const issue = expected.get(incident.runID);
+    if (seen.has(incident.runID))
+      errors.push(`Duplicate incident: ${incident.runID}`);
+    seen.add(incident.runID);
+    if (!issue) errors.push(`Not a priority incident: ${incident.runID}`);
+    else
+      for (const field of ["execution", "output", "delivery"] as const)
+        if (incident[field] !== issue[field])
+          errors.push(`${incident.runID}.${field}: expected ${issue[field]}`);
+  }
+  for (const id of expected.keys())
+    if (!seen.has(id)) errors.push(`Missing priority incident: ${id}`);
+  return errors.length
+    ? { valid: false, reason: errors.join("; ").slice(0, 2000) }
     : {
         valid: true,
         reason:
-          "All required priority sections are present; factual quality is not established by this check.",
+          "Priority coverage and supplied statuses match; factual quality is not established by this check.",
       };
 }
 
@@ -154,7 +232,10 @@ export async function report(
     "reports",
     event.runID + (event.segment ? "-segment-" + event.segment : "") + ".md",
   );
-  const text = event.result + "\n";
+  const text =
+    (event.agentID === "agent-supervisor"
+      ? renderReport(parseReport(event.result))
+      : event.result) + "\n";
   const tmp = file + "." + randomUUID() + ".tmp";
   await writeFile(tmp, text, { flag: "wx", mode: 0o600 });
   try {

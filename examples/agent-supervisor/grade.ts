@@ -1,17 +1,26 @@
 import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
+import type { Report } from "./report.ts";
 export type Input = {
+  eval?: { evalID: string };
   result: unknown;
   run: { messages: Array<{ role: string; content: string }> };
 };
 export function grade(input: Input) {
-  const answer =
-    typeof input.result === "string"
-      ? input.result
-      : String((input.result as { report?: string })?.report ?? "");
+  const report = input.result as Report;
+  if (
+    !report ||
+    !Array.isArray(report.incidents) ||
+    !Array.isArray(report.observations) ||
+    !Array.isArray(report.uncertainties)
+  )
+    return {
+      passed: false,
+      reason: "Expected a structured supervisor finish result.",
+    };
   const issues = new Map<
     string,
-    { runID: string; execution: string; output: string; delivery: string }
+    { execution: string; output: string; delivery: string }
   >();
   for (const message of input.run.messages) {
     if (message.role !== "tool") continue;
@@ -22,52 +31,77 @@ export function grade(input: Input) {
         [])
         issues.set(issue.runID, issue);
     } catch {
-      /* Plain-text fixture responses are allowed. */
+      /* Non-JSON tool responses do not supply expected statuses. */
     }
   }
-  const checks: Array<{ checkID: string; status: string; reason: string }> = [];
-  const parts = answer
-    .replace(/```[\s\S]*?```/g, "")
-    .split(/^###\s+(.+?)\s*$/m);
-  for (const [runID, issue] of issues) {
-    const index = parts.findIndex(
-      (text, i) => i % 2 === 1 && text.trim() === runID,
-    );
-    const body =
-      index >= 0 ? ((parts[index + 1] ?? "").split(/^#{1,3}\s/m)[0] ?? "") : "";
-    const present = Object.entries({
-      Execution: issue.execution,
-      Output: issue.output,
-      Delivery: issue.delivery,
-    }).every(([key, value]) =>
-      body.split(/\r?\n/).some((line) => line.trim() === `${key}: ${value}`),
-    );
-    checks.push({
-      checkID: "coverage-" + runID,
-      status:
-        present &&
-        /^Assessment: .{20,}$/m.test(body) &&
-        /^Next action: .{10,}$/m.test(body)
-          ? "passed"
-          : "failed",
-      reason:
-        "Report must explicitly assess this priority incident using its supplied statuses: " +
-        runID,
-    });
+  const errors: string[] = [];
+  if (
+    report.incidents.length !== issues.size ||
+    new Set(report.incidents.map((i) => i.runID)).size !==
+      report.incidents.length
+  )
+    errors.push("Incident coverage differs from supplied priorities");
+  for (const [id, expected] of issues) {
+    const incident = report.incidents.find((i) => i.runID === id);
+    if (
+      !incident ||
+      !["execution", "output", "delivery"].every(
+        (key) =>
+          incident[key as keyof typeof expected] ===
+          expected[key as keyof typeof expected],
+      ) ||
+      !incident.assessment?.trim() ||
+      !incident.nextAction?.trim()
+    )
+      errors.push(`Missing or incorrect assessment for ${id}`);
   }
-  if (!checks.length)
-    checks.push({
-      checkID: "nonempty-report",
-      status: answer.trim() ? "passed" : "failed",
-      reason: "The agent must produce a report.",
-    });
+  const observations = report.observations.join("\n");
+  if (!observations.trim()) errors.push("Missing observations");
+  if (
+    input.eval?.evalID.endsWith("current-failure-versus-recovered-history") &&
+    !report.observations.some(
+      (text) =>
+        /recovered-child/.test(text) &&
+        /recovered-parent/.test(text) &&
+        /recover|replacement|no_longer_required/i.test(text),
+    )
+  )
+    errors.push("Explain the child's recovery using the parent evidence");
+  if (input.eval?.evalID.endsWith("repeated-does-not-mean-bug")) {
+    if (
+      !report.observations.some(
+        (text) =>
+          /run-retry/.test(text) &&
+          /repeat|read/i.test(text) &&
+          /legitimate|not.{0,30}bug|unverified|uncertain|cannot.{0,30}confirm/i.test(
+            text,
+          ),
+      )
+    )
+      errors.push(
+        "Preserve uncertainty about repeated calls instead of labeling a bug",
+      );
+    if (
+      !report.uncertainties.some(
+        (text) =>
+          /delivery/i.test(text) &&
+          /unverified|unknown|not.{0,30}(recorded|reported|establish|confirm)|no.{0,20}(status|evidence)/i.test(
+            text,
+          ),
+      )
+    )
+      errors.push(
+        "Delivery must remain unverified without destination evidence",
+      );
+  }
   return {
-    passed: checks.every((c) => c.status === "passed"),
+    passed: !errors.length,
     reason:
-      checks.map((c) => c.reason).join("; ") +
-      ". Checks cover status reporting, not causal accuracy.",
+      errors.join("; ") ||
+      "Expected statuses and recovery/uncertainty cues present. Deterministic checks do not establish full semantic correctness.",
   };
 }
+
 if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href

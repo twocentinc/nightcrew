@@ -120,3 +120,8 @@ nightcrew evals run EVAL_ID --wait
 ```
 
 Pass another fixture file to `eval.ts` to install a different scenario. Inspect the returned run ID with `runs get` and `runs transcript`. See [the eval contract](../../docs/eval-format.md).
+
+Completion uses the agent’s `finishSchema`: call `finish` with `{summary}`.
+The eval’s `grader.schema` independently checks the accepted arguments; it never
+replaces the agent schema or appears in model context. Invalid finish calls fail
+immediately.

@@ -74,7 +74,7 @@ validation or hook execution with factual correctness or confirmed external deli
 `definitions.ts` owns tool/transcript edits, `tools.ts` substitutes tool results,
 and `results.ts` grades accepted output. `src/storage/evals.ts` owns definition files
 using the shared transaction queue. Evals execute through ordinary runs, including
-model selection, finish validation, repair, continuation and compaction. Never override
+model selection, finish validation, continuation and compaction. Never override
 an agent's finish schema or expose grader expectations in model input. Eval tools
 must not fall through to real execution; delivery hooks are suppressed. Graders
 are trusted executables: snapshot identity, bound execution and retain uncertain outcomes
@@ -118,7 +118,7 @@ and the AgentRegistry that loads, validates and selects agent capabilities;
 `src/engine/capabilities/skills.ts` owns skill folder resources, canonical encoding, bounded on-demand
 reads and skill catalog projection. Run resources must remain snapshotted; inject
 only names/descriptions until requested. Auto-inject load_skills for agent loops
-and instant chat; single-turn agents stay executable-tool-free. Opt-in `finishSchema` supplies a runtime-owned `finish` signal, never an executable registry entry. Validate its exclusive call before atomically committing completion; invalid results must not complete or dispatch sibling tools. Reject duplicate object keys before accepting structured results; repair feedback must explain the lost-item risk. Instant execution owns only
+and instant chat; single-turn agents stay executable-tool-free. Opt-in `finishSchema` supplies a runtime-owned `finish` signal, never an executable registry entry. Validate its exclusive call before atomically committing completion; invalid results must fail immediately without another generation or dispatching sibling tools. Reject duplicate object keys before accepting structured results; retain the rejected response and validation evidence. There is no output repair loop or repairAttempts setting. Instant execution owns only
 load_skills, never client-defined tools. Keep model arguments as typed
 JSON on stdin. `argv` templates substitute validated parameters into individual
 arguments without shell evaluation or recursive expansion; keep missing-value
@@ -137,7 +137,7 @@ behavior without an actual model-specific check.
 Real-model tests live under `test/live/`, outside the default suite. Do not run
 them without explicit authorization for inference.
 
-The public contract is frozen at schema 44; follow `docs/compatibility.md`.
+The public contract is frozen at schema 45; follow `docs/compatibility.md`.
 Do not remove or rename public commands, tighten accepted inputs, or change
 execution semantics without explicitly reopening the freeze. Schema increments
 alone do not authorize breaking changes. Keep

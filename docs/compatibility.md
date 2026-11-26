@@ -1,7 +1,7 @@
 # Public contract and compatibility
 
-The current frozen public contract is protocol 1, schema 44, introduced in
-0.43.0 through an owner-approved eval redesign. The freeze began at schema 34;
+The current frozen public contract is protocol 1, schema 45, introduced in
+0.44.0 through owner-approved removal of automatic output repair. The freeze began at schema 34;
 owner-approved changes since then are recorded below. This is the baseline for
 the upcoming 1.0 release, not a claim that acceptance work is complete.
 
@@ -167,3 +167,9 @@ Generated `/v1/operations/...` routes are the complete remote management surface
 - Grading uses optional expected JSON Schema followed by optional executable `{passed, reason}` grading; expected schemas never override the agent finish schema.
 - Run records gain optional `evaluation` snapshots/grade and `evalGraded` events. Existing ordinary run/config files remain readable; no migration is required for them. Prior standalone eval artifacts remain files and are not new saved definitions.
 - The complete current protocol is documented in [eval-format.md](eval-format.md). Earlier immutable command archives remain historical evidence only.
+
+## Single-attempt final output (0.44.0 / schema 45)
+
+- Invalid `finish` arguments, mixed finish/tool batches, text in place of a required finish call, and rejected/errored final-output validation fail execution immediately. No model correction request is made.
+- Removes `outputValidation.repairAttempts` from agent configuration and snapshots. Before upgrading an existing home, back up its configuration and run files, then remove this property from configured agents, each run's agent snapshot, and pending-input agent snapshots. Preserve all transcripts, validation records, and historical outcomes. New requests containing the retired field are rejected; there is no compatibility alias.
+- Eval grading remains a hidden post-run check and cannot repair output. Explicit manual retry/reply remains available. Ordinary tool-error handling and incomplete-generation continuation are unchanged.

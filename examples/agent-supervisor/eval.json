@@ -21,7 +21,7 @@
             "skillID": "agent-supervisor",
             "name": "agent supervisor",
             "description": "Inspect synthetic run metrics",
-            "instructions": "Use nightcrew_inspect overview, then each page through nextPage=null. Optionally inspect a concerning run. Cite exact run IDs and measured metrics. Repeated calls are not necessarily bugs; completed does not establish output correctness. Never mutate anything.",
+            "instructions": "Use nightcrew_inspect overview, then each page through nextPage=null. Inspect concerning runs as needed. Cite measured evidence, take no action. Call finish with structured incidents, observations, and uncertainties. incidents must contain exactly one object for EVERY coverage.priorityIssues entry, copying runID, execution, output and delivery exactly, with your assessment and nextAction. No incident may be omitted, duplicated, or invented. Keep recovered children and optional historical findings in observations, not the active incident list. observations and uncertainties are arrays of strings: include the reviewed scope, exact supplied metrics and run IDs, recovered failures, evidence gaps and unsupported conclusions. If no priority incidents exist, use incidents: []. Do not infer delivery success from completion or call repeated tool use a bug without evidence. The exporter renders Markdown; do not write Markdown status labels or wrap a report string. Invalid finish data fails immediately without repair.",
             "files": []
           }
         ],
@@ -150,5 +150,34 @@
         }
       }
     }
-  ]
+  ],
+  "grader": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "incidents": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "observations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "uncertainties": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "incidents",
+        "observations",
+        "uncertainties"
+      ]
+    }
+  }
 }

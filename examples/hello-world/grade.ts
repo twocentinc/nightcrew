@@ -2,7 +2,7 @@ import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 export function grade(input: { result: unknown }) {
   return {
-    passed: input.result === "Hello world!",
+    passed: (input.result as { greeting?: unknown })?.greeting === "Hello world!",
     reason: "Require exactly Hello world! without extra text.",
   };
 }

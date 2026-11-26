@@ -9,6 +9,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { Storage } from "../dist/storage/store.js";
 import { initializeHome } from "../dist/storage/config.js";
 import { Service } from "../dist/engine/service.js";
+import type { ToolExecution } from "../dist/engine/execution/tools.js";
 import { manage as rawmanage } from "../dist/utils/commands/management.js";
 const manage: (...args: Parameters<typeof rawmanage>) => Promise<any> =
   rawmanage;
@@ -20,8 +21,8 @@ const callOperation: (
   ...args: Parameters<typeof rawcallOperation>
 ) => Promise<any> = rawcallOperation;
 import { runOutcome, loopProblem } from "../dist/engine/supervision.js";
-import {validateSummaryEvidence} from "../dist/engine/compaction/evidence.js";
-import {compactionInstructions} from "../dist/engine/compaction/format.js";
+import { validateSummaryEvidence } from "../dist/engine/compaction/evidence.js";
+import { compactionInstructions } from "../dist/engine/compaction/format.js";
 const input = () => ({
   messageID: randomUUID(),
   content: "perform the task",
@@ -37,7 +38,6 @@ const validation = {
       additionalProperties: false,
     },
   },
-  repairAttempts: 1,
 };
 async function until(fn?: any) {
   for (let i = 0; i < 500; i++) {
@@ -187,33 +187,38 @@ test("finish validates and commits a result without executable dispatch, survive
   assert.equal((await f.service.run(r.runID)).result, r.result);
   assert.equal(f.calls.length, 1);
 });
-test("ordinary text and malformed finish get corrected within three attempts", async (t) => {
-  const f = await fixture(t, async (req?: any, n?: any) =>
-    n === 1
-      ? { text: "I am done" }
-      : n === 2
-        ? finish({ answer: "wrong" })
-        : finish({ answer: 42 }),
-  );
-  const r = await f.submit();
-  assert.equal(r.state, "completed");
-  assert.equal(f.calls.length, 3);
-  assert.ok(
-    r.messages.some(
-      (m?: any) => m.role === "tool" && m.content.includes("invalid_finish"),
-    ),
-  );
-  assert.deepEqual(
-    f.calls[2].tools.map((t: import("node:test").TestContext) => t.name),
-    ["finish"],
-  );
-});
-test("three invalid finishes fail instead of completing", async (t) => {
+for (const [name, result] of [
+  ["ordinary text", { text: "I am done" }],
+  ["malformed finish", finish("{")],
+  ["schema mismatch", finish({ answer: "wrong" })],
+]) {
+  test(`${name} fails on the first completion attempt and stays failed after restart`, async (t) => {
+    const f = await fixture(t, async () => result);
+    const r = await f.submit();
+    assert.equal(r.state, "failed");
+    assert.equal(r.result, null);
+    assert.equal(f.calls.length, 1);
+    assert.equal(r.error.code, "invalid_finish");
+    assert.equal(r.events.filter((e: any) => e.type === "completed").length, 0);
+    await f.restart();
+    assert.equal((await f.service.run(r.runID)).state, "failed");
+    assert.equal(f.calls.length, 1);
+  });
+}
+test("shutdown after a rejected finish preserves the terminal failure", async (t) => {
   const f = await fixture(t, async () => finish("{"));
+  const tools = f.service["toolStep"];
+  const resumeTools = tools.resumeTools.bind(tools);
+  tools.resumeTools = async (...args: Parameters<ToolExecution["resumeTools"]>) => {
+    await resumeTools(...args);
+    if (args[0].state === "failed") args[4].abort("restart");
+  };
   const r = await f.submit();
-  assert.equal(r.state, "failed");
-  assert.equal(r.result, null);
-  assert.equal(f.calls.length, 3);
+  await f.restart();
+  const saved = await f.service.run(r.runID);
+  assert.equal(saved.state, "failed");
+  assert.equal(saved.error?.code, "invalid_finish");
+  assert.equal(f.calls.length, 1);
 });
 test("mixed finish batch executes neither finish nor sibling", async (t) => {
   const f = await fixture(
@@ -236,9 +241,10 @@ test("mixed finish batch executes neither finish nor sibling", async (t) => {
     return { ok: true };
   };
   const r = await f.submit();
-  assert.equal(r.state, "completed");
+  assert.equal(r.state, "failed");
   assert.equal(invoked, 0);
-  assert.equal(JSON.parse(r.result).answer, 43);
+  assert.equal(r.result, null);
+  assert.equal(f.calls.length, 1);
   assert.equal(
     r.messages.filter(
       (m?: any) => m.role === "tool" && m.content.includes("invalid_finish"),
@@ -273,54 +279,44 @@ test("finish remains available after the ordinary tool budget", async (t) => {
     ["finish"],
   );
 });
-test("opt-in finish retains existing output validation", async (t) => {
-  const f = await fixture(
-    t,
-    async (_?: any, n?: any) => finish({ answer: n }),
-    {
-      outputValidation: {
-        validator: {
-          type: "json-schema" as const,
-          schema: {
-            type: "object" as const,
-            properties: { answer: { const: 2 } },
-            required: ["answer"],
-          },
+test("finish schema success still fails immediately when the configured output validator rejects it", async (t) => {
+  const f = await fixture(t, async () => finish({ answer: 1 }), {
+    outputValidation: {
+      validator: {
+        type: "json-schema",
+        schema: {
+          type: "object",
+          properties: { answer: { const: 2 } },
+          required: ["answer"],
         },
-        repairAttempts: 1,
       },
     },
-  );
+  });
   const r = await f.submit();
-  assert.equal(r.state, "completed");
-  assert.equal(JSON.parse(r.result).answer, 2);
+  assert.equal(r.state, "failed");
+  assert.equal(r.result, null);
+  assert.equal(f.calls.length, 1);
   assert.deepEqual(
-    r.validations.map((v?: any) => v.status),
-    ["failed", "passed"],
+    r.validations.map((v: any) => v.status),
+    ["failed"],
   );
   assert.ok(
-    r.validations.every((v?: any) =>
-      r.messages.some((m?: any) => m.messageID === v.messageID),
+    r.messages.some((m: any) =>
+      m.toolCalls.some((c: any) => c.arguments === '{"answer":1}'),
     ),
   );
 });
-
-test("duplicate finish fields are rejected with specific repair feedback before completion", async (t) => {
-  const f = await fixture(t, async (req?: any, n?: any) => {
-    if (n === 1) return finish('{"answer":1,"answer":42}');
-    assert.ok(
-      req.messages.some(
-        (m?: any) =>
-          m.role === "tool" && m.content.includes("separate objects"),
-      ),
-    );
-    return finish({ answer: 42 });
-  });
+test("duplicate finish keys retain the rejection evidence without requesting repair", async (t) => {
+  const f = await fixture(t, async () => finish('{"answer":1,"answer":42}'));
   const r = await f.submit();
-  assert.equal(r.state, "completed");
-  assert.equal(f.calls.length, 2);
-  assert.deepEqual(JSON.parse(r.result), { answer: 42 });
-  assert.equal(r.events.filter((e?: any) => e.type === "completed").length, 1);
+  assert.equal(r.state, "failed");
+  assert.equal(f.calls.length, 1);
+  assert.equal(r.result, null);
+  assert.ok(
+    r.messages.some(
+      (m: any) => m.role === "tool" && m.content.includes("Duplicate JSON key"),
+    ),
+  );
 });
 test("structured JSON detects escaped duplicate keys without rejecting siblings or string contents", async () => {
   const { parseOutputJSON, DuplicateJSONKeyError } =

@@ -19,7 +19,11 @@ import {
 const callOperation: (
   ...args: Parameters<typeof rawcallOperation>
 ) => Promise<any> = rawcallOperation;
-import { runOutcome, loopProblem } from "../dist/engine/supervision.js";
+import {
+  outputValidationSchema,
+  runOutcome,
+  loopProblem,
+} from "../dist/engine/supervision.js";
 import { validateSummaryEvidence } from "../dist/engine/compaction/evidence.js";
 import { compactionInstructions } from "../dist/engine/compaction/format.js";
 const input = () => ({
@@ -37,8 +41,15 @@ const validation = {
       additionalProperties: false,
     },
   },
-  repairAttempts: 1,
 };
+test("output validation rejects the removed repairAttempts option", () => {
+  assert.equal(outputValidationSchema.safeParse(validation).success, true);
+  assert.equal(
+    outputValidationSchema.safeParse({ ...validation, repairAttempts: 1 })
+      .success,
+    false,
+  );
+});
 async function until(fn?: any) {
   for (let i = 0; i < 500; i++) {
     const value = await fn();
@@ -156,50 +167,14 @@ async function fixture(
     },
   };
 }
-test("output repair preserves original answer, disables tools and thinking, persists verdicts", async (t) => {
+test("invalid output fails immediately, retains evidence, and never dispatches completed delivery", async (t) => {
   const f = await fixture(
     t,
-    async (_?: any, n?: any) => ({
-      text: n === 1 ? "bad JSON" : '{"answer":42}',
-    }),
-    { outputValidation: validation },
-  );
-  const r = await f.submit();
-  assert.equal(r.state, "completed");
-  assert.equal(r.result, '{"answer":42}');
-  assert.equal(
-    r.messages.filter((m?: any) => m.role === "assistant")[0].content,
-    "bad JSON",
-  );
-  assert.deepEqual(
-    r.validations.map((v?: any) => v.status),
-    ["failed", "passed"],
-  );
-  assert.equal(f.calls.length, 2);
-  for (const call of f.calls) {
-    assert.equal(call.messages[0].role, "system");
-    assert.equal(
-      call.messages.filter((m?: any) => m.role === "system").length,
-      1,
-    );
-    assert.match(call.messages[0].content, /Final output must be JSON/);
-  }
-  assert.equal(f.calls[1].thinking, false);
-  assert.deepEqual(f.calls[1].tools, []);
-  assert.equal(f.service.detail(r).outcome.task, "validated");
-  await f.restart();
-  const restored = await f.service.run(r.runID);
-  assert.equal(restored.validations.length, 2);
-  assert.equal(f.service.detail(restored).outcome.output, "passed");
-});
-test("bounded failed repairs complete execution but mark output for review and suppress delivery", async (t) => {
-  const f = await fixture(
-    t,
-    async () => ({ text: "invalid" }),
+    async () => ({ text: "bad JSON" }),
     { outputValidation: validation },
     [
       {
-        hookID: "test-hook",
+        hookID: "delivery",
         event: "run.completed",
         purpose: "delivery",
         executablePath: "/does-not-exist",
@@ -208,22 +183,27 @@ test("bounded failed repairs complete execution but mark output for review and s
     ],
   );
   const r = await f.submit();
-  assert.equal(f.calls.length, 2);
-  assert.equal(r.state, "completed");
-  assert.equal(r.validations.length, 2);
-  const settled = await until(async () => {
-    const x = await f.service.run(r.runID);
-    return x.hookReceipts.length && x;
-  });
-  const o = f.service.detail(settled).outcome;
-  assert.equal(o.output, "failed");
-  assert.equal(o.task, "needsAttention");
-  assert.equal(o.delivery, "failed");
-  assert.match(settled.hookReceipts[0].diagnostic, /not dispatched/);
+  assert.equal(r.state, "failed");
+  assert.equal(r.result, null);
+  assert.equal(f.calls.length, 1);
+  assert.equal(r.error.code, "output_validation_failed");
+  assert.deepEqual(
+    r.validations.map((v: any) => v.status),
+    ["failed"],
+  );
+  assert.ok(
+    r.messages.some(
+      (m: any) => m.role === "assistant" && m.content === "bad JSON",
+    ),
+  );
+  assert.equal(r.hookReceipts.length, 0);
+  assert.equal(f.service.detail(r).outcome.output, "failed");
+  await f.restart();
+  const restored = await f.service.run(r.runID);
+  assert.equal(restored.state, "failed");
+  assert.equal(f.calls.length, 1);
   const fleet = await callOperation(f.service, { command: "status" });
   assert.equal(fleet.totals.needsAttention, 1);
-  assert.equal(fleet.agents[0].latestRun.runID, r.runID);
-  assert.equal(fleet.issues[0].outcome.output, "failed");
   operations["status"].result.parse(fleet);
 });
 test("unconfigured output is unverified and ordinary hooks are not deliveries", async (t) => {
@@ -246,7 +226,7 @@ test("unconfigured output is unverified and ordinary hooks are not deliveries", 
   assert.equal(o.hooks, "failed");
   assert.equal(o.task, "needsAttention");
 });
-test("validator hook verdicts use bounded repair; hook process failures do not retry", async (t) => {
+test("validator hooks run once and process failures fail the run", async (t) => {
   const f = await fixture(t, async () => ({ text: "answer" }));
   const executable = path.join(f.home, "validator");
   await writeFile(
@@ -268,7 +248,6 @@ test("validator hook verdicts use bounded repair; hook process failures do not r
             argv: [],
             timeoutMs: 1000,
           },
-          repairAttempts: 1,
         },
       },
     },
@@ -289,13 +268,13 @@ test("validator hook verdicts use bounded repair; hook process failures do not r
             argv: [],
             timeoutMs: 100,
           },
-          repairAttempts: 2,
         },
       },
     },
   });
   r = await f.submit();
   assert.equal(r.validations[0].status, "error");
+  assert.equal(r.state, "failed");
   assert.equal(r.validations.length, 1);
   assert.equal(f.calls.length, 2);
 });
@@ -326,7 +305,7 @@ test("loop errors get one recovery opportunity then tool-free finalization with 
   assert.equal(runOutcome(r).needsAttention, true);
   assert.equal(r.messages.filter((m?: any) => m.role === "tool").length, 3);
 });
-test("persistent follow-up gets its own repair budget and retains old evidence", async (t) => {
+test("explicit persistent follow-up can succeed while retaining the prior failure", async (t) => {
   const f = await fixture(
     t,
     async (_?: any, n?: any) => ({ text: n % 2 ? "invalid" : '{"answer":1}' }),
@@ -336,9 +315,11 @@ test("persistent follow-up gets its own repair budget and retains old evidence",
   const second = await f.submit();
   assert.equal(first.runID, second.runID);
   assert.equal(second.segment, 1);
-  assert.equal(second.validations.length, 4);
+  assert.equal(first.state, "failed");
+  assert.equal(second.state, "completed");
+  assert.equal(second.validations.length, 2);
   assert.equal(runOutcome(second).output, "passed");
-  assert.equal(f.calls.length, 4);
+  assert.equal(f.calls.length, 2);
 });
 test("compaction guard rejects invented quantities and evidence IDs, retains uncertainty and units", () => {
   const request = {

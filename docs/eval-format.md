@@ -46,6 +46,8 @@
 
 ## Grading
 
+Invalid finish calls or rejected final answers terminate execution immediately; neither normal validation nor grading asks the model to repair its answer.
+
 1. The ordinary run must complete and satisfy its own output validation. Execution/validation failures cannot pass an eval.
 2. If `grader.schema` exists, validate the **accepted finish arguments** using the existing Zod `z.fromJSONSchema` validator. For an agent without `finishSchema`, validate its final answer as a string. Nothing rewrites the real agent schema or changes the accepted output.
 3. A schema mismatch fails grading and skips the executable.

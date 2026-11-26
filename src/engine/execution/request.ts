@@ -16,19 +16,13 @@ interface Dependencies {
 }
 export class RequestBuilder {
   constructor(private readonly ports: Dependencies) {}
-  async prepareTurn(
-    r: Run,
-    slotID: string,
-    history: TurnHistory,
-    repairReason: string | null,
-  ) {
+  async prepareTurn(r: Run, slotID: string, history: TurnHistory) {
     const {
       currentMessages,
       lastAssistant,
       continuation,
       prefix,
       priorReasoning,
-      finishBatch,
     } = history;
     const turnMessages = r.messages.slice(
       r.messages.map((m) => m.role).lastIndexOf("user") + 1,
@@ -50,7 +44,7 @@ export class RequestBuilder {
               ? { ...r.agent.loopPolicy, consecutiveErrors: 1 }
               : r.agent.loopPolicy,
           );
-    if (problem && !repairReason) {
+    if (problem) {
       if (!recovery) {
         r.recovery = {
           segment: r.segment,
@@ -103,28 +97,9 @@ export class RequestBuilder {
       !!lastAssistant &&
       !lastAssistant.toolCalls.length &&
       !lastAssistant.content.trim();
-    const finishCorrection =
-      !!r.agent.finishSchema &&
-      !!lastAssistant &&
-      (!lastAssistant.toolCalls.length || finishBatch);
-    if (
-      finishCorrection &&
-      (!r.recovery ||
-        r.recovery.segment !== r.segment ||
-        !r.recovery.finalizing)
-    )
-      r.recovery = {
-        segment: r.segment,
-        afterMessageID: lastAssistant!.messageID,
-        reason:
-          "Return a valid finish call; ordinary text and invalid calls do not complete the run",
-        finalizing: true,
-      };
     const finalizing =
-      finishCorrection ||
       budgetExhausted ||
       emptyAnswer ||
-      !!repairReason ||
       (r.recovery?.segment === r.segment && r.recovery.finalizing);
     const thinking =
       finalizing || continuation.length > 0
@@ -134,7 +109,7 @@ export class RequestBuilder {
     const messages = this.ports.context.runMessages(r);
     if (r.agent.finishSchema) {
       const instruction =
-        "You must complete this turn by calling the runtime-owned finish tool with the final result. Ordinary text does not complete the task. Call finish alone, never alongside another tool. finish has no executable or external side effects. Do not call it until your work is ready. Invalid finish calls receive validation feedback; you have at most three completion attempts. After ordinary tools are exhausted, finish remains available. ";
+        "You must complete this turn by calling the runtime-owned finish tool with the final result. Ordinary text does not complete the task. Call finish alone, never alongside another tool. finish has no executable or external side effects. Do not call it until your work is ready. An invalid finish call fails the run immediately; there is no correction attempt. After ordinary tools are exhausted, finish remains available. ";
       const system = messages[0];
       if (system?.role === "system")
         messages[0] = {
@@ -192,15 +167,11 @@ export class RequestBuilder {
         messageID: randomUUID(),
         role: "user",
         content:
-          (repairReason
-            ? "Nightcrew output repair: " +
-              repairReason +
-              ". Correct the previous answer without inventing facts."
-            : r.recovery?.finalizing
-              ? "Nightcrew stopped unproductive tool use: " + r.recovery.reason
-              : budgetExhausted
-                ? "Nightcrew execution limit: your tool-call budget for this turn is exhausted."
-                : "Nightcrew finalization: the previous generation contained no visible answer.") +
+          (r.recovery?.finalizing
+            ? "Nightcrew stopped unproductive tool use: " + r.recovery.reason
+            : budgetExhausted
+              ? "Nightcrew execution limit: your tool-call budget for this turn is exhausted."
+              : "Nightcrew finalization: the previous generation contained no visible answer.") +
           (r.agent.finishSchema
             ? " Only finish is available. Call finish with your final result using only"
             : " No more tools are available. Return your final answer now using only") +

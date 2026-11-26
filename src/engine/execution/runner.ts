@@ -124,19 +124,19 @@ export class Runner {
         if (controller.signal.aborted || terminal(r.state)) break;
         if (
           r.agent.finishSchema &&
-          currentMessages.filter(
-            (m) =>
-              m.role === "assistant" &&
-              (!r.evaluation ||
-                r.messages.indexOf(m) >= r.evaluation.initialMessages) &&
-              (!m.toolCalls.length ||
-                m.toolCalls.some((c) => c.name === "finish")),
-          ).length >= 3 &&
+          lastAssistant &&
+          !lastAssistant.toolCalls.length &&
           !continuation.length
-        )
-          throw Error(
-            "Agent did not provide a valid finish result within three completion attempts",
-          );
+        ) {
+          r.state = "failed";
+          r.error = {
+            code: "invalid_finish",
+            message:
+              "Expected a finish call; ordinary text does not complete the run",
+          };
+          this.ports.records.event(r, "failed", {});
+          break;
+        }
         if (this.ports.context.atStorageLimit(r)) {
           this.ports.context.pauseForStorage(r);
           break;
@@ -147,20 +147,18 @@ export class Runner {
           continuation,
           controller,
         );
-        if (validation.completed) break;
+        if (validation) break;
         const history: TurnHistory = {
           currentMessages,
           lastAssistant,
           continuation,
           prefix,
           priorReasoning,
-          finishBatch,
         };
         const prepared = await this.ports.request.prepareTurn(
           r,
           slotID,
           history,
-          validation.repairReason,
         );
         const { input, thinking } = prepared;
         if (

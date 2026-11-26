@@ -162,7 +162,7 @@ async function fixture(
   };
   return { home, marker, service, calls, submit, runtime };
 }
-test("eval uses ordinary background execution, real finish repair, exact/default mocks, and hidden schema then executable grading", async (t) => {
+test("eval uses ordinary background execution, real finish validation, exact/default mocks, and hidden schema then executable grading", async (t) => {
   const f = await fixture(t, (_r, n) =>
     n === 1
       ? {
@@ -171,13 +171,7 @@ test("eval uses ordinary background execution, real finish repair, exact/default
             { callID: "b", name: "inspect", arguments: '{"page":2}' },
           ],
         }
-      : n === 2
-        ? {
-            toolCalls: [
-              { callID: "c", name: "finish", arguments: '{"wrong":"value"}' },
-            ],
-          }
-        : finish("correct"),
+      : finish("correct"),
   );
   const script = path.join(f.home, "grade.ts");
   await writeFile(
@@ -206,7 +200,7 @@ test("eval uses ordinary background execution, real finish repair, exact/default
   );
   assert.equal(r.evaluation!.grade.schema!.passed, true);
   assert.equal(r.evaluation!.grade.exec!.passed, true);
-  assert.equal(f.calls.length, 3);
+  assert.equal(f.calls.length, 2);
   assert.equal(f.calls[0].modelID, "background");
   assert.equal(f.calls[0].persistContext, false);
   assert.deepEqual(r.agent.finishSchema, finishSchema);
@@ -217,9 +211,6 @@ test("eval uses ordinary background execution, real finish repair, exact/default
   assert.equal(
     r.messages.find((m) => m.toolCallID === "b")!.content,
     "default result",
-  );
-  assert.ok(
-    r.messages.find((m) => m.toolCallID === "c")!.content.includes("false"),
   );
   assert.ok(!JSON.stringify(f.calls).includes("checked finish"));
   assert.ok(!JSON.stringify(f.calls).includes(script));
@@ -671,4 +662,30 @@ test("replies preserve eval overrides and prior grades while regrading the new s
   assert.equal(second.events.filter((e) => e.type === "evalGraded").length, 2);
   assert.ok(f.calls.every((c) => c.contextID === `run-${first.runID}`));
   assert.ok(f.calls.every((c) => c.persistContext));
+});
+
+test("invalid finish fails an eval without repair or executable grading", async (t) => {
+  const f = await fixture(t, () => ({
+    toolCalls: [
+      { callID: "invalid", name: "finish", arguments: '{"wrong":true}' },
+    ],
+  }));
+  const r = await f.submit({
+    ...seed(),
+    grader: {
+      schema: finishSchema,
+      exec: {
+        executablePath: process.execPath,
+        argv: [
+          "-e",
+          `require('fs').writeFileSync(${JSON.stringify(f.marker)},'graded')`,
+        ],
+      },
+    },
+  });
+  assert.equal(r.state, "failed");
+  assert.equal(r.evaluation!.grade.status, "failed");
+  assert.equal(f.calls.length, 1);
+  assert.equal(r.evaluation!.grade.exec, undefined);
+  await assert.rejects(access(f.marker));
 });

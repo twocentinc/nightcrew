@@ -2,7 +2,7 @@
   "agent": {
     "agentID": "hello-world",
     "name": "hello world",
-    "systemPrompt": "Respond with exactly: Hello world! Do not explain or use tools.",
+    "systemPrompt": "You are a minimal connectivity test. Call finish with {\"greeting\":\"Hello world!\"}. Do not explain or call other tools.",
     "mode": "single-turn",
     "modelID": "qwen",
     "skillIDs": [],
@@ -10,6 +10,19 @@
     "thinking": false,
     "maxOutputTokens": 32,
     "timeoutMs": 180000,
-    "enabled": false
+    "enabled": false,
+    "finishSchema": {
+      "type": "object",
+      "properties": {
+        "greeting": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": [
+        "greeting"
+      ],
+      "additionalProperties": false
+    }
   }
 }
