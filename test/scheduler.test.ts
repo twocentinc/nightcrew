@@ -647,7 +647,7 @@ test("fresh runs accept a reply after cancellation without replaying cancelled w
   assert.ok(run.events.some((e?: any) => e.type === "cancelled"));
 });
 
-test("models unload cancels and settles interactive work before closing, then allows the same run to continue", async (t) => {
+test("models unload rejects interactive work without cancellation, then unloads after explicit cancellation", async (t) => {
   let entered = false,
     stopped = false,
     block = true,
@@ -689,23 +689,35 @@ test("models unload cancels and settles interactive work before closing, then al
   };
   const run = await f.service.submit("interactive", message("first"));
   await until(() => entered);
-  const preview = await manage(f.service, {
-    command: "models unload",
-    request: {},
-    dryRun: true,
-  });
-  assert.equal(preview.changed, false);
+  for (const dryRun of [true, false])
+    await assert.rejects(
+      manage(f.service, {
+        command: "models unload",
+        resourceID: "q",
+        request: {},
+        dryRun,
+      }),
+      (e: any) => e.code === "runtime_busy",
+    );
   assert.equal(closes, 0);
+  assert.equal((await f.service.run(run.runID)).state, "running");
+  await f.service.cancelRun(run.runID);
   const result = await manage(f.service, {
     command: "models unload",
+    resourceID: "q",
     request: {},
   });
-  assert.deepEqual(result.cancelledRunIDs, [run.runID]);
+  assert.deepEqual(result.unloadedModelIDs, ["q"]);
   assert.equal(closes, 1);
   assert.equal((await f.service.run(run.runID)).state, "cancelled");
   assert.equal(
-    (await manage(f.service, { command: "models unload", request: {} }))
-      .changed,
+    (
+      await manage(f.service, {
+        command: "models unload",
+        resourceID: "q",
+        request: {},
+      })
+    ).changed,
     false,
   );
   block = false;
@@ -731,8 +743,12 @@ test("models unload refuses unrelated active background work", async (t) => {
   const run = await f.service.submit("background", message("work"));
   await until(() => entered);
   await assert.rejects(
-    manage(f.service, { command: "models unload", request: {} }),
-    (e: any) => e.code === "instant_model_busy_with_background_work",
+    manage(f.service, {
+      command: "models unload",
+      resourceID: "q",
+      request: {},
+    }),
+    (e: any) => e.code === "runtime_busy",
   );
   assert.equal((await f.service.run(run.runID)).state, "running");
 });

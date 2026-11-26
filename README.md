@@ -5,7 +5,7 @@
 - Prioritize interactive requests; pause background work until the interaction cooldown expires.
 - Manage everything through a JSON-first CLI or the optional HTTP API.
 - Keep transcripts, configuration and caches in your runtime home, separate from this repository.
-- Current release: **0.45.0**, protocol **1**, schema **46**. See the [compatibility policy](docs/compatibility.md) before upgrading or changing public contracts.
+- Current release: **0.46.0**, protocol **1**, schema **47**. See the [compatibility policy](docs/compatibility.md) before upgrading or changing public contracts.
 
 ## Get started
 
@@ -259,3 +259,12 @@
 - [Specification](docs/spec.md) — detailed ownership and behavior.
 - [Compatibility policy](docs/compatibility.md) — public contract and upgrade rules.
 - [AGENTS.md](AGENTS.md) — contributor and coding-agent instructions.
+
+### Testing and unloading models
+
+- Test configured chat weights without an agent or run: `nightcrew models test MODEL_ID --prompt "Say hello"`.
+- The response includes generated text, token usage and elapsed time (including model loading).
+- Defaults: 64 output tokens, temperature 0, thinking off, 60-second generation/load timeout. Use `--request FILE` for overrides (`prompt`, `maxOutputTokens`, `temperature`, `thinking`, `timeoutMs`); `--timeout` controls the CLI deadline.
+- Requires an idle runtime, works regardless of desktop presence, and leaves the instant model configuration unchanged. The loaded model follows its usual idle policy afterward.
+- Release model memory: `nightcrew models unload MODEL_ID` or `nightcrew models unload --all`.
+- Busy work is rejected, never cancelled. Saved slot caches and weight files stay on disk. Unloading releases llama.cpp's memory; it does not purge the operating system's filesystem cache.

@@ -605,13 +605,29 @@
     },
     {
       "confirmation": false,
-      "description": "Stop instant work and unload its model, ignoring keep-warm; refuse unrelated model work",
+      "description": "Test chat model weights with a temporary prompt; requires an idle runtime",
       "mutates": true,
-      "name": "models unload",
-      "operand": "none",
+      "name": "models test",
+      "operand": "required",
       "options": [
         "request",
-        "dry-run"
+        "dry-run",
+        "prompt"
+      ],
+      "requestSchema": "models.test.request",
+      "resultSchema": "models.test.result",
+      "scope": "daemon"
+    },
+    {
+      "confirmation": false,
+      "description": "Unload one model or all resident models; reject active work and preserve disk caches",
+      "mutates": true,
+      "name": "models unload",
+      "operand": "optional",
+      "options": [
+        "request",
+        "dry-run",
+        "all"
       ],
       "requestSchema": "models.unload.request",
       "resultSchema": "models.unload.result",
@@ -1126,5 +1142,5 @@
     "version": false
   },
   "protocolVersion": 1,
-  "schemaVersion": 46
+  "schemaVersion": 47
 }

@@ -41,7 +41,7 @@ export type Definition = {
   name: string;
   description: string;
   scope: "static" | "local" | "management" | "daemon";
-  operand: "none" | "required" | "scope";
+  operand: "none" | "required" | "optional" | "scope";
   mutates: boolean;
   confirmation: boolean;
   options: string[];

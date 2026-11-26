@@ -52,7 +52,9 @@ function procedure<I extends z.ZodType, O extends z.ZodType>(
         resourceID:
           operand === "required"
             ? z.string().min(1).max(1000)
-            : z.never().optional(),
+            : operand === "optional"
+              ? z.string().min(1).max(1000).optional()
+              : z.never().optional(),
         request: input,
         dryRun: z.boolean().default(false),
         yes: z.boolean().default(false),
@@ -87,7 +89,7 @@ export type OperationDefinition = {
   name: string;
   description: string;
   scope: "management" | "daemon";
-  operand: "none" | "required";
+  operand: "none" | "required" | "optional";
   mutates: boolean;
   confirmation: boolean;
   options: string[];
@@ -111,7 +113,7 @@ export function createOperations<R extends Record<string, z.ZodType>>(
     description: string,
     result: O,
     mutates = false,
-    operand: "none" | "required" = "none",
+    operand: "none" | "required" | "optional" = "none",
     confirmation = false,
     scope: "management" | "daemon" = "management",
     options: string[] = [],

@@ -5,7 +5,11 @@ import type { RunRecords } from "../../storage/records.js";
 import { Storage } from "../../storage/store.js";
 import type { Compaction } from "../compaction/coordinator.js";
 import type { Inference } from "../execution/inference.js";
-import { withoutExecution } from "../execution/process.js";
+import {
+  executionSignal,
+  pause,
+  withoutExecution,
+} from "../execution/process.js";
 import type { Runner } from "../execution/runner.js";
 import type { Instant } from "../instant/requests.js";
 import type { Presence, Runtime } from "../models/types.js";
@@ -25,12 +29,7 @@ export interface Dependencies {
   readonly storage: Storage;
   readonly instant: Pick<
     Instant,
-    | "chats"
-    | "expireDeadlines"
-    | "expire"
-    | "unloadingInstant"
-    | "executeChat"
-    | "chat"
+    "chats" | "expireDeadlines" | "expire" | "executeChat" | "chat"
   >;
   readonly runtime: Runtime;
   readonly runner: Pick<Runner, "liveRun" | "executeRun">;
@@ -282,7 +281,7 @@ export class Dispatch {
     slotID: string,
     modelID: string,
   ) {
-    if (this.ports.instant.unloadingInstant) return;
+    if (this.maintenance) return;
     const controller = new AbortController();
     if (this.residentModelID !== modelID) {
       this.residentModelID = modelID;
@@ -318,7 +317,7 @@ export class Dispatch {
     if (
       this.pumping ||
       this.closed ||
-      this.ports.instant.unloadingInstant ||
+      this.maintenance !== undefined ||
       this.ports.runtime.isBusy?.()
     )
       return;
@@ -413,12 +412,47 @@ export class Dispatch {
   }
   async stop() {
     this.closed = true;
+    this.maintenance?.controller.abort("shutdown");
+    await this.maintenance?.task.catch(() => {});
     clearInterval(this.timer);
     for (const active of this.activities.values())
       active.controller.abort("restart");
     while (this.pumping || this.timers.ticking)
       await new Promise((resolve) => setTimeout(resolve, 10));
     await this.settling;
+  }
+  private maintenance?: { controller: AbortController; task: Promise<unknown> };
+  async withIdleRuntime<T>(
+    work: (signal: AbortSignal) => Promise<T>,
+  ): Promise<T> {
+    while (this.pumping && !this.closed) await pause(10);
+    if (
+      this.closed ||
+      this.maintenance ||
+      this.activities.size ||
+      this.ports.runtime.isBusy?.() ||
+      [...this.ports.instant.chats.values()].some((c) => !terminal(c.state))
+    )
+      fail("runtime_busy", 409);
+    const lease = {
+      controller: new AbortController(),
+      task: Promise.resolve() as Promise<unknown>,
+    };
+    this.maintenance = lease;
+    const caller = executionSignal();
+    const signal = caller
+      ? AbortSignal.any([caller, lease.controller.signal])
+      : lease.controller.signal;
+    lease.task = Promise.resolve().then(() => {
+      signal.throwIfAborted();
+      return work(signal);
+    });
+    try {
+      return (await lease.task) as T;
+    } finally {
+      if (this.maintenance === lease) this.maintenance = undefined;
+      this.wake();
+    }
   }
   hasActivity(id: string) {
     return this.activities.has(id);

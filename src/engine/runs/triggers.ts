@@ -194,7 +194,6 @@ export class RunTriggers {
   }
   async activatePending() {
     await this.ports.dependencies.storage.exclusive(async () => {
-      if (this.ports.dependencies.instant.unloadingInstant) return;
       for (const runID of [...this.ports.dependencies.storage.pendingRunIDs]) {
         const summary = this.ports.dependencies.storage.summaries.get(runID)!;
         if (

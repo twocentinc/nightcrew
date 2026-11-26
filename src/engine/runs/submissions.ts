@@ -29,7 +29,7 @@ import { RunTriggers } from "./triggers.js";
 
 export interface Dependencies {
   readonly storage: Storage;
-  readonly instant: Pick<Instant, "unloadingInstant" | "chats">;
+  readonly instant: Pick<Instant, "chats">;
   readonly dispatch: Pick<
     Dispatch,
     | "wake"
@@ -85,8 +85,6 @@ export class Runs {
     reply = false,
     dryRun = false,
   ) {
-    if (this.ports.instant.unloadingInstant)
-      fail("instant_unload_in_progress", 409);
     if (reply && this.ports.dispatch.hasActivity(target))
       await this.ports.dispatch.activity(target)!.task;
     const out = await this.ports.storage.exclusive(() =>
@@ -104,8 +102,6 @@ export class Runs {
     retryNote?: string,
     evaluation?: z.infer<typeof evalRunStateSchema>,
   ) {
-    if (this.ports.instant.unloadingInstant)
-      fail("instant_unload_in_progress", 409);
     await this.ports.storage.reconcile();
     if (this.ports.storage.unreadable.length)
       fail("run_index_unavailable", 503);

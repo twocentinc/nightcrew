@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { Service, fail } from "../engine/service.js";
-import { revision } from "../schemas/common.js";
+import { id, resultSchema, revision } from "../schemas/common.js";
 import { configMutation } from "../schemas/config.js";
 import { modelSchema, slotSchema } from "../schemas/model.js";
 import { capabilities, capabilitiesSchema } from "../server/diagnostics.js";
@@ -15,7 +15,14 @@ import {
 } from "../utils/commands/resources.js";
 
 export const operationInputs = {
-  "models unload": z.strictObject({}),
+  "models unload": z.strictObject({ all: z.boolean().default(false) }),
+  "models test": z.strictObject({
+    prompt: z.string().trim().min(1).max(50000),
+    maxOutputTokens: z.number().int().min(1).max(4096).default(64),
+    temperature: z.number().min(0).max(2).default(0),
+    thinking: z.boolean().default(false),
+    timeoutMs: z.number().int().min(1000).max(300000).default(60000),
+  }),
   "models create": z.strictObject({
     model: modelSchema,
     slots: z.array(slotSchema).max(32).default([]),
@@ -37,25 +44,52 @@ export async function handle(
   service: Service,
   input: ManagementInput,
 ): Promise<unknown> {
-  if (input.command === "models unload")
-    return service.unloadInstant(input.dryRun);
+  if (input.command === "models unload") {
+    const request = operationInputs["models unload"].parse(input.request ?? {});
+    return service.unloadModels(
+      input.resourceID === undefined ? undefined : id.parse(input.resourceID),
+      request.all,
+      input.dryRun,
+    );
+  }
+  if (input.command === "models test")
+    return service.testModel(
+      id.parse(input.resourceID),
+      operationInputs["models test"].parse(input.request),
+      input.dryRun,
+    );
   return resourceCommand(service, input, requestSchemas, resourceActions);
 }
 const defineOperation = createOperations(operationInputs, handle);
 export const operations = {
-  "models unload": defineOperation(
-    "models unload",
-    "Stop instant work and unload its model, ignoring keep-warm; refuse unrelated model work",
+  "models test": defineOperation(
+    "models test",
+    "Test chat model weights with a temporary prompt; requires an idle runtime",
     z.object({
-      modelID: z.string(),
+      modelID: id,
       changed: z.boolean(),
-      cancelledRunIDs: z.array(z.string()),
-      cancelledRequestIDs: z.array(z.string()),
+      elapsedMs: z.number().nonnegative(),
+      result: resultSchema.nullable(),
     }),
     true,
-    "none",
+    "required",
     false,
     "daemon",
+    ["prompt"],
+  ),
+  "models unload": defineOperation(
+    "models unload",
+    "Unload one model or all resident models; reject active work and preserve disk caches",
+    z.object({
+      modelIDs: z.array(id),
+      unloadedModelIDs: z.array(id),
+      changed: z.boolean(),
+    }),
+    true,
+    "optional",
+    false,
+    "daemon",
+    ["all"],
   ),
   "models list": defineOperation(
     "models list",

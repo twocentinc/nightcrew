@@ -137,7 +137,7 @@ behavior without an actual model-specific check.
 Real-model tests live under `test/live/`, outside the default suite. Do not run
 them without explicit authorization for inference.
 
-The public contract is frozen at schema 46; follow `docs/compatibility.md`.
+The public contract is frozen at schema 47; follow `docs/compatibility.md`.
 Do not remove or rename public commands, tighten accepted inputs, or change
 execution semantics without explicitly reopening the freeze. Schema increments
 alone do not authorize breaking changes. Keep
@@ -180,3 +180,5 @@ without compatibility exceptions. Nightcrew retains command contracts, scheduler
 admission/no-catch-up policies, generation limits and completion validation.
 
 `src/storage/runDocument.ts` owns the format-4 single-file run document and its derived engine projection. Only state.json is written for run progress. Do not add a journal or multi-file transactions; unsaved progress can be lost on crashes. `src/storage/migrate.ts` is the explicit offline format migration with original-run backups.
+
+`src/engine/models/operations.ts` owns temporary model smoke tests and explicit unloading. Both use Dispatch.withIdleRuntime to exclude scheduler work and competing model commands; shutdown aborts and settles that reservation. Model tests create no runs, hooks or durable contexts and never change instantModelID.

@@ -1,6 +1,6 @@
 # Nightcrew specification
 
-Status: release 0.45.0, protocol 1, schema 46.
+Status: release 0.46.0, protocol 1, schema 47.
 See [compatibility.md](compatibility.md) for stable surfaces and change policy.
 Runtime schemas and registered procedures are authoritative; this document
 explains behavior rather than maintaining another endpoint inventory.
@@ -631,18 +631,22 @@ truncation and incomplete UTF-8 lines. Tail output is JSONL using normal envelop
 Waits default to 120 minutes; tails have no default deadline. Both accept explicit
 observation timeouts up to 1440 minutes. Neither changes agent execution timeouts.
 
-### Explicit instant model unloading
+### Model testing and memory release
 
-`nightcrew models unload` cancels accepted nonterminal instant requests and
-interactive runs for the configured instant model, waits for their computation
-to settle, and releases the resident model regardless of its idle/keep-warm timer.
-It preserves transcripts and configuration; the next explicit message can
-continue the same daily run and reload the model. Dry-run changes nothing;
-repeating the command with no resident model or instant work is a no-op.
-It refuses while unrelated background work uses that model. Normal background
-scheduling remains enabled and may load a model again when eligible. It never
-unloads a different resident model or restarts the daemon. The shared management
-operation also exposes this behavior to authenticated HTTP clients.
+`nightcrew models test MODEL_ID --prompt TEXT` sends a transient, tool-free prompt
+through the selected configured chat model. It uses a fresh unsaved context,
+returns output/usage/elapsedMs, and creates no agent, run, hook or instant request.
+Defaults are thinking false, temperature 0, maxOutputTokens 64 and timeoutMs 60000.
+The request accepts these overrides through JSON. Audio models require audio
+input and are rejected by this text-only command.
+
+`nightcrew models unload MODEL_ID` unloads that resident model;
+`nightcrew models unload --all` unloads every resident model. Exactly one selector
+is required. Both commands refuse active computation instead of cancelling it.
+Unloading stops the owned llama.cpp process, preserving weight and cache files.
+Model operations reserve the idle scheduler, honor cancellation/timeouts and settle
+before daemon shutdown. Testing does not change instantModelID, presence or
+cooldown settings. Models remain subject to idle unloading after a successful test.
 
 ### Measured run context usage
 
@@ -725,7 +729,7 @@ using their parent relationship evidence.
 
 Use `status --doctor` for configuration, executable, presence and live daemon checks. Online CLI calls the shared daemon operation; unavailable control sockets fall back to read-only local diagnostics. Plain `status` stays a fast runtime overview. Both expose the shared status request/result contract.
 
-Instant inference uses `instant create`, `instant get`, and `instant delete`. Delete first settles cancellation, then forgets the request and result. `models unload` retains the guarded instant-model unload behavior and takes no operand. `agents cache delete` removes saved KV only; `runs refresh` adopts current capabilities in a terminal run.
+Instant inference uses `instant create`, `instant get`, and `instant delete`. Delete first settles cancellation, then forgets the request and result. `models unload MODEL_ID` and `models unload --all` require an idle runtime and preserve disk caches. `agents cache delete` removes saved KV only; `runs refresh` adopts current capabilities in a terminal run.
 
 There is no manual annotation/review workflow or public hook retry command. Run outcomes retain execution, validation and delivery evidence; `needsAttention`, status `issues` and `issuesTruncated` are derived rather than manually acknowledged.
 

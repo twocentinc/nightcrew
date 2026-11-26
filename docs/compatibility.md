@@ -1,7 +1,7 @@
 # Public contract and compatibility
 
-The current frozen public contract is protocol 1, schema 46, introduced in
-0.45.0 through the owner-approved run document simplification. The freeze began at schema 34;
+The current frozen public contract is protocol 1, schema 47, introduced in
+0.46.0 through owner-approved transient model testing and explicit unloading. The freeze began at schema 34;
 owner-approved changes since then are recorded below. This is the baseline for
 the upcoming 1.0 release, not a claim that acceptance work is complete.
 
@@ -188,3 +188,10 @@ Generated `/v1/operations/...` routes are the complete remote management surface
   backed up before replacement. No compatibility reader or old field aliases.
 - Unresolved started tool calls pause rather than replay. This is conservative
   recovery for external side effects, not a promise to recover unsaved output.
+
+## Model testing and unloading (0.46.0 / schema 47)
+
+- `models test MODEL_ID --prompt TEXT` performs temporary chat inference without a run or agent. It returns `{modelID, changed, elapsedMs, result}`; dry runs return null result and do not load weights.
+- `models unload MODEL_ID` or `models unload --all` replaces the implicit instant-model target. No selector, or both selectors, is invalid. It returns `{modelIDs, unloadedModelIDs, changed}`.
+- Unloading now refuses active work rather than cancelling instant work. There is no compatibility alias for the old destructive behavior.
+- Both commands use the shared authenticated oRPC contracts and require the daemon. CLI operands now support the declared optional-ID contract used by `models unload`; JSON flags reject duplicate fields.

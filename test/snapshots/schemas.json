@@ -21243,40 +21243,173 @@
     ],
     "type": "object"
   },
+  "models.test.request": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "maxOutputTokens": {
+        "default": 64,
+        "maximum": 4096,
+        "minimum": 1,
+        "type": "integer"
+      },
+      "prompt": {
+        "maxLength": 50000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "temperature": {
+        "default": 0,
+        "maximum": 2,
+        "minimum": 0,
+        "type": "number"
+      },
+      "thinking": {
+        "default": false,
+        "type": "boolean"
+      },
+      "timeoutMs": {
+        "default": 60000,
+        "maximum": 300000,
+        "minimum": 1000,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "prompt"
+    ],
+    "type": "object"
+  },
+  "models.test.result": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "changed": {
+        "type": "boolean"
+      },
+      "elapsedMs": {
+        "minimum": 0,
+        "type": "number"
+      },
+      "modelID": {
+        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+        "type": "string"
+      },
+      "result": {
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "reasoningContent": {
+                "maxLength": 1048576,
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              },
+              "toolCalls": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "arguments": {
+                      "maxLength": 64000,
+                      "type": "string"
+                    },
+                    "callID": {
+                      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+                      "type": "string"
+                    },
+                    "name": {
+                      "maxLength": 128,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "callID",
+                    "name",
+                    "arguments"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "usage": {
+                "additionalProperties": false,
+                "properties": {
+                  "inputTokens": {
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "outputTokens": {
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "inputTokens",
+                  "outputTokens"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "text",
+              "toolCalls",
+              "usage"
+            ],
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": [
+      "modelID",
+      "changed",
+      "elapsedMs",
+      "result"
+    ],
+    "type": "object"
+  },
   "models.unload.request": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
-    "properties": {},
+    "properties": {
+      "all": {
+        "default": false,
+        "type": "boolean"
+      }
+    },
     "type": "object"
   },
   "models.unload.result": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
     "properties": {
-      "cancelledRequestIDs": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      },
-      "cancelledRunIDs": {
-        "items": {
-          "type": "string"
-        },
-        "type": "array"
-      },
       "changed": {
         "type": "boolean"
       },
-      "modelID": {
-        "type": "string"
+      "modelIDs": {
+        "items": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "unloadedModelIDs": {
+        "items": {
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+          "type": "string"
+        },
+        "type": "array"
       }
     },
     "required": [
-      "modelID",
-      "changed",
-      "cancelledRunIDs",
-      "cancelledRequestIDs"
+      "modelIDs",
+      "unloadedModelIDs",
+      "changed"
     ],
     "type": "object"
   },

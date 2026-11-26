@@ -49,6 +49,8 @@ const optionTypes: Record<string, string | false> = {
   agent: "agentID",
   state: "state",
   doctor: false,
+  prompt: "text",
+  all: false,
   details: false,
   wait: false,
   tail: false,
@@ -114,7 +116,9 @@ export function parseCLI(argv: string[]) {
     throw invalidInput("Only one input may read stdin");
   if (
     selected !== "help" &&
-    remaining.length !== (definition.operand === "required" ? 1 : 0)
+    (definition.operand === "optional"
+      ? remaining.length > 1
+      : remaining.length !== (definition.operand === "required" ? 1 : 0))
   )
     throw invalidInput(
       definition.operand === "required"
@@ -291,6 +295,14 @@ export async function main(argv = process.argv.slice(2)) {
       if (command === "status") {
         if (args.values.details) raw.details = true;
         if (args.values.doctor) raw.doctor = true;
+      }
+      if (command === "models test" || command === "models unload") {
+        for (const field of ["prompt", "all"])
+          if (args.values[field] !== undefined) {
+            if (raw[field] !== undefined)
+              throw invalidInput("Duplicate request field " + field);
+            raw[field] = args.values[field];
+          }
       }
       context.request = args.definition.request.parse(raw);
       execution.check();

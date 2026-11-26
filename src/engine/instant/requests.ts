@@ -16,7 +16,6 @@ import type { Inference } from "../execution/inference.js";
 import type { Runner } from "../execution/runner.js";
 import type { Result, Runtime } from "../models/types.js";
 import { fail } from "../protocol.js";
-import type { Runs } from "../runs/submissions.js";
 import type { Dispatch } from "../scheduling/dispatch.js";
 import { executionSlots, instantModelID } from "../scheduling/policy.js";
 import { InstantRunner } from "./runner.js";
@@ -55,7 +54,6 @@ export interface Dependencies {
   readonly runner: Pick<Runner, "liveRun">;
   readonly records: Pick<RunRecords, "run">;
   readonly runtime: Runtime;
-  readonly runs: Pick<Runs, "cancelRun">;
 }
 
 export class Instant {
@@ -68,10 +66,6 @@ export class Instant {
     });
   }
   readonly chats = new Map<string, Chat>();
-  private unloading = false;
-  get unloadingInstant() {
-    return this.unloading;
-  }
   chat(requestID: string) {
     this.expire();
     return this.chats.get(requestID) ?? fail("request_unavailable", 404);
@@ -114,9 +108,7 @@ export class Instant {
       if (terminal(c.state) && c.expires < Date.now()) this.chats.delete(id);
   }
   async submitChat(request: ChatInput) {
-    if (this.unloading) fail("instant_unload_in_progress", 409);
     const out = await this.ports.storage.exclusive(async () => {
-      if (this.unloading) fail("instant_unload_in_progress", 409);
       await this.ports.storage.reconcile();
       this.expire();
       const modelID =
@@ -252,70 +244,6 @@ export class Instant {
     });
     this.ports.dispatch.wake();
     return out;
-  }
-  async unloadInstant(dryRun = false) {
-    if (this.unloading) fail("instant_unload_in_progress", 409);
-    this.unloading = true;
-    try {
-      await this.ports.storage.exclusive(async () => {});
-      const modelID =
-        instantModelID(this.ports.storage.store.config) ??
-        fail("instant_model_not_configured");
-      // Admission and launch are gated while cancellation settles. Never hold
-      // the storage lock while awaiting activities that must persist their end.
-      if (
-        [...this.ports.dispatch.activeActivities()].some(
-          (a) =>
-            a.modelID === modelID &&
-            a.kind !== "chat" &&
-            !this.ports.dispatch.runInteractive(
-              this.ports.runner.liveRun(a.id),
-            ),
-        )
-      )
-        fail("instant_model_busy_with_background_work", 409);
-      const runIDs: string[] = [];
-      for (const summary of this.ports.storage.summaries.values()) {
-        if (summary.agentID && !terminal(summary.state)) {
-          const run = await this.ports.records.run(summary.runID);
-          if (
-            run.agent.modelID === modelID &&
-            this.ports.dispatch.runInteractive(run)
-          )
-            runIDs.push(run.runID);
-        }
-      }
-      const requestIDs = [...this.chats.values()]
-        .filter((c) => c.input.modelID === modelID && !terminal(c.state))
-        .map((c) => c.requestID);
-      const resident = this.ports.runtime
-        .status()
-        .some((m) => m.modelID === modelID && m.state !== "unloaded");
-      if (dryRun)
-        return {
-          modelID,
-          changed: false,
-          cancelledRunIDs: [],
-          cancelledRequestIDs: [],
-        };
-      for (const id of runIDs) await this.ports.runs.cancelRun(id);
-      for (const id of requestIDs) await this.cancelChat(id);
-      // Runtime owns one resident model. Never close a different resident model.
-      if (resident) {
-        if (this.ports.dispatch.activityCount || this.ports.runtime.isBusy?.())
-          fail("runtime_busy", 409);
-        await this.ports.runtime.close();
-        this.ports.dispatch.clearResidentModel();
-      }
-      return {
-        modelID,
-        changed: resident || !!runIDs.length || !!requestIDs.length,
-        cancelledRunIDs: runIDs,
-        cancelledRequestIDs: requestIDs,
-      };
-    } finally {
-      this.unloading = false;
-    }
   }
   async cancelChat(requestID: string, dryRun = false) {
     const c = this.chat(requestID);

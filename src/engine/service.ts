@@ -1,3 +1,4 @@
+import { ModelOperations, type ModelTestInput } from "./models/operations.js";
 import type { EvalDefinition } from "./evals/format.js";
 import { type Agent } from "../schemas/agent.js";
 import { type ChatInput, type UserMessage } from "../schemas/common.js";
@@ -34,6 +35,7 @@ export { fail } from "./protocol.js";
 export const tools = builtinTools;
 
 export class Service {
+  private readonly models: ModelOperations;
   private readonly request: RequestBuilder;
   private readonly inference: Inference;
   private readonly response: ResponseRecorder;
@@ -141,7 +143,6 @@ export class Service {
       runner,
       records,
       runtime,
-      runs,
     });
     this.compaction = compaction = new Compaction({
       records,
@@ -173,6 +174,7 @@ export class Service {
       compaction,
       runs,
     });
+    this.models = new ModelOperations({ storage, runtime, dispatch });
   }
   submitEval(definition: EvalDefinition, revision: number, dryRun = false) {
     return this.runs.submitEval(definition, revision, dryRun);
@@ -337,8 +339,11 @@ export class Service {
   submitChat(request: ChatInput) {
     return this.instant.submitChat(request);
   }
-  unloadInstant(dryRun = false) {
-    return this.instant.unloadInstant(dryRun);
+  testModel(modelID: string, input: ModelTestInput, dryRun = false) {
+    return this.models.test(modelID, input, dryRun);
+  }
+  unloadModels(modelID: string | undefined, all: boolean, dryRun = false) {
+    return this.models.unload(modelID, all, dryRun);
   }
   cancelChat(requestID: string, dryRun = false) {
     return this.instant.cancelChat(requestID, dryRun);
