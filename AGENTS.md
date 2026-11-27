@@ -1,7 +1,8 @@
 # Nightcrew
 
-Nightcrew is a standalone project. Use its spec and the owner's direct
-instructions for planning and implementation. Keep application integrations and
+Nightcrew is a standalone project. Use its
+[specification](https://oss.twocents.com/docs/nightcrew/specification/) and the
+owner's direct instructions for planning and implementation. Keep application integrations and
 their executable tools outside this repository.
 
 `src/commands/` contains only one module per top-level CLI command; do not add
@@ -137,7 +138,8 @@ behavior without an actual model-specific check.
 Real-model tests live under `test/live/`, outside the default suite. Do not run
 them without explicit authorization for inference.
 
-The public contract is frozen at schema 53; follow `docs/compatibility.md`.
+The public contract is frozen at schema 53; follow
+[the compatibility policy](https://oss.twocents.com/docs/nightcrew/compatibility/).
 Do not remove or rename public commands, tighten accepted inputs, or change
 execution semantics without explicitly reopening the freeze. Schema increments
 alone do not authorize breaking changes. Keep
@@ -193,4 +195,10 @@ Instant requests never accept slotID. Runtime status owns the active-executions
 array; do not reintroduce activeRunID or a duplicate scheduler.active. Run
 execution state belongs in execution.state, never outcome.execution.
 
-Executable handlers share executableSchema in schemas/tool.ts. Sampling settings share samplingSchema in schemas/common.ts; parallelToolCalls stays outside sampling. Agent structured output uses finishSchema only; Custom executable checks belong only in eval graders. Execution invalidOutput is terminal; delivery failures stay in hook events/receipts. Never reintroduce outcome.task, outputValidation configuration, or the recovery field (use toolLoop). Offline schema conversions live in storage/schemaMigration.ts; runtime readers reject retired fields. docs/configuration.md explains authoring versus managed records.
+Executable handlers share executableSchema in schemas/tool.ts. Sampling settings share samplingSchema in schemas/common.ts; parallelToolCalls stays outside sampling. Agent structured output uses finishSchema only; Custom executable checks belong only in eval graders. Execution invalidOutput is terminal; delivery failures stay in hook events/receipts. Never reintroduce outcome.task, outputValidation configuration, or the recovery field (use toolLoop). Offline schema conversions live in storage/schemaMigration.ts; runtime readers reject retired fields. [The configuration guide](https://oss.twocents.com/docs/nightcrew/configuration/) explains authoring versus managed records.
+
+Detailed reader documentation lives in `twocentinc/oss` under
+`docs/content/docs/nightcrew/`. Update it there when public behavior or file
+formats change. Keep `README.md` concise; retain runnable examples, runtime skill
+assets, and immutable contract snapshots in this repository. Do not recreate a
+second documentation tree here.

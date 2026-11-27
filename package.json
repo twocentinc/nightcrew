@@ -1,7 +1,6 @@
 {
   "name": "nightcrew",
   "version": "0.53.1",
-  "private": true,
   "type": "module",
   "description": "Standalone local-agent HTTP service",
   "exports": {
@@ -41,11 +40,11 @@
   "files": [
     "dist/",
     "README.md",
-    "examples/",
-    "docs/acceptance.md",
-    "docs/eval-format.md",
-    "docs/compatibility.md",
-    "docs/configuration.md",
-    "docs/spec.md"
-  ]
+    "examples/"
+  ],
+  "homepage": "https://oss.twocents.com/docs/nightcrew/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/twocentinc/nightcrew.git"
+  }
 }
