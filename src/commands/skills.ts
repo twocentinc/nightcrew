@@ -23,9 +23,13 @@ export const operationInputs = {
   "skills create": z.strictObject({ skill: skillSchema }),
   "skills update": z.strictObject({
     expectedHash: z.string(),
-    changes: z.strictObject({...skillSchema.shape}).omit({skillID: true}).partial().extend({
-      files: skillSchema.shape.files.removeDefault().optional(),
-    }),
+    changes: z
+      .strictObject({ ...skillSchema.shape })
+      .omit({ skillID: true })
+      .partial()
+      .extend({
+        files: skillSchema.shape.files.removeDefault().optional(),
+      }),
   }),
   "skills delete": z.strictObject({ expectedHash: z.string() }),
 };
@@ -37,7 +41,7 @@ export async function handle(
   const { command } = input;
   const raw = input.request ?? {};
   if (command === "skills read") {
-    const request = requestSchemas[command]!.parse(raw) as { runID?: string };
+    const request = operationInputs["skills read"].parse(raw);
     if (request.runID) await service.storage.reconcile();
     const skills = request.runID
       ? (await service.run(request.runID)).skills
@@ -57,7 +61,9 @@ export const operations = {
   "skills list": defineOperation(
     "skills list",
     "List skills",
-    z.object({ items: z.array(skillMetadataSchema.extend({ hash: z.string() })) }),
+    z.object({
+      items: z.array(skillMetadataSchema.extend({ hash: z.string() })),
+    }),
   ),
   "skills get": defineOperation(
     "skills get",
@@ -106,7 +112,15 @@ const resourceActions: ResourceActions = {
       ...x,
       hash: fingerprint(x),
     }));
-    if (action === "list") return { items: items.map(({ skillID, name, description, hash }) => ({ skillID, name, description, hash })) };
+    if (action === "list")
+      return {
+        items: items.map(({ skillID, name, description, hash }) => ({
+          skillID,
+          name,
+          description,
+          hash,
+        })),
+      };
     const item =
       items.find((x) => x.skillID === name) ?? fail("not_found", 404);
     return { item };

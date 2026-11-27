@@ -9,7 +9,7 @@ shared helpers or aggregate modules there. Each family owns its
 request/result schemas, metadata and handlers; local-only families register their
 commands there too. Shared infrastructure lives in `src/utils/commands/`: `definition.ts` builds shared authenticated oRPC procedures and typed CLI flag bindings;
 `operations.ts` aggregates them and `inputs.ts` aggregates their request schemas.
-CLI, control socket and HTTP must invoke those same procedures. `registry.ts`
+CLI, control socket and HTTP must invoke those same procedures. Dynamic command dispatch uses schema-inferred requests through `parseOperation`; keep command/request correlation at that checked boundary instead of handwriting request casts. `registry.ts`
 owns discovery, registration and offline dispatch. `resources.ts` owns shared
 atomic resource transactions; resource-specific mutations stay in family modules.
 `src/engine/protocol.ts` owns versioned envelopes, errors and request validation.

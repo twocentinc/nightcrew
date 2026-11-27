@@ -597,3 +597,83 @@ test("holding a queued run has consistent stored and indexed state and releases 
   assert.equal(released.held, false);
   assert.equal(released.pauseReason, "scheduler");
 });
+
+test("status aggregation preserves per-agent counts, ordering, empty agents and issue truncation", async (t) => {
+  const { service, storage, makeRun } = await fixture(t);
+  const { summarize, publicSummary } =
+    await import("../dist/storage/transcript.js");
+  const { terminal } = await import("../dist/schemas/common.js");
+  const { triggerSchema } = await import("../dist/schemas/agent.js");
+  const base = await makeRun("base");
+  await makeRun("queued", "queued");
+  storage.store.agents = [
+    base.agent,
+    { ...base.agent, agentID: "second" },
+    { ...base.agent, agentID: "empty" },
+  ];
+  // Keep these intentional index fixtures stable; reconciliation is tested separately.
+  storage.reconcile = async () => {};
+  for (let i = 0; i < 121; i++) {
+    const run = {
+      ...base,
+      runID: `issue-${String(i).padStart(3, "0")}`,
+      state: "failed" as const,
+      activeMs: i + 1,
+      agent: { ...base.agent, agentID: i % 2 ? "second" : "reviewer" },
+    };
+    storage.summaries.set(run.runID, summarize(run));
+  }
+  const at = base.createdAt;
+  storage.store.triggers = ["z", "a"].map((triggerID) =>
+    triggerSchema.parse({
+      triggerID,
+      name: triggerID,
+      agentID: "reviewer",
+      enabled: false,
+      schedule: { type: "manual" },
+      revision: 1,
+      createdAt: at,
+      updatedAt: at,
+      anchorAt: at,
+    }),
+  );
+  const runs = [...storage.summaries.values()].sort(
+    (a, b) =>
+      b.updatedAt.localeCompare(a.updatedAt) || a.runID.localeCompare(b.runID),
+  );
+  const result = await manage(service, { command: "status" });
+  assert.deepEqual(result.totals, {
+    runs: runs.length,
+    needsAttention: 121,
+    activeMs: runs.reduce((sum, r) => sum + r.activeMs, 0),
+  });
+  for (const agent of result.agents) {
+    const own = runs.filter((r) => r.agentID === agent.agentID);
+    assert.equal(
+      agent.activeRuns,
+      own.filter((r) => !terminal(r.state)).length,
+    );
+    assert.equal(
+      agent.needsAttention,
+      own.filter((r) => r.outcome.needsAttention).length,
+    );
+    assert.equal(
+      agent.activeMs,
+      own.reduce((sum, r) => sum + r.activeMs, 0),
+    );
+    assert.deepEqual(agent.latestRun, own[0] ? publicSummary(own[0]) : null);
+  }
+  assert.deepEqual(
+    result.agents[0].triggers.map((t: any) => t.triggerID),
+    ["a", "z"],
+  );
+  assert.deepEqual(result.agents[1].triggers, []);
+  assert.deepEqual(
+    result.issues,
+    runs
+      .filter((r) => r.outcome.needsAttention)
+      .slice(0, 100)
+      .map(publicSummary),
+  );
+  assert.equal(result.issuesTruncated, true);
+});

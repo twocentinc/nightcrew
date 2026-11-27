@@ -59,7 +59,6 @@ export interface Dependencies {
 export class Instant {
   readonly execution: InstantRunner;
   constructor(private readonly ports: Dependencies) {
-    const self = this;
     this.execution = new InstantRunner({
       dependencies: this.ports,
       main: this,

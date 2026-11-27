@@ -53,7 +53,6 @@ export const operationInputs = {
     bundle: z.string().min(1).max(4096).optional(),
   }),
 };
-const requestSchemas: Record<string, z.ZodType> = operationInputs;
 export async function handle(
   service: Service,
   input: ManagementInput,
@@ -117,14 +116,13 @@ export async function handle(
       }
     }
     if (action === "list" || action === "transcript") {
-      const input = requestSchemas[command]!.parse(raw) as {
-        limit: number;
-        cursor?: string;
-        query?: string;
-        agentID?: string;
-        state?: string;
-      };
-      const query = input.query;
+      const input =
+        action === "list"
+          ? operationInputs["runs list"].parse(raw)
+          : operationInputs["runs transcript"].parse(raw);
+      const query = "query" in input ? input.query : undefined;
+      const agentID = "agentID" in input ? input.agentID : undefined;
+      const state = "state" in input ? input.state : undefined;
       const key =
         "cli:" +
         command +
@@ -132,25 +130,21 @@ export async function handle(
         canonical([
           resourceID ?? null,
           query ?? null,
-          input.agentID ?? null,
-          input.state ?? null,
+          agentID ?? null,
+          state ?? null,
         ]);
       return service.page<unknown>(key, input, async () => {
         if (action === "list" && query !== undefined)
-          return service.search(query, input.agentID, input.state);
+          return service.search(query, agentID, state);
         if (action === "list")
-          return (await service.listRuns(input.agentID, input.state)).map(
-            publicSummary,
-          );
+          return (await service.listRuns(agentID, state)).map(publicSummary);
         return service.transcript(
           await service.run(name ?? fail("missing_id")),
         );
       });
     }
     if (action === "export") {
-      const input = requestSchemas[command]!.parse(raw) as {
-        destination: string;
-      };
+      const input = operationInputs["runs export"].parse(raw);
       return exportRun(
         service,
         name ?? fail("missing_id"),
@@ -159,9 +153,7 @@ export async function handle(
       );
     }
     if (action === "verify") {
-      const input = requestSchemas[command]!.parse(raw) as {
-        bundle?: string;
-      };
+      const input = operationInputs["runs verify"].parse(raw);
       return verifyRun(service, name ?? fail("missing_id"), input.bundle);
     }
     if (action === "get")

@@ -137,11 +137,16 @@ export class Runner {
           };
           this.ports.records.event(r, "invalidOutput", {});
           r.validations.push({
-            turnID: r.turnID, messageID: lastAssistant.messageID, status: "failed",
-            reason: r.error.message, at: now(),
+            turnID: r.turnID,
+            messageID: lastAssistant.messageID,
+            status: "failed",
+            reason: r.error.message,
+            at: now(),
           });
           this.ports.records.event(r, "outputValidation", {
-            messageID: lastAssistant.messageID, status: "failed", reason: r.error.message,
+            messageID: lastAssistant.messageID,
+            status: "failed",
+            reason: r.error.message,
           });
           break;
         }
@@ -217,11 +222,8 @@ export class Runner {
       clearTimeout(slice);
       await checkpointWork;
       charge();
-      await this.ports.completion.finishRun(
-        r,
-        runID,
-        configuredSlot.instant,
-        () => this.liveRuns.delete(runID),
+      await this.ports.completion.finishRun(r, configuredSlot.instant, () =>
+        this.liveRuns.delete(runID),
       );
     }
   }

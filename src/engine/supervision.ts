@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { canonical } from "../utils/json.js";
 import { terminal } from "../schemas/common.js";
 import type { Message } from "../schemas/common.js";
 import type { Run } from "../schemas/run.js";
@@ -21,7 +22,14 @@ export const toolLoopSchema = z.strictObject({
   finalizing: z.boolean().default(false),
 });
 export const outcomeSchema = z.strictObject({
-  output: z.enum(["pending", "notConfigured", "notChecked", "passed", "failed", "error"]),
+  output: z.enum([
+    "pending",
+    "notConfigured",
+    "notChecked",
+    "passed",
+    "failed",
+    "error",
+  ]),
   delivery: z.enum([
     "notConfigured",
     "pending",
@@ -39,13 +47,18 @@ export function runOutcome(run: Run): z.infer<typeof outcomeSchema> {
   const output =
     validation?.status ??
     (run.agent.finishSchema
-      ? terminal(run.state) ? "notChecked" : "pending"
+      ? terminal(run.state)
+        ? "notChecked"
+        : "pending"
       : "notConfigured");
   // Older files may contain multiple invocations for one hook/event. Retain all
   // evidence, but report the latest recorded outcome without retry-chain metadata.
   const latestReceipts = new Map<string, Run["hookReceipts"][number]>();
   for (const receipt of run.hookReceipts)
-    latestReceipts.set(JSON.stringify([receipt.eventID, receipt.hookID]), receipt);
+    latestReceipts.set(
+      JSON.stringify([receipt.eventID, receipt.hookID]),
+      receipt,
+    );
   const receipts = [...latestReceipts.values()].filter(
     (h) =>
       run.events.find((e) => e.eventID === h.eventID)?.turnID === run.turnID,
@@ -94,15 +107,6 @@ export function runOutcome(run: Run): z.infer<typeof outcomeSchema> {
     reasons,
   };
 }
-function stable(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(stable).join(",")}]`;
-  if (value && typeof value === "object")
-    return `{${Object.entries(value)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([k, v]) => JSON.stringify(k) + ":" + stable(v))
-      .join(",")}}`;
-  return JSON.stringify(value);
-}
 export function loopProblem(
   messages: Message[],
   policy: z.infer<typeof loopPolicySchema>,
@@ -115,7 +119,7 @@ export function loopProblem(
   const signature = (call: { name: string; arguments: string }) => {
     let args = call.arguments;
     try {
-      args = stable(JSON.parse(args));
+      args = canonical(JSON.parse(args));
     } catch {}
     return call.name + ":" + args;
   };
@@ -142,11 +146,7 @@ export function loopProblem(
     if (errors >= policy.consecutiveErrors)
       return `${policy.consecutiveErrors} consecutive tool errors; correct the request using the returned schema or change approach.`;
     if (call) {
-      let args = call.arguments;
-      try {
-        args = stable(JSON.parse(args));
-      } catch {}
-      const key = call.name + ":" + args;
+      const key = signature(call);
       const count = (repeats.get(key) ?? 0) + 1;
       repeats.set(key, count);
       if (key === latestKey && count >= policy.repeatedCalls)

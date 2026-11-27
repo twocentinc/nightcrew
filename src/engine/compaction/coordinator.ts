@@ -31,7 +31,6 @@ export interface Dependencies {
 export class Compaction {
   readonly toolLoop: CompactionRecovery;
   constructor(private readonly ports: Dependencies) {
-    const self = this;
     this.toolLoop = new CompactionRecovery({ dependencies: this.ports });
   }
   async prepareContext(

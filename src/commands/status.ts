@@ -8,7 +8,7 @@ import {
 } from "../engine/scheduling/policy.js";
 import type { Service } from "../engine/service.js";
 import { fail } from "../engine/service.js";
-import { triggerSchema } from "../schemas/agent.js";
+import { triggerInfoSchema } from "../schemas/agent.js";
 import { now, terminal } from "../schemas/common.js";
 import { runSummarySchema, statusSchema } from "../schemas/run.js";
 import { createOperations } from "../utils/commands/definition.js";
@@ -27,17 +27,11 @@ export const operationInputs = {
       "Choose doctor or scheduler diagnostics",
     ),
 };
-const triggerInfo = triggerSchema.extend({
-  nextFireAt: z.string().nullable(),
-  automaticDispatchEnabled: z.boolean(),
-  blockers: z.array(z.string()),
-});
 export async function handle(
   service: Service,
   input: ManagementInput,
 ): Promise<unknown> {
   const { command } = input;
-  const [] = command.split(" ");
   const raw = input.request ?? {};
   if (command === "status") {
     const options = operationInputs.status.parse(raw);
@@ -52,16 +46,43 @@ export async function handle(
         b.updatedAt.localeCompare(a.updatedAt) ||
         a.runID.localeCompare(b.runID),
     );
-    const issues = runs.filter((r) => r.outcome.needsAttention);
-    const triggerInfo = (await triggerHandler(service, {
-      command: "triggers list",
-    })) as {
-      items: (z.infer<typeof triggerSchema> & {
-        nextFireAt: string | null;
-        automaticDispatchEnabled: boolean;
-        blockers: string[];
-      })[];
-    };
+    const triggerInfo = z
+      .object({ items: z.array(triggerInfoSchema) })
+      .parse(await triggerHandler(service, { command: "triggers list" }));
+    const triggersByAgent = new Map<
+      string,
+      z.infer<typeof triggerInfoSchema>[]
+    >();
+    for (const trigger of triggerInfo.items) {
+      const list = triggersByAgent.get(trigger.agentID) ?? [];
+      list.push(trigger);
+      triggersByAgent.set(trigger.agentID, list);
+    }
+    const groups = new Map<
+      string,
+      {
+        latest: (typeof runs)[number];
+        activeRuns: number;
+        needsAttention: number;
+        activeMs: number;
+      }
+    >();
+    const issues: typeof runs = [];
+    let activeMs = 0;
+    for (const run of runs) {
+      activeMs += run.activeMs;
+      if (run.outcome.needsAttention) issues.push(run);
+      const group = groups.get(run.agentID) ?? {
+        latest: run,
+        activeRuns: 0,
+        needsAttention: 0,
+        activeMs: 0,
+      };
+      group.activeMs += run.activeMs;
+      group.activeRuns += Number(!terminal(run.state));
+      group.needsAttention += Number(run.outcome.needsAttention);
+      groups.set(run.agentID, group);
+    }
     return {
       observedAt: now(),
       pid: process.pid,
@@ -70,22 +91,20 @@ export async function handle(
       totals: {
         runs: runs.length,
         needsAttention: issues.length,
-        activeMs: runs.reduce((n, r) => n + r.activeMs, 0),
+        activeMs,
       },
       agents: service.storage.store.agents.map((agent) => {
-        const own = runs.filter((r) => r.agentID === agent.agentID);
+        const own = groups.get(agent.agentID);
         return {
           agentID: agent.agentID,
           name: agent.name,
           enabled: agent.enabled,
           modelID: agent.modelID,
-          latestRun: own[0] ? publicSummary(own[0]) : null,
-          activeRuns: own.filter((r) => !terminal(r.state)).length,
-          needsAttention: own.filter((r) => r.outcome.needsAttention).length,
-          activeMs: own.reduce((n, r) => n + r.activeMs, 0),
-          triggers: triggerInfo.items.filter(
-            (t) => t.agentID === agent.agentID,
-          ),
+          latestRun: own ? publicSummary(own.latest) : null,
+          activeRuns: own?.activeRuns ?? 0,
+          needsAttention: own?.needsAttention ?? 0,
+          activeMs: own?.activeMs ?? 0,
+          triggers: triggersByAgent.get(agent.agentID) ?? [],
         };
       }),
       issues: issues.slice(0, 100).map(publicSummary),
@@ -122,7 +141,7 @@ export const operations = {
             activeRuns: z.number(),
             needsAttention: z.number(),
             activeMs: z.number(),
-            triggers: z.array(triggerInfo),
+            triggers: z.array(triggerInfoSchema),
           }),
         ),
         issues: z.array(runSummarySchema),

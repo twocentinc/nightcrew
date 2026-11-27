@@ -46,9 +46,7 @@ export class Service {
   private readonly records: RunRecords;
   private readonly configuration: Configuration;
   private readonly runs: Runs;
-  private readonly runner: Runner;
   private readonly instant: Instant;
-  private readonly context: Context;
   private readonly hooks: Hooks;
   private readonly dispatch: Dispatch;
   constructor(
@@ -96,7 +94,7 @@ export class Service {
       },
       registry,
     });
-    this.context = context = new Context({ records });
+    context = new Context({ records });
     this.inference = new Inference({ storage, records, runtime });
     this.request = new RequestBuilder({ storage, records, context, registry });
     this.response = new ResponseRecorder({
@@ -116,7 +114,7 @@ export class Service {
         return hooks;
       },
     });
-    this.runner = runner = new Runner({
+    runner = new Runner({
       storage,
       records,
       context,

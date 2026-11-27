@@ -1,10 +1,15 @@
 import { z } from "zod";
 import { compactionSchema } from "../engine/compaction/format.js";
 import { scheduleSchema } from "../engine/scheduling/schedule.js";
+import { loopPolicySchema } from "../engine/supervision.js";
 import {
-  loopPolicySchema,
-} from "../engine/supervision.js";
-import { samplingSchema, id, timestamp, toolID, userMessageSchema, uuid } from "./common.js";
+  samplingSchema,
+  id,
+  timestamp,
+  toolID,
+  userMessageSchema,
+  uuid,
+} from "./common.js";
 
 export const agentSchema = z.strictObject({
   finishSchema: z
@@ -49,8 +54,15 @@ export const agentSchema = z.strictObject({
   updatedAt: timestamp,
 });
 export const agentSummarySchema = agentSchema.pick({
-  agentID: true, name: true, revision: true, modelID: true, mode: true,
-  executionClass: true, contextMode: true, enabled: true, updatedAt: true,
+  agentID: true,
+  name: true,
+  revision: true,
+  modelID: true,
+  mode: true,
+  executionClass: true,
+  contextMode: true,
+  enabled: true,
+  updatedAt: true,
 });
 export const agentDraftSchema = agentSchema
   .omit({ revision: true, createdAt: true, updatedAt: true })
@@ -153,6 +165,11 @@ export const triggerSchema = triggerDraftSchema.extend({
   createdAt: timestamp,
   updatedAt: timestamp,
   anchorAt: timestamp,
+});
+export const triggerInfoSchema = triggerSchema.extend({
+  nextFireAt: z.string().nullable(),
+  automaticDispatchEnabled: z.boolean(),
+  blockers: z.array(z.string()),
 });
 export const triggerSourceSchema = z.strictObject({
   definition: triggerSchema,

@@ -43,7 +43,6 @@ export interface Dependencies {
 export class Dispatch {
   readonly timers: Timers;
   constructor(private readonly ports: Dependencies) {
-    const self = this;
     this.timers = new Timers({ dependencies: this.ports, main: this });
   }
   private timer?: ReturnType<typeof setInterval>;

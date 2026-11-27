@@ -1,7 +1,7 @@
 import { ORPCError, os, type InferSchemaInput } from "@orpc/server";
 import { z } from "zod";
 import { currentExecution, Execution } from "../../engine/execution/process.js";
-import { NightcrewError } from "../../engine/protocol.js";
+import { NightcrewError, fail } from "../../engine/protocol.js";
 import type { Service } from "../../engine/service.js";
 import { verifyBearerToken } from "../../storage/config.js";
 import type { ManagementInput } from "./management.js";
@@ -155,4 +155,17 @@ export function createOperations<R extends Record<string, z.ZodType>>(
   }
 
   return defineOperation;
+}
+
+/** Preserve the command/request correlation after dynamic command lookup. */
+export function parseOperation<R extends Record<string, z.ZodType>>(
+  schemas: R,
+  command: string,
+  raw: unknown,
+): { [K in keyof R]: { command: K; request: z.output<R[K]> } }[keyof R] {
+  if (!Object.hasOwn(schemas, command)) fail("unknown_command");
+  // Each value is parsed by the schema selected by its own command key.
+  return { command, request: schemas[command]!.parse(raw) } as {
+    [K in keyof R]: { command: K; request: z.output<R[K]> };
+  }[keyof R];
 }

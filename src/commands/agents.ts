@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { Service, fail } from "../engine/service.js";
-import { agentDraftSchema, agentSchema, agentSummarySchema } from "../schemas/agent.js";
+import {
+  agentDraftSchema,
+  agentSchema,
+  agentSummarySchema,
+} from "../schemas/agent.js";
 import { id, revision, userMessageSchema } from "../schemas/common.js";
 import { configMutation } from "../schemas/config.js";
 import { acceptanceSchema } from "../schemas/run.js";
@@ -43,7 +47,6 @@ export async function handle(
   input: ManagementInput,
 ): Promise<unknown> {
   const { command, resourceID, dryRun = false, yes = false } = input;
-  const [] = command.split(" ");
   const name = resourceID === undefined ? undefined : id.parse(resourceID);
   const raw = input.request ?? {};
   if (command === "agents cache delete") {
@@ -58,16 +61,11 @@ export async function handle(
     );
   }
   if (command === "agents create") {
-    const value = requestSchemas[command]!.parse(raw) as {
-      agent: z.infer<typeof agentDraftSchema>;
-    };
+    const value = operationInputs["agents create"].parse(raw);
     return service.createAgent(value.agent, dryRun);
   }
   if (command === "agents update") {
-    const value = requestSchemas[command]!.parse(raw) as {
-      expectedRevision: number;
-      changes?: Partial<z.infer<typeof agentSchema>>;
-    };
+    const value = operationInputs["agents update"].parse(raw);
     return service.patchAgent(
       name ?? fail("missing_id"),
       value.expectedRevision,
@@ -165,9 +163,10 @@ export const operations = {
 const resourceActions: ResourceActions = {
   async read({ service, next, action, name }: ResourceContext) {
     const items = next.agents;
-    if (action === "list") return {
-      items: items.map(item => agentSummarySchema.strip().parse(item)),
-    };
+    if (action === "list")
+      return {
+        items: items.map((item) => agentSummarySchema.strip().parse(item)),
+      };
     const item =
       items.find((x) => x.agentID === name) ?? fail("not_found", 404);
     const cache = await service.runtime.contextCache?.(

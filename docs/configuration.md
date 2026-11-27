@@ -104,7 +104,7 @@ Tools, lifecycle hooks, scheduler hooks, compaction executables, and executable 
 - Configuration disk format is **5**; run disk format is **10**. Normal readers accept only those current formats.
 - Public command/API schema is **53**. It versions request and response contracts independently of disk layout.
 - Protocol version **1** describes envelopes. Expanded run projections use version **4**, independent of the compact disk document. They are views, not files to write back into the run directory.
-- Package version **0.53.0** identifies the software release.
+- Package version **0.53.1** identifies the software release.
 - Historical evidence stays in run events and messages. Convenience fields in CLI/API responses are derived views, not extra copies of the underlying records.
 - Before upgrading old files, stop the daemon and use the offline migration documented in [the spec](spec.md#run-records-document-format-10-public-schema-53). It backs up originals and never replays tools or deliveries.
 

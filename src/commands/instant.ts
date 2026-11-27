@@ -9,7 +9,6 @@ import { type ManagementInput } from "../utils/commands/resources.js";
 export const operationInputs = {
   "instant create": chatInputSchema,
 };
-const requestSchemas: Record<string, z.ZodType> = operationInputs;
 export async function handle(
   service: Service,
   input: ManagementInput,
@@ -21,12 +20,11 @@ export async function handle(
   if (resource === "instant") {
     if (action === "create") {
       if (dryRun)
-        return { changed: false, request: requestSchemas[command]!.parse(raw) };
-      return service.submitChat(
-        requestSchemas[command]!.parse(
-          raw,
-        ) as import("../schemas/common.js").ChatInput,
-      );
+        return {
+          changed: false,
+          request: operationInputs["instant create"].parse(raw),
+        };
+      return service.submitChat(operationInputs["instant create"].parse(raw));
     }
     if (action === "get") {
       return service.chatDetail(service.chat(name ?? fail("missing_id")));

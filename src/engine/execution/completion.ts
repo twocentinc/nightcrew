@@ -82,12 +82,7 @@ export class Completion {
       state.attempt.updatedAt = now();
     }
   }
-  async finishRun(
-    r: Run,
-    runID: string,
-    instant: boolean,
-    release: () => void,
-  ) {
+  async finishRun(r: Run, instant: boolean, release: () => void) {
     if (r.activeMs >= r.agent.timeoutMs && r.state === "completed") {
       r.state = "timedOut";
       r.result = null;

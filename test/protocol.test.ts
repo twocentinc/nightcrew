@@ -213,3 +213,24 @@ test("schema 42 exposes only the simplified command names", () => {
   ] as const)
     assert.equal(parseCLI([...args]).command, command);
 });
+
+test("dynamic operation parsing keeps request types and rejects unknown commands", async () => {
+  const { parseOperation } =
+    await import("../dist/utils/commands/definition.js");
+  const { operationInputs } = await import("../dist/commands/triggers.js");
+  const parsed = parseOperation(operationInputs, "triggers delete", {
+    expectedRevision: 7,
+  });
+  if (parsed.command !== "triggers delete") throw Error("Wrong command");
+  const revision: number = parsed.request.expectedRevision;
+  assert.equal(revision, 7);
+  assert.throws(() =>
+    parseOperation(operationInputs, "triggers delete", {
+      expectedRevision: "wrong",
+    }),
+  );
+  assert.throws(
+    () => parseOperation(operationInputs, "toString", {}),
+    /unknown_command/,
+  );
+});

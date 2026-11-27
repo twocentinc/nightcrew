@@ -30,7 +30,6 @@ import {
   acceptanceSchema,
   chatAcceptanceSchema,
   runDetailSchema,
-  runState,
   runSummarySchema,
   searchMatchSchema,
   statusSchema,
@@ -292,7 +291,14 @@ export function resourceRoutes(
     toolGet: protectedRoute
       .route({ method: "GET", path: "/v1/tools/{toolID}" })
       .input(z.strictObject({ toolID: id }))
-      .output(z.object({ tool: toolDefinitionSchema.safeExtend({hash: z.string(), builtin: z.boolean()}) }))
+      .output(
+        z.object({
+          tool: toolDefinitionSchema.safeExtend({
+            hash: z.string(),
+            builtin: z.boolean(),
+          }),
+        }),
+      )
       .handler(async ({ input }) => ({
         tool: (
           await api["tools get"]({ resourceID: input.toolID, request: {} })

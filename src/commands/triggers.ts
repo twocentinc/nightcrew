@@ -4,7 +4,11 @@ import { checkpoint } from "../engine/execution/process.js";
 import { nextFireAt } from "../engine/scheduling/schedule.js";
 import type { Service } from "../engine/service.js";
 import { fail } from "../engine/service.js";
-import { triggerDraftSchema, triggerSchema } from "../schemas/agent.js";
+import {
+  triggerDraftSchema,
+  triggerSchema,
+  triggerInfoSchema,
+} from "../schemas/agent.js";
 import {
   id,
   now,
@@ -16,7 +20,10 @@ import {
 import { storeSchema, validateConfig } from "../schemas/config.js";
 import { type Run } from "../schemas/run.js";
 import { canonical } from "../utils/json.js";
-import { createOperations } from "../utils/commands/definition.js";
+import {
+  createOperations,
+  parseOperation,
+} from "../utils/commands/definition.js";
 import { type ManagementInput } from "../utils/commands/resources.js";
 
 export const operationInputs = {
@@ -38,13 +45,6 @@ export const operationInputs = {
     message: userMessageSchema.omit({ messageID: true }).optional(),
   }),
 };
-const requestSchemas: Record<string, z.ZodType> = operationInputs;
-
-const triggerInfo = triggerSchema.extend({
-  nextFireAt: z.string().nullable(),
-  automaticDispatchEnabled: z.boolean(),
-  blockers: z.array(z.string()),
-});
 
 export async function handle(
   service: Service,
@@ -56,10 +56,7 @@ export async function handle(
   const raw = input.request ?? {};
   if (resource === "triggers") {
     if (action === "fire") {
-      const value = requestSchemas[command]!.parse(raw) as {
-        occurrenceID?: string;
-        message?: Omit<import("../schemas/common.js").UserMessage, "messageID">;
-      };
+      const value = operationInputs["triggers fire"].parse(raw);
       return service.fireTrigger(
         name ?? fail("missing_id"),
         value.occurrenceID ?? randomUUID(),
@@ -120,19 +117,17 @@ export async function handle(
       };
     }
     return service.storage.exclusive(async () => {
-      const value = requestSchemas[command]?.parse(raw) as
-        | {
-            trigger?: z.infer<typeof triggerDraftSchema>;
-            expectedRevision?: number;
-            changes?: Partial<z.infer<typeof triggerDraftSchema>>;
-          }
-        | undefined;
-      if (!value) fail("unknown_command");
+      const { command: mutation, request: value } = parseOperation(
+        operationInputs,
+        command,
+        raw,
+      );
+      if (mutation === "triggers fire") return fail("unknown_command");
       const next = structuredClone(service.storage.store);
       const at = now();
       let item: z.infer<typeof triggerSchema> | null;
-      if (action === "create") {
-        const draft = value!.trigger!;
+      if (mutation === "triggers create") {
+        const draft = value.trigger;
         if (next.triggers.some((t) => t.triggerID === draft.triggerID))
           fail("trigger_exists", 409);
         item = triggerSchema.parse({
@@ -147,15 +142,15 @@ export async function handle(
         const index = next.triggers.findIndex((t) => t.triggerID === name);
         if (index < 0) fail("trigger_not_found", 404);
         const current = next.triggers[index]!;
-        if (current.revision !== value!.expectedRevision)
+        if (current.revision !== value.expectedRevision)
           fail("revision_conflict", 409);
-        if (action === "delete") {
+        if (mutation === "triggers delete") {
           if (!yes && !dryRun) fail("confirmation_required");
           next.triggers.splice(index, 1);
           item = null;
         } else {
-          if (action !== "update") fail("unknown_command");
-          const changes = value!.changes!;
+          if (mutation !== "triggers update") fail("unknown_command");
+          const changes = value.changes;
           const reset =
             (changes.enabled === true && !current.enabled) ||
             (changes.schedule !== undefined &&
@@ -185,12 +180,12 @@ export const operations = {
   "triggers list": defineOperation(
     "triggers list",
     "Inspect triggers and future schedule occurrences",
-    z.object({ items: z.array(triggerInfo) }),
+    z.object({ items: z.array(triggerInfoSchema) }),
   ),
   "triggers get": defineOperation(
     "triggers get",
     "Inspect a trigger, next occurrence and admission blockers",
-    z.object({ item: triggerInfo }),
+    z.object({ item: triggerInfoSchema }),
     false,
     "required",
   ),

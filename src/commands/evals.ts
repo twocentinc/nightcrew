@@ -12,7 +12,10 @@ import { editTools, editTranscript } from "../engine/evals/definitions.js";
 import { EvalStore } from "../storage/evals.js";
 import { id, uuid } from "../schemas/common.js";
 import { acceptanceSchema } from "../schemas/run.js";
-import { createOperations } from "../utils/commands/definition.js";
+import {
+  createOperations,
+  parseOperation,
+} from "../utils/commands/definition.js";
 import type { Service } from "../engine/service.js";
 import { fail } from "../engine/protocol.js";
 import type { ManagementInput } from "../utils/commands/resources.js";
@@ -89,35 +92,37 @@ export async function handle(
   }
   return service.storage.exclusive(async () => {
     const record = await store.get(evalID);
-    const request = (operationInputs as Record<string, z.ZodType>)[
-      command
-    ]?.parse(raw) as Record<string, unknown> | undefined;
-    if (!request) fail("unknown_command");
+    const { command: action, request } = parseOperation(
+      operationInputs,
+      command,
+      raw,
+    );
     if (
+      "expectedRevision" in request &&
       request.expectedRevision !== undefined &&
       request.expectedRevision !== record.revision
     )
       fail("revision_conflict", 409);
-    if (command === "evals delete") {
+    if (action === "evals delete") {
       if (!dryRun) await store.delete(evalID);
       return { changed: !dryRun };
     }
     let definition = structuredClone(record.definition);
-    if (command === "evals update")
+    if (action === "evals update")
       definition = normalizeEval({
         ...definition,
-        ...(request.changes as object),
+        ...request.changes,
       });
-    else if (command.startsWith("evals tools "))
+    else if (action === "evals tools set" || action === "evals tools delete")
       definition = editTools(
         definition,
-        command.endsWith("set") ? "set" : "delete",
-        request as Parameters<typeof editTools>[2],
+        action === "evals tools set" ? "set" : "delete",
+        request,
       );
-    else
+    else if (action !== "evals create")
       definition = editTranscript(
         definition,
-        command.split(" ").at(-1)!,
+        action.split(" ").at(-1)!,
         request,
       );
     const item = { definition, revision: record.revision + 1 };

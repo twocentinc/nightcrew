@@ -55,7 +55,6 @@ export class Runs {
   readonly controls: RunControls;
   readonly triggers: RunTriggers;
   constructor(private readonly ports: Dependencies) {
-    const self = this;
     this.controls = new RunControls({ dependencies: this.ports, main: this });
     this.triggers = new RunTriggers({ dependencies: this.ports, main: this });
   }

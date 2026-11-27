@@ -22,7 +22,6 @@ import { agentSchema, skillSchema, triggerSourceSchema } from "./agent.js";
 import {
   id,
   messageSchema,
-  runErrorSchema,
   timestamp,
   userMessageSchema,
   uuid,
