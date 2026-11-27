@@ -3,7 +3,7 @@
 - An eval is an ordinary Nightcrew run with a saved starting transcript, substituted tool responses, and optional grading.
 - The agent's configured model, system prompt, `finishSchema`, tool loop, output continuation, scheduler, timeouts, interruption recovery, and compaction remain in use. No instant model is required.
 - Each invocation creates a separate run, including for persistent agents. Eval caches do not overwrite the persistent agent cache.
-- The eval definition and revision are snapshotted in `run.evaluation`. Later edits affect new runs only.
+- The eval definition and revision are snapshotted at admission and exposed as `evaluation` in expanded run views. The on-disk run stores this evidence in events. Later edits affect new runs only.
 - Ordinary tool calls (including `load_skills`) use only the eval's responses. Unmatched/invalid calls return ordinary tool errors; they never execute a production tool. The runtime-owned `finish` tool cannot be mocked.
 - Production lifecycle/delivery hooks are suppressed. Compaction handlers still run normally. An executable grader is an explicitly trusted program with the daemon user's permissions, not a sandbox.
 
@@ -36,7 +36,7 @@
 ```
 
 - `evalID` and `agentID` are required. Definitions are stored as `{revision, definition}` in `~/.nightcrew/evals/<evalID>.json` (or the selected home).
-- Optional `overrides`: `modelID`, `systemPrompt`, `thinking`, `sampling.temperature`, `sampling`, `maxOutputTokens`, `maxToolCalls`, `timeoutMs`. Omitted fields retain agent settings. Changing model selects an automatic slot when the agent's fixed slot belongs to another model.
+- Optional `overrides`: `modelID`, `systemPrompt`, `thinking`, `sampling`, `parallelToolCalls`, `maxOutputTokens`, `maxToolCalls`, `timeoutMs`. Omitted fields retain agent settings. Temperature belongs inside `sampling`; supplying `sampling` replaces that object rather than merging individual settings. The scheduler assigns a slot for the selected model; agents do not own fixed physical slots.
 - Overrides cannot replace `finishSchema`, or configured tools/skills. The eval tests those real contracts.
 - `messages` defaults to `[]`; at least one user message is required to run. Roles are `user`, `assistant`, `tool`. The agent supplies the system message. Message UUIDs can be omitted during authoring; Nightcrew assigns them. Each run gets fresh message UUIDs.
 - Messages support ordinary `thinking`, `reasoningContent`, `attachments`, `toolCalls`, and `toolCallID` fields. Tool calls retain their call IDs for pairing. Only user messages carry attachments; only assistants call tools. Tool results must follow their calls. An unfinished tool exchange may appear only at the end and resumes through the normal tool loop. A seeded `finish` call must already have its result; it cannot complete the new eval without model generation.
@@ -66,11 +66,11 @@ Invalid finish calls or rejected final answers terminate execution immediately; 
 }
 ```
 
-- Executable stdin is one JSON object: `{eval, run, result}`. `run` is the persisted ordinary run record, including its transcript and attempts. `result` is the accepted finish value (or final text for agents without a finish schema).
+- Executable stdin is one JSON object: `{eval, run, result}`. `run` is the expanded version-4 run projection produced by `encodeRun`, including `messages`, `attempts`, and `evaluation`. It is not the compact format-10 `state.json` document; graders should read the projection fields rather than decode storage events. `result` is the accepted finish value (or final text for agents without a finish schema).
 - Stdout must contain exactly `{ "passed": true, "reason": "Explanation" }` (or `passed: false`). A nonzero exit, malformed output, changed source, timeout, or process failure records grading `error`.
-- `timeoutMs` defaults to 10 seconds, maximum 60 seconds. Grader input is bounded to 64 MB and output to 1 MB.
+- `timeoutMs` defaults to 10000 ms and accepts 100–600000 ms, using the shared executable schema. Grader input is bounded to 64 MB and output to 1 MB.
 - The executable, existing file arguments, and optional additional `sourceFiles` are hashed at admission and checked before execution. Declare imported source/data files when their identity matters. The captured daemon working directory is used at execution.
-- The latest grade is in `run.evaluation.grade`; each settled grade is also recorded as an `evalGraded` event. Execution status and grading status are separate: a completed run may fail grading.
+- The latest grade is exposed in `evaluation.grade` in expanded run views; each settled grade is also recorded as an `evalGraded` event. Execution status and grading status are separate: a completed run may fail grading.
 - A daemon restart can grade a terminal run that has not started grading. An interrupted grader is marked `error` with an unknown-outcome explanation and is never automatically replayed.
 - Checks establish only what they test. Schema conformance or literal presence does not establish factual accuracy. An executable can perform richer deterministic checks or invoke a separate reviewer; Nightcrew does not provide a built-in judge model.
 
