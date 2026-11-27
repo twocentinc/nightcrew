@@ -48,6 +48,10 @@ export const agentSchema = z.strictObject({
   createdAt: timestamp,
   updatedAt: timestamp,
 });
+export const agentSummarySchema = agentSchema.pick({
+  agentID: true, name: true, revision: true, modelID: true, mode: true,
+  executionClass: true, contextMode: true, enabled: true, updatedAt: true,
+});
 export const agentDraftSchema = agentSchema
   .omit({ revision: true, createdAt: true, updatedAt: true })
   .extend({

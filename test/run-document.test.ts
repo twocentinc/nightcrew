@@ -335,7 +335,6 @@ test("killed delivery remains unknown and is not dispatched again", async (t) =>
     const hooks = new Hooks({
       storage: restarted,
       records,
-      dispatch: { hasActivity: () => false },
       runner: { liveRun: () => undefined },
     });
     hooks.scheduleHooks(run);

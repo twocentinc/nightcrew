@@ -1,5 +1,6 @@
 import { eventIterator } from "@orpc/server";
 import { z } from "zod";
+import { toolSummarySchema, toolDefinitionSchema } from "../schemas/tool.js";
 import { operationInputs } from "../utils/commands/inputs.js";
 import {
   httpOperationRouter,
@@ -10,6 +11,7 @@ import { Service } from "../engine/service.js";
 import {
   agentDraftSchema,
   agentSchema,
+  agentSummarySchema,
   skillSchema,
   skillMetadataSchema,
 } from "../schemas/agent.js";
@@ -21,7 +23,6 @@ import {
   pageSchema,
   revision,
   streamEventSchema,
-  toolSchema,
   userMessageSchema,
 } from "../schemas/common.js";
 import { publicConfigSchema } from "../schemas/config.js";
@@ -120,7 +121,7 @@ export function resourceRoutes(
     agentsList: protectedRoute
       .route({ method: "GET", path: "/v1/agents" })
       .input(pageSchema.extend({ enabled: optionalBoolean }))
-      .output(pageOutput(agentSchema))
+      .output(pageOutput(agentSummarySchema))
       .handler(({ input }) =>
         page("agents:" + input.enabled, input, async () =>
           (await api["agents list"](noResource)).items.filter(
@@ -280,7 +281,7 @@ export function resourceRoutes(
     toolsList: protectedRoute
       .route({ method: "GET", path: "/v1/tools" })
       .input(pageSchema)
-      .output(pageOutput(toolSchema))
+      .output(pageOutput(toolSummarySchema))
       .handler(({ input }) =>
         page(
           "tools",
@@ -291,7 +292,7 @@ export function resourceRoutes(
     toolGet: protectedRoute
       .route({ method: "GET", path: "/v1/tools/{toolID}" })
       .input(z.strictObject({ toolID: id }))
-      .output(z.object({ tool: toolSchema }))
+      .output(z.object({ tool: toolDefinitionSchema.safeExtend({hash: z.string(), builtin: z.boolean()}) }))
       .handler(async ({ input }) => ({
         tool: (
           await api["tools get"]({ resourceID: input.toolID, request: {} })

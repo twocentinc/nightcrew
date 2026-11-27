@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { Service, fail } from "../engine/service.js";
 import { id, resultSchema, revision, samplingSchema } from "../schemas/common.js";
-import { configMutation } from "../schemas/config.js";
 import { modelSchema } from "../schemas/model.js";
 import { capabilities, capabilitiesSchema } from "../server/diagnostics.js";
 import { createOperations } from "../utils/commands/definition.js";
@@ -20,7 +19,6 @@ export const operationInputs = {
     prompt: z.string().trim().min(1).max(50000),
     maxOutputTokens: z.number().int().min(1).max(4096).default(64),
     sampling: samplingSchema.default(() => samplingSchema.parse({ temperature: 0 })),
-    parallelToolCalls: z.boolean().optional(),
     thinking: z.boolean().default(false),
     timeoutMs: z.number().int().min(1000).max(300000).default(60000),
   }),
@@ -40,6 +38,9 @@ export const operationInputs = {
   }),
   "models delete": z.strictObject({ expectedRevision: revision }),
 };
+const modelMutation = z.object({
+  changed: z.boolean(), restartRequired: z.boolean(), revision, item: modelSchema.nullable(),
+});
 const requestSchemas: Record<string, z.ZodType> = operationInputs;
 export async function handle(
   service: Service,
@@ -110,7 +111,7 @@ export const operations = {
   "models create": defineOperation(
     "models create",
     "create models",
-    configMutation,
+    modelMutation,
     true,
     "none",
     false,
@@ -118,7 +119,7 @@ export const operations = {
   "models update": defineOperation(
     "models update",
     "update models",
-    configMutation,
+    modelMutation,
     true,
     "required",
     false,
@@ -126,7 +127,7 @@ export const operations = {
   "models delete": defineOperation(
     "models delete",
     "delete models",
-    configMutation,
+    modelMutation,
     true,
     "required",
     true,

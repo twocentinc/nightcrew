@@ -1264,7 +1264,7 @@ test("agent loops automatically discover and load snapshotted skill files on dem
   f = await fixture(t, async (input?: any) => {
     assert.ok(input.tools.some((tool?: any) => tool.name === "load_skills"));
     if (turn++ === 0) {
-      assert.ok(input.messages[0].content.includes("Selected review workflow"));
+      assert.ok(input.messages[0].content.includes("Updated review workflow"));
       assert.ok(!input.messages[0].content.includes("PRIVATE INSTRUCTIONS"));
       assert.ok(!JSON.stringify(input.messages).includes("REFERENCE CONTENT"));
       await writeFile(
@@ -1351,10 +1351,12 @@ test("agent loops automatically discover and load snapshotted skill files on dem
     resourceID: "review",
     request: {
       expectedHash: fetched.item.hash,
-      skill: { ...skill, files: undefined },
+      changes: { description: "Updated review workflow" },
     },
   });
   assert.equal(updated.item!.files.length, 1);
+  assert.equal(updated.item!.instructions, skill.instructions);
+  assert.deepEqual(updated.item!.toolIDs, skill.toolIDs);
 
   const changed = await f.request("PATCH", "/v1/agents/researcher", {
     expectedRevision: 1,
@@ -2104,4 +2106,28 @@ test("HTTP eval definitions create ordinary runs and expose completed grading", 
     ).status,
     200,
   );
+});
+
+test("capability patches preserve omitted fields and lists expose only summaries", async (t) => {
+  const f = await fixture(t);
+  const {managementClient} = await import("../dist/utils/commands/operations.js");
+  const api = managementClient(f.app.service);
+  const tool = {toolID:"patchable",description:"before",executablePath:process.execPath,argv:["--version"],timeoutMs:3210,parameters:{type:"object"}};
+  const created = await api["tools create"]({resourceID:undefined,request:{tool}});
+  const patch = {resourceID:tool.toolID,request:{expectedHash:created.item!.hash,changes:{description:"after"}}};
+  const updated = await api["tools update"](patch);
+  assert.deepEqual(updated.item, {...tool,description:"after",hash:updated.item!.hash});
+  await assert.rejects(api["tools update"](patch));
+  const listed = await api["tools list"]({resourceID:undefined,request:{}});
+  const expected = {toolID:tool.toolID,description:"after",hash:updated.item!.hash,builtin:false};
+  assert.deepEqual(listed.items.find(x=>x.toolID===tool.toolID),expected);
+  const httpTools = await f.request("GET","/v1/tools");
+  assert.deepEqual(httpTools.body.items.find((x:any)=>x.toolID===tool.toolID),expected);
+  assert.equal((await f.request("GET","/v1/tools/patchable")).body.tool.executablePath, process.execPath);
+  const agents = await api["agents list"]({resourceID:undefined,request:{}});
+  assert.equal("systemPrompt" in agents.items[0]!,false);
+  assert.equal("finishSchema" in agents.items[0]!,false);
+  const httpAgents = await f.request("GET","/v1/agents");
+  assert.deepEqual(httpAgents.body.items,agents.items);
+  assert.equal((await f.request("GET","/v1/agents/researcher")).body.agent.systemPrompt,"Research.");
 });

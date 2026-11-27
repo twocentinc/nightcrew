@@ -40,4 +40,7 @@ export const toolDefinitionSchema = executableSchema
       });
     }
   });
+export const toolSummarySchema = z.strictObject({
+  toolID: id, description: z.string(), hash: z.string(), builtin: z.boolean(),
+});
 export type ToolDefinition = z.infer<typeof toolDefinitionSchema>;

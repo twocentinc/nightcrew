@@ -184,7 +184,7 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
     (
       await call(home, ["tools", "update", "inspect"], {
         expectedHash: oldTool.hash,
-        tool: { ...external, description: "updated" },
+        changes: { description: "updated" },
       })
     ).ok,
     true,
@@ -193,7 +193,7 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
     (
       await call(home, ["tools", "update", "inspect"], {
         expectedHash: oldTool.hash,
-        tool: external,
+        changes: { description: external.description },
       })
     ).ok,
     false,

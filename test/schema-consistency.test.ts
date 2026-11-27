@@ -78,3 +78,30 @@ test("bundled authoring requests use current agent fields", async () => {
     assert.equal(agentDraftSchema.safeParse(request.agent).success, true, folder);
   }
 });
+
+test("concise message input defaults empty fields and enforces message roles", async () => {
+  const {messageSchema, userMessageSchema} = await import("../dist/schemas/common.js");
+  const messageID = "00000000-0000-4000-8000-000000000001";
+  for (const role of ["user", "assistant", "system"] as const) {
+    assert.deepEqual(messageSchema.parse({messageID, role, content: "hello"}), {
+      messageID, role, content: "hello", attachments: [], toolCalls: [], toolCallID: null,
+    });
+  }
+  assert.deepEqual(userMessageSchema.parse({messageID, content: "hello"}).attachments, []);
+  assert.equal(messageSchema.safeParse({messageID, role: "tool", content: "result"}).success, false);
+  assert.equal(messageSchema.safeParse({messageID, role: "tool", content: "result", toolCallID: "call"}).success, true);
+  assert.equal(messageSchema.safeParse({messageID, role: "user", content: "x", toolCallID: "call"}).success, false);
+  assert.equal(messageSchema.safeParse({messageID, role: "user", content: "x", toolCalls: [{callID:"call",name:"test",arguments:"{}"}]}).success, false);
+  assert.equal(messageSchema.safeParse({messageID, role: "assistant", content: "x", attachments: [{name:"a",mediaType:"text/plain",dataBase64:"eA=="}]}).success, false);
+});
+
+test("partial capability updates have no implicit defaults and reject retired requests", async () => {
+  const {operationInputs} = await import("../dist/utils/commands/inputs.js");
+  for(const command of ["tools update", "skills update"] as const) {
+    const request = {expectedHash:"hash",changes:{description:"new"}};
+    assert.deepEqual(operationInputs[command].parse(request),request);
+    assert.equal(operationInputs[command].safeParse({expectedHash:"hash",tool:{}}).success,false);
+    assert.equal(operationInputs[command].safeParse({...request, changes:{toolID:"different"}}).success,false);
+  }
+  assert.equal(operationInputs["models test"].safeParse({prompt:"hello",parallelToolCalls:false}).success,false);
+});

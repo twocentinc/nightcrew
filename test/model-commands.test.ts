@@ -382,3 +382,31 @@ test("instant inputs reject slot selection and admit requests through the design
       .slotID,
   );
 });
+
+test("model mutations return the affected item and configuration revision only", async (t) => {
+  const f = await setup(t);
+  const {writeFile} = await import("node:fs/promises");
+  const weightsPath = path.join(f.home,"fixture.gguf");
+  await writeFile(weightsPath,"fixture");
+  await f.service.storage.exclusive(async () => {
+    const next = structuredClone(f.service.storage.store);
+    next.config.models.forEach(model => { model.weightsPath = weightsPath; });
+    await f.service.storage.saveConfig(next);
+  });
+  const created = await f.invoke("models create",undefined,{model:{modelID:"new",kind:"chat",weightsPath,projectorPath:null,idleUnloadMs:1000}});
+  assert.deepEqual(Object.keys(created).sort(),["changed","item","restartRequired","revision"]);
+  assert.equal(created.item.modelID,"new");
+  const before = await readFile(path.join(f.home,"config.json"),"utf8");
+  const preview = await f.invoke("models update","new",{expectedRevision:created.revision,changes:{priority:10}},true);
+  assert.equal(preview.changed,false);
+  assert.equal(preview.item.priority,10);
+  assert.equal(await readFile(path.join(f.home,"config.json"),"utf8"),before);
+  const updated = await f.invoke("models update","new",{expectedRevision:created.revision,changes:{priority:10}});
+  assert.equal(updated.revision,created.revision+1);
+  assert.equal(updated.item.priority,10);
+  await assert.rejects(f.invoke("models update","new",{expectedRevision:created.revision,changes:{priority:20}}));
+  const removed:any = await callOperation(f.service,{command:"models delete",resourceID:"new",request:{expectedRevision:updated.revision},yes:true});
+  assert.equal(removed.item,null);
+  assert.equal(removed.revision,updated.revision+1);
+  assert.equal("config" in removed,false);
+});

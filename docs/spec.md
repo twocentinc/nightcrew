@@ -711,7 +711,7 @@ Instant inference uses `instant create`, `instant get`, and `instant delete`. De
 
 There is no manual annotation/review workflow or public hook retry command. Run outcomes retain execution, validation and delivery evidence; `needsAttention`, status `issues` and `issuesTruncated` are derived rather than manually acknowledged.
 
-## Run records (document format 10; public schema 52)
+## Run records (document format 10; public schema 53)
 
 - Each run owns only `<home>/runs/<runID>/state.json` (stored format 10).
   Metadata, messages and events are replaced in one atomic file write using the
@@ -782,3 +782,5 @@ Collection checkpoint events store only their value; identity is derived from th
 See [understanding Nightcrew files](configuration.md). Executable handlers use argv; agent modes and pause reasons use camelCase; eval tool overrides use toolID. Compaction JSON Schema is generated from its Zod definition. Configuration format 4 and run format 8 require offline migration; normal reads provide no legacy aliases.
 
 Schema 51 removed finishValidator. Configuration format 5 and run format 9 remove it from definitions and snapshots through offline migration. Executable custom checks run only in eval grading.
+
+Schema 53 accepts concise role-validated message input, changes-based skill/tool updates, metadata-only agent/tool lists, and focused model mutation results. See [configuration](configuration.md#concise-requests-and-responses). Disk formats remain unchanged.

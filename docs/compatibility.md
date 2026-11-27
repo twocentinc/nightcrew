@@ -1,7 +1,7 @@
 # Public contract and compatibility
 
-The current frozen public contract is protocol 1, schema 52, introduced in
-0.52.0 through owner-approved contract cleanup. The freeze began at schema 34;
+The current frozen public contract is protocol 1, schema 53, introduced in
+0.53.0 through owner-approved request and response simplification. The freeze began at schema 34;
 owner-approved changes since then are recorded below. This is the baseline for
 the upcoming 1.0 release, not a claim that acceptance work is complete.
 
@@ -268,3 +268,12 @@ Generated `/v1/operations/...` routes are the complete remote management surface
 - Removed evals transcript clear; use transcript set with messages: [] instead.
 - skills list returns only skillID, name, description and hash, including HTTP listings. Use get/read for content.
 - Run format 10 requires offline migration from formats 3–9; configuration stays at format 5. Migration retains existing configuration events instead of reconstructing only the latest snapshot.
+
+## 0.53.0 / schema 53
+
+- Message inputs may omit attachments, toolCalls and toolCallID. Normalized engine/output records keep empty arrays/nulls. Role validation permits attachments only on users, calls only on assistants, and requires toolCallID only on tool results.
+- Tools and skills update through expectedHash + changes. Omitted fields are preserved; arrays and nested schemas are replaced when supplied. Identities cannot change. Full merged definitions are validated before writes.
+- Agents and tools list metadata; get returns full definitions. HTTP resource listings follow the same projections.
+- Model mutations return item (null after deletion), revision, changed and restartRequired instead of all configuration. Dry-run revision describes the proposed configuration without writing it.
+- models test no longer accepts parallelToolCalls; model tests have no tools.
+- Configuration format 5, run format 10 and protocol 1 are unchanged. No migration is required.

@@ -1538,39 +1538,6 @@
     "type": "object"
   },
   "agents.list.result": {
-    "$defs": {
-      "__schema0": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "number"
-          },
-          {
-            "type": "boolean"
-          },
-          {
-            "type": "null"
-          },
-          {
-            "items": {
-              "$ref": "#/$defs/__schema0"
-            },
-            "type": "array"
-          },
-          {
-            "additionalProperties": {
-              "$ref": "#/$defs/__schema0"
-            },
-            "propertyNames": {
-              "type": "string"
-            },
-            "type": "object"
-          }
-        ]
-      }
-    },
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
     "properties": {
@@ -1582,98 +1549,12 @@
               "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
               "type": "string"
             },
-            "compaction": {
-              "anyOf": [
-                {
-                  "additionalProperties": false,
-                  "properties": {
-                    "handler": {
-                      "oneOf": [
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "agentID": {
-                              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                              "type": "string"
-                            },
-                            "type": {
-                              "const": "agent",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "type",
-                            "agentID"
-                          ],
-                          "type": "object"
-                        },
-                        {
-                          "additionalProperties": false,
-                          "properties": {
-                            "argv": {
-                              "default": [],
-                              "items": {
-                                "maxLength": 4000,
-                                "type": "string"
-                              },
-                              "maxItems": 64,
-                              "type": "array"
-                            },
-                            "executablePath": {
-                              "maxLength": 4096,
-                              "type": "string"
-                            },
-                            "timeoutMs": {
-                              "default": 60000,
-                              "maximum": 600000,
-                              "minimum": 100,
-                              "type": "integer"
-                            },
-                            "type": {
-                              "const": "exec",
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "executablePath",
-                            "argv",
-                            "timeoutMs",
-                            "type"
-                          ],
-                          "type": "object"
-                        }
-                      ]
-                    },
-                    "maxRetries": {
-                      "default": 1,
-                      "maximum": 2,
-                      "minimum": 0,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "maxRetries",
-                    "handler"
-                  ],
-                  "type": "object"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null
-            },
             "contextMode": {
               "default": "fresh",
               "enum": [
                 "fresh",
                 "persistent"
               ],
-              "type": "string"
-            },
-            "createdAt": {
-              "format": "date-time",
-              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
               "type": "string"
             },
             "enabled": {
@@ -1686,60 +1567,6 @@
                 "instant"
               ],
               "type": "string"
-            },
-            "finishSchema": {
-              "anyOf": [
-                {
-                  "additionalProperties": {
-                    "$ref": "#/$defs/__schema0"
-                  },
-                  "propertyNames": {
-                    "type": "string"
-                  },
-                  "type": "object"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "default": null
-            },
-            "loopPolicy": {
-              "additionalProperties": false,
-              "default": {
-                "consecutiveErrors": 3,
-                "repeatedCalls": 3
-              },
-              "properties": {
-                "consecutiveErrors": {
-                  "default": 3,
-                  "maximum": 20,
-                  "minimum": 2,
-                  "type": "integer"
-                },
-                "repeatedCalls": {
-                  "default": 3,
-                  "maximum": 20,
-                  "minimum": 2,
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "consecutiveErrors",
-                "repeatedCalls"
-              ],
-              "type": "object"
-            },
-            "maxOutputTokens": {
-              "default": 4096,
-              "maximum": 32768,
-              "minimum": 1,
-              "type": "integer"
-            },
-            "maxToolCalls": {
-              "maximum": 1000,
-              "minimum": 1,
-              "type": "integer"
             },
             "mode": {
               "enum": [
@@ -1757,103 +1584,10 @@
               "minLength": 1,
               "type": "string"
             },
-            "parallelToolCalls": {
-              "type": "boolean"
-            },
-            "priority": {
-              "default": 0,
-              "maximum": 100,
-              "minimum": -100,
-              "type": "integer"
-            },
             "revision": {
               "exclusiveMinimum": 0,
               "maximum": 2147483647,
               "type": "integer"
-            },
-            "sampling": {
-              "additionalProperties": false,
-              "default": {
-                "temperature": 0.7
-              },
-              "properties": {
-                "minP": {
-                  "maximum": 1,
-                  "minimum": 0,
-                  "type": "number"
-                },
-                "presencePenalty": {
-                  "maximum": 2,
-                  "minimum": -2,
-                  "type": "number"
-                },
-                "repeatPenalty": {
-                  "maximum": 2,
-                  "minimum": 0,
-                  "type": "number"
-                },
-                "temperature": {
-                  "default": 0.7,
-                  "maximum": 2,
-                  "minimum": 0,
-                  "type": "number"
-                },
-                "topK": {
-                  "maximum": 1000,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "topP": {
-                  "maximum": 1,
-                  "minimum": 0,
-                  "type": "number"
-                }
-              },
-              "required": [
-                "temperature"
-              ],
-              "type": "object"
-            },
-            "skillIDs": {
-              "items": {
-                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                "type": "string"
-              },
-              "maxItems": 40,
-              "type": "array"
-            },
-            "storageLimitMB": {
-              "default": 48,
-              "maximum": 48,
-              "minimum": 1,
-              "type": "integer"
-            },
-            "systemPrompt": {
-              "maxLength": 64000,
-              "type": "string"
-            },
-            "thinking": {
-              "default": true,
-              "type": "boolean"
-            },
-            "timeSliceMs": {
-              "default": 60000,
-              "maximum": 3600000,
-              "minimum": 100,
-              "type": "integer"
-            },
-            "timeoutMs": {
-              "maximum": 86400000,
-              "minimum": 1000,
-              "type": "integer"
-            },
-            "toolIDs": {
-              "items": {
-                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                "type": "string"
-              },
-              "maxItems": 64,
-              "type": "array"
             },
             "updatedAt": {
               "format": "date-time",
@@ -1862,28 +1596,14 @@
             }
           },
           "required": [
-            "finishSchema",
-            "loopPolicy",
-            "storageLimitMB",
-            "compaction",
-            "contextMode",
-            "priority",
-            "timeSliceMs",
             "agentID",
-            "revision",
             "name",
-            "systemPrompt",
-            "mode",
+            "revision",
             "modelID",
+            "mode",
             "executionClass",
-            "skillIDs",
-            "toolIDs",
-            "thinking",
-            "sampling",
-            "maxOutputTokens",
-            "timeoutMs",
+            "contextMode",
             "enabled",
-            "createdAt",
             "updatedAt"
           ],
           "type": "object"
@@ -1904,6 +1624,7 @@
         "additionalProperties": false,
         "properties": {
           "attachments": {
+            "default": [],
             "items": {
               "additionalProperties": false,
               "properties": {
@@ -1950,8 +1671,7 @@
         },
         "required": [
           "messageID",
-          "content",
-          "attachments"
+          "content"
         ],
         "type": "object"
       }
@@ -4180,6 +3900,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -4347,6 +4068,7 @@
                                   },
                                   "properties": {
                                     "attachments": {
+                                      "default": [],
                                       "items": {
                                         "additionalProperties": false,
                                         "properties": {
@@ -4777,6 +4499,7 @@
                             },
                             "properties": {
                               "attachments": {
+                                "default": [],
                                 "items": {
                                   "additionalProperties": false,
                                   "properties": {
@@ -11338,6 +11061,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -11505,6 +11229,7 @@
                                   },
                                   "properties": {
                                     "attachments": {
+                                      "default": [],
                                       "items": {
                                         "additionalProperties": false,
                                         "properties": {
@@ -11935,6 +11660,7 @@
                             },
                             "properties": {
                               "attachments": {
+                                "default": [],
                                 "items": {
                                   "additionalProperties": false,
                                   "properties": {
@@ -17029,6 +16755,7 @@
           "additionalProperties": false,
           "properties": {
             "attachments": {
+              "default": [],
               "items": {
                 "additionalProperties": false,
                 "properties": {
@@ -17094,9 +16821,11 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "default": null
             },
             "toolCalls": {
+              "default": [],
               "items": {
                 "additionalProperties": false,
                 "properties": {
@@ -17127,10 +16856,7 @@
           "required": [
             "messageID",
             "role",
-            "content",
-            "attachments",
-            "toolCalls",
-            "toolCallID"
+            "content"
           ],
           "type": "object"
         },
@@ -17329,6 +17055,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -17394,9 +17121,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -17601,6 +17330,7 @@
               "additionalProperties": false,
               "properties": {
                 "attachments": {
+                  "default": [],
                   "items": {
                     "additionalProperties": false,
                     "properties": {
@@ -17666,9 +17396,11 @@
                     {
                       "type": "null"
                     }
-                  ]
+                  ],
+                  "default": null
                 },
                 "toolCalls": {
+                  "default": [],
                   "items": {
                     "additionalProperties": false,
                     "properties": {
@@ -17885,6 +17617,7 @@
           "additionalProperties": false,
           "properties": {
             "attachments": {
+              "default": [],
               "items": {
                 "additionalProperties": false,
                 "properties": {
@@ -17950,9 +17683,11 @@
                 {
                   "type": "null"
                 }
-              ]
+              ],
+              "default": null
             },
             "toolCalls": {
+              "default": [],
               "items": {
                 "additionalProperties": false,
                 "properties": {
@@ -18200,382 +17935,134 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
     "properties": {
-      "agentID": {
-        "type": "string"
-      },
       "changed": {
         "type": "boolean"
       },
-      "config": {
-        "additionalProperties": false,
-        "properties": {
-          "hooks": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "argv": {
-                  "default": [],
-                  "items": {
-                    "maxLength": 4000,
-                    "type": "string"
-                  },
-                  "maxItems": 64,
-                  "type": "array"
-                },
-                "event": {
-                  "enum": [
-                    "run.completed",
-                    "run.failed",
-                    "run.invalidOutput",
-                    "run.timedOut",
-                    "run.cancelled",
-                    "run.storageLimit"
-                  ],
-                  "type": "string"
-                },
-                "executablePath": {
-                  "maxLength": 4096,
-                  "type": "string"
-                },
-                "hookID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                },
-                "purpose": {
-                  "default": "notification",
-                  "enum": [
-                    "notification",
-                    "delivery"
-                  ],
-                  "type": "string"
-                },
-                "timeoutMs": {
-                  "default": 10000,
-                  "maximum": 600000,
-                  "minimum": 100,
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "executablePath",
-                "argv",
-                "timeoutMs",
-                "hookID",
-                "purpose",
-                "event"
-              ],
-              "type": "object"
-            },
-            "maxItems": 16,
-            "type": "array"
-          },
-          "host": {
-            "enum": [
-              "127.0.0.1",
-              "::1"
-            ],
-            "type": "string"
-          },
-          "httpEnabled": {
-            "default": true,
-            "type": "boolean"
-          },
-          "interactionCooldownMs": {
-            "maximum": 3600000,
-            "minimum": 0,
-            "type": "integer"
-          },
-          "logging": {
+      "item": {
+        "anyOf": [
+          {
             "additionalProperties": false,
-            "default": {
-              "files": 3,
-              "level": "warn",
-              "maxBytes": 1048576
-            },
             "properties": {
-              "files": {
-                "default": 3,
-                "maximum": 10,
-                "minimum": 1,
+              "compactionThresholdTokens": {
+                "anyOf": [
+                  {
+                    "maximum": 262144,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "contextTokens": {
+                "default": 4096,
+                "maximum": 262144,
+                "minimum": 1024,
                 "type": "integer"
               },
-              "level": {
-                "default": "warn",
+              "idleUnloadMs": {
+                "maximum": 86400000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
                 "enum": [
-                  "off",
-                  "error",
-                  "warn",
-                  "info",
-                  "debug"
+                  "chat",
+                  "audio"
                 ],
                 "type": "string"
               },
-              "maxBytes": {
-                "default": 1048576,
-                "maximum": 16777216,
-                "minimum": 1024,
+              "modelID": {
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+                "type": "string"
+              },
+              "priority": {
+                "default": 0,
+                "maximum": 100,
+                "minimum": -100,
                 "type": "integer"
-              }
-            },
-            "required": [
-              "level",
-              "maxBytes",
-              "files"
-            ],
-            "type": "object"
-          },
-          "models": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "compactionThresholdTokens": {
-                  "anyOf": [
-                    {
-                      "maximum": 262144,
-                      "minimum": 1,
-                      "type": "integer"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "default": null
-                },
-                "contextTokens": {
-                  "default": 4096,
-                  "maximum": 262144,
-                  "minimum": 1024,
-                  "type": "integer"
-                },
-                "idleUnloadMs": {
-                  "maximum": 86400000,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "kind": {
-                  "enum": [
-                    "chat",
-                    "audio"
-                  ],
-                  "type": "string"
-                },
-                "modelID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                },
-                "priority": {
-                  "default": 0,
-                  "maximum": 100,
-                  "minimum": -100,
-                  "type": "integer"
-                },
-                "projectorPath": {
-                  "anyOf": [
-                    {
-                      "maxLength": 4096,
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "slotSnapshots": {
-                  "additionalProperties": false,
-                  "default": {
-                    "directory": null,
-                    "enabled": false
-                  },
-                  "properties": {
-                    "directory": {
-                      "anyOf": [
-                        {
-                          "maxLength": 4096,
-                          "pattern": "^\\/[^\\r\\n]*$",
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ],
-                      "default": null
-                    },
-                    "enabled": {
-                      "default": false,
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "enabled",
-                    "directory"
-                  ],
-                  "type": "object"
-                },
-                "weightsPath": {
-                  "maxLength": 4096,
-                  "type": "string"
-                }
               },
-              "required": [
-                "modelID",
-                "contextTokens",
-                "compactionThresholdTokens",
-                "priority",
-                "kind",
-                "weightsPath",
-                "projectorPath",
-                "idleUnloadMs",
-                "slotSnapshots"
-              ],
-              "type": "object"
-            },
-            "maxItems": 32,
-            "type": "array"
-          },
-          "port": {
-            "maximum": 65535,
-            "minimum": 1024,
-            "type": "integer"
-          },
-          "revision": {
-            "exclusiveMinimum": 0,
-            "maximum": 2147483647,
-            "type": "integer"
-          },
-          "scheduler": {
-            "additionalProperties": false,
-            "default": {
-              "hook": null,
-              "instantModelID": null,
-              "maxConcurrent": 1,
-              "maxWaitMs": 900000,
-              "minResidencyMs": 60000,
-              "snapshotBudgetMB": 1024,
-              "timersEnabled": true
-            },
-            "properties": {
-              "hook": {
+              "projectorPath": {
                 "anyOf": [
                   {
-                    "additionalProperties": false,
-                    "properties": {
-                      "argv": {
-                        "default": [],
-                        "items": {
-                          "maxLength": 4000,
-                          "type": "string"
-                        },
-                        "maxItems": 64,
-                        "type": "array"
-                      },
-                      "executablePath": {
-                        "maxLength": 4096,
-                        "type": "string"
-                      },
-                      "failurePolicy": {
-                        "default": "builtin",
-                        "enum": [
-                          "builtin",
-                          "hold"
-                        ],
-                        "type": "string"
-                      },
-                      "timeoutMs": {
-                        "default": 2000,
-                        "maximum": 600000,
-                        "minimum": 100,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "executablePath",
-                      "argv",
-                      "timeoutMs",
-                      "failurePolicy"
-                    ],
-                    "type": "object"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null
-              },
-              "instantModelID": {
-                "anyOf": [
-                  {
-                    "maxLength": 128,
-                    "minLength": 1,
+                    "maxLength": 4096,
                     "type": "string"
                   },
                   {
                     "type": "null"
                   }
+                ]
+              },
+              "slotSnapshots": {
+                "additionalProperties": false,
+                "default": {
+                  "directory": null,
+                  "enabled": false
+                },
+                "properties": {
+                  "directory": {
+                    "anyOf": [
+                      {
+                        "maxLength": 4096,
+                        "pattern": "^\\/[^\\r\\n]*$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
+                  },
+                  "enabled": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "directory"
                 ],
-                "default": null
+                "type": "object"
               },
-              "maxConcurrent": {
-                "default": 1,
-                "maximum": 16,
-                "minimum": 1,
-                "type": "integer"
-              },
-              "maxWaitMs": {
-                "default": 900000,
-                "maximum": 86400000,
-                "minimum": 1000,
-                "type": "integer"
-              },
-              "minResidencyMs": {
-                "default": 60000,
-                "maximum": 3600000,
-                "minimum": 0,
-                "type": "integer"
-              },
-              "snapshotBudgetMB": {
-                "default": 1024,
-                "maximum": 1048576,
-                "minimum": 0,
-                "type": "integer"
-              },
-              "timersEnabled": {
-                "default": true,
-                "type": "boolean"
+              "weightsPath": {
+                "maxLength": 4096,
+                "type": "string"
               }
             },
             "required": [
-              "instantModelID",
-              "maxConcurrent",
-              "snapshotBudgetMB",
-              "minResidencyMs",
-              "maxWaitMs",
-              "timersEnabled",
-              "hook"
+              "modelID",
+              "contextTokens",
+              "compactionThresholdTokens",
+              "priority",
+              "kind",
+              "weightsPath",
+              "projectorPath",
+              "idleUnloadMs",
+              "slotSnapshots"
             ],
             "type": "object"
+          },
+          {
+            "type": "null"
           }
-        },
-        "required": [
-          "scheduler",
-          "revision",
-          "httpEnabled",
-          "host",
-          "port",
-          "interactionCooldownMs",
-          "logging",
-          "models",
-          "hooks"
-        ],
-        "type": "object"
+        ]
       },
       "restartRequired": {
         "type": "boolean"
+      },
+      "revision": {
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991,
+        "type": "integer"
       }
     },
     "required": [
       "changed",
       "restartRequired",
-      "config"
+      "revision",
+      "item"
     ],
     "type": "object"
   },
@@ -18598,382 +18085,134 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
     "properties": {
-      "agentID": {
-        "type": "string"
-      },
       "changed": {
         "type": "boolean"
       },
-      "config": {
-        "additionalProperties": false,
-        "properties": {
-          "hooks": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "argv": {
-                  "default": [],
-                  "items": {
-                    "maxLength": 4000,
-                    "type": "string"
-                  },
-                  "maxItems": 64,
-                  "type": "array"
-                },
-                "event": {
-                  "enum": [
-                    "run.completed",
-                    "run.failed",
-                    "run.invalidOutput",
-                    "run.timedOut",
-                    "run.cancelled",
-                    "run.storageLimit"
-                  ],
-                  "type": "string"
-                },
-                "executablePath": {
-                  "maxLength": 4096,
-                  "type": "string"
-                },
-                "hookID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                },
-                "purpose": {
-                  "default": "notification",
-                  "enum": [
-                    "notification",
-                    "delivery"
-                  ],
-                  "type": "string"
-                },
-                "timeoutMs": {
-                  "default": 10000,
-                  "maximum": 600000,
-                  "minimum": 100,
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "executablePath",
-                "argv",
-                "timeoutMs",
-                "hookID",
-                "purpose",
-                "event"
-              ],
-              "type": "object"
-            },
-            "maxItems": 16,
-            "type": "array"
-          },
-          "host": {
-            "enum": [
-              "127.0.0.1",
-              "::1"
-            ],
-            "type": "string"
-          },
-          "httpEnabled": {
-            "default": true,
-            "type": "boolean"
-          },
-          "interactionCooldownMs": {
-            "maximum": 3600000,
-            "minimum": 0,
-            "type": "integer"
-          },
-          "logging": {
+      "item": {
+        "anyOf": [
+          {
             "additionalProperties": false,
-            "default": {
-              "files": 3,
-              "level": "warn",
-              "maxBytes": 1048576
-            },
             "properties": {
-              "files": {
-                "default": 3,
-                "maximum": 10,
-                "minimum": 1,
+              "compactionThresholdTokens": {
+                "anyOf": [
+                  {
+                    "maximum": 262144,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "contextTokens": {
+                "default": 4096,
+                "maximum": 262144,
+                "minimum": 1024,
                 "type": "integer"
               },
-              "level": {
-                "default": "warn",
+              "idleUnloadMs": {
+                "maximum": 86400000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
                 "enum": [
-                  "off",
-                  "error",
-                  "warn",
-                  "info",
-                  "debug"
+                  "chat",
+                  "audio"
                 ],
                 "type": "string"
               },
-              "maxBytes": {
-                "default": 1048576,
-                "maximum": 16777216,
-                "minimum": 1024,
+              "modelID": {
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+                "type": "string"
+              },
+              "priority": {
+                "default": 0,
+                "maximum": 100,
+                "minimum": -100,
                 "type": "integer"
-              }
-            },
-            "required": [
-              "level",
-              "maxBytes",
-              "files"
-            ],
-            "type": "object"
-          },
-          "models": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "compactionThresholdTokens": {
-                  "anyOf": [
-                    {
-                      "maximum": 262144,
-                      "minimum": 1,
-                      "type": "integer"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "default": null
-                },
-                "contextTokens": {
-                  "default": 4096,
-                  "maximum": 262144,
-                  "minimum": 1024,
-                  "type": "integer"
-                },
-                "idleUnloadMs": {
-                  "maximum": 86400000,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "kind": {
-                  "enum": [
-                    "chat",
-                    "audio"
-                  ],
-                  "type": "string"
-                },
-                "modelID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                },
-                "priority": {
-                  "default": 0,
-                  "maximum": 100,
-                  "minimum": -100,
-                  "type": "integer"
-                },
-                "projectorPath": {
-                  "anyOf": [
-                    {
-                      "maxLength": 4096,
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "slotSnapshots": {
-                  "additionalProperties": false,
-                  "default": {
-                    "directory": null,
-                    "enabled": false
-                  },
-                  "properties": {
-                    "directory": {
-                      "anyOf": [
-                        {
-                          "maxLength": 4096,
-                          "pattern": "^\\/[^\\r\\n]*$",
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ],
-                      "default": null
-                    },
-                    "enabled": {
-                      "default": false,
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "enabled",
-                    "directory"
-                  ],
-                  "type": "object"
-                },
-                "weightsPath": {
-                  "maxLength": 4096,
-                  "type": "string"
-                }
               },
-              "required": [
-                "modelID",
-                "contextTokens",
-                "compactionThresholdTokens",
-                "priority",
-                "kind",
-                "weightsPath",
-                "projectorPath",
-                "idleUnloadMs",
-                "slotSnapshots"
-              ],
-              "type": "object"
-            },
-            "maxItems": 32,
-            "type": "array"
-          },
-          "port": {
-            "maximum": 65535,
-            "minimum": 1024,
-            "type": "integer"
-          },
-          "revision": {
-            "exclusiveMinimum": 0,
-            "maximum": 2147483647,
-            "type": "integer"
-          },
-          "scheduler": {
-            "additionalProperties": false,
-            "default": {
-              "hook": null,
-              "instantModelID": null,
-              "maxConcurrent": 1,
-              "maxWaitMs": 900000,
-              "minResidencyMs": 60000,
-              "snapshotBudgetMB": 1024,
-              "timersEnabled": true
-            },
-            "properties": {
-              "hook": {
+              "projectorPath": {
                 "anyOf": [
                   {
-                    "additionalProperties": false,
-                    "properties": {
-                      "argv": {
-                        "default": [],
-                        "items": {
-                          "maxLength": 4000,
-                          "type": "string"
-                        },
-                        "maxItems": 64,
-                        "type": "array"
-                      },
-                      "executablePath": {
-                        "maxLength": 4096,
-                        "type": "string"
-                      },
-                      "failurePolicy": {
-                        "default": "builtin",
-                        "enum": [
-                          "builtin",
-                          "hold"
-                        ],
-                        "type": "string"
-                      },
-                      "timeoutMs": {
-                        "default": 2000,
-                        "maximum": 600000,
-                        "minimum": 100,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "executablePath",
-                      "argv",
-                      "timeoutMs",
-                      "failurePolicy"
-                    ],
-                    "type": "object"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null
-              },
-              "instantModelID": {
-                "anyOf": [
-                  {
-                    "maxLength": 128,
-                    "minLength": 1,
+                    "maxLength": 4096,
                     "type": "string"
                   },
                   {
                     "type": "null"
                   }
+                ]
+              },
+              "slotSnapshots": {
+                "additionalProperties": false,
+                "default": {
+                  "directory": null,
+                  "enabled": false
+                },
+                "properties": {
+                  "directory": {
+                    "anyOf": [
+                      {
+                        "maxLength": 4096,
+                        "pattern": "^\\/[^\\r\\n]*$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
+                  },
+                  "enabled": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "directory"
                 ],
-                "default": null
+                "type": "object"
               },
-              "maxConcurrent": {
-                "default": 1,
-                "maximum": 16,
-                "minimum": 1,
-                "type": "integer"
-              },
-              "maxWaitMs": {
-                "default": 900000,
-                "maximum": 86400000,
-                "minimum": 1000,
-                "type": "integer"
-              },
-              "minResidencyMs": {
-                "default": 60000,
-                "maximum": 3600000,
-                "minimum": 0,
-                "type": "integer"
-              },
-              "snapshotBudgetMB": {
-                "default": 1024,
-                "maximum": 1048576,
-                "minimum": 0,
-                "type": "integer"
-              },
-              "timersEnabled": {
-                "default": true,
-                "type": "boolean"
+              "weightsPath": {
+                "maxLength": 4096,
+                "type": "string"
               }
             },
             "required": [
-              "instantModelID",
-              "maxConcurrent",
-              "snapshotBudgetMB",
-              "minResidencyMs",
-              "maxWaitMs",
-              "timersEnabled",
-              "hook"
+              "modelID",
+              "contextTokens",
+              "compactionThresholdTokens",
+              "priority",
+              "kind",
+              "weightsPath",
+              "projectorPath",
+              "idleUnloadMs",
+              "slotSnapshots"
             ],
             "type": "object"
+          },
+          {
+            "type": "null"
           }
-        },
-        "required": [
-          "scheduler",
-          "revision",
-          "httpEnabled",
-          "host",
-          "port",
-          "interactionCooldownMs",
-          "logging",
-          "models",
-          "hooks"
-        ],
-        "type": "object"
+        ]
       },
       "restartRequired": {
         "type": "boolean"
+      },
+      "revision": {
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991,
+        "type": "integer"
       }
     },
     "required": [
       "changed",
       "restartRequired",
-      "config"
+      "revision",
+      "item"
     ],
     "type": "object"
   },
@@ -19328,9 +18567,6 @@
         "minimum": 1,
         "type": "integer"
       },
-      "parallelToolCalls": {
-        "type": "boolean"
-      },
       "prompt": {
         "maxLength": 50000,
         "minLength": 1,
@@ -19623,382 +18859,134 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
     "properties": {
-      "agentID": {
-        "type": "string"
-      },
       "changed": {
         "type": "boolean"
       },
-      "config": {
-        "additionalProperties": false,
-        "properties": {
-          "hooks": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "argv": {
-                  "default": [],
-                  "items": {
-                    "maxLength": 4000,
-                    "type": "string"
-                  },
-                  "maxItems": 64,
-                  "type": "array"
-                },
-                "event": {
-                  "enum": [
-                    "run.completed",
-                    "run.failed",
-                    "run.invalidOutput",
-                    "run.timedOut",
-                    "run.cancelled",
-                    "run.storageLimit"
-                  ],
-                  "type": "string"
-                },
-                "executablePath": {
-                  "maxLength": 4096,
-                  "type": "string"
-                },
-                "hookID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                },
-                "purpose": {
-                  "default": "notification",
-                  "enum": [
-                    "notification",
-                    "delivery"
-                  ],
-                  "type": "string"
-                },
-                "timeoutMs": {
-                  "default": 10000,
-                  "maximum": 600000,
-                  "minimum": 100,
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "executablePath",
-                "argv",
-                "timeoutMs",
-                "hookID",
-                "purpose",
-                "event"
-              ],
-              "type": "object"
-            },
-            "maxItems": 16,
-            "type": "array"
-          },
-          "host": {
-            "enum": [
-              "127.0.0.1",
-              "::1"
-            ],
-            "type": "string"
-          },
-          "httpEnabled": {
-            "default": true,
-            "type": "boolean"
-          },
-          "interactionCooldownMs": {
-            "maximum": 3600000,
-            "minimum": 0,
-            "type": "integer"
-          },
-          "logging": {
+      "item": {
+        "anyOf": [
+          {
             "additionalProperties": false,
-            "default": {
-              "files": 3,
-              "level": "warn",
-              "maxBytes": 1048576
-            },
             "properties": {
-              "files": {
-                "default": 3,
-                "maximum": 10,
-                "minimum": 1,
+              "compactionThresholdTokens": {
+                "anyOf": [
+                  {
+                    "maximum": 262144,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "contextTokens": {
+                "default": 4096,
+                "maximum": 262144,
+                "minimum": 1024,
                 "type": "integer"
               },
-              "level": {
-                "default": "warn",
+              "idleUnloadMs": {
+                "maximum": 86400000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
                 "enum": [
-                  "off",
-                  "error",
-                  "warn",
-                  "info",
-                  "debug"
+                  "chat",
+                  "audio"
                 ],
                 "type": "string"
               },
-              "maxBytes": {
-                "default": 1048576,
-                "maximum": 16777216,
-                "minimum": 1024,
+              "modelID": {
+                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+                "type": "string"
+              },
+              "priority": {
+                "default": 0,
+                "maximum": 100,
+                "minimum": -100,
                 "type": "integer"
-              }
-            },
-            "required": [
-              "level",
-              "maxBytes",
-              "files"
-            ],
-            "type": "object"
-          },
-          "models": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "compactionThresholdTokens": {
-                  "anyOf": [
-                    {
-                      "maximum": 262144,
-                      "minimum": 1,
-                      "type": "integer"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "default": null
-                },
-                "contextTokens": {
-                  "default": 4096,
-                  "maximum": 262144,
-                  "minimum": 1024,
-                  "type": "integer"
-                },
-                "idleUnloadMs": {
-                  "maximum": 86400000,
-                  "minimum": 0,
-                  "type": "integer"
-                },
-                "kind": {
-                  "enum": [
-                    "chat",
-                    "audio"
-                  ],
-                  "type": "string"
-                },
-                "modelID": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                },
-                "priority": {
-                  "default": 0,
-                  "maximum": 100,
-                  "minimum": -100,
-                  "type": "integer"
-                },
-                "projectorPath": {
-                  "anyOf": [
-                    {
-                      "maxLength": 4096,
-                      "type": "string"
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ]
-                },
-                "slotSnapshots": {
-                  "additionalProperties": false,
-                  "default": {
-                    "directory": null,
-                    "enabled": false
-                  },
-                  "properties": {
-                    "directory": {
-                      "anyOf": [
-                        {
-                          "maxLength": 4096,
-                          "pattern": "^\\/[^\\r\\n]*$",
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ],
-                      "default": null
-                    },
-                    "enabled": {
-                      "default": false,
-                      "type": "boolean"
-                    }
-                  },
-                  "required": [
-                    "enabled",
-                    "directory"
-                  ],
-                  "type": "object"
-                },
-                "weightsPath": {
-                  "maxLength": 4096,
-                  "type": "string"
-                }
               },
-              "required": [
-                "modelID",
-                "contextTokens",
-                "compactionThresholdTokens",
-                "priority",
-                "kind",
-                "weightsPath",
-                "projectorPath",
-                "idleUnloadMs",
-                "slotSnapshots"
-              ],
-              "type": "object"
-            },
-            "maxItems": 32,
-            "type": "array"
-          },
-          "port": {
-            "maximum": 65535,
-            "minimum": 1024,
-            "type": "integer"
-          },
-          "revision": {
-            "exclusiveMinimum": 0,
-            "maximum": 2147483647,
-            "type": "integer"
-          },
-          "scheduler": {
-            "additionalProperties": false,
-            "default": {
-              "hook": null,
-              "instantModelID": null,
-              "maxConcurrent": 1,
-              "maxWaitMs": 900000,
-              "minResidencyMs": 60000,
-              "snapshotBudgetMB": 1024,
-              "timersEnabled": true
-            },
-            "properties": {
-              "hook": {
+              "projectorPath": {
                 "anyOf": [
                   {
-                    "additionalProperties": false,
-                    "properties": {
-                      "argv": {
-                        "default": [],
-                        "items": {
-                          "maxLength": 4000,
-                          "type": "string"
-                        },
-                        "maxItems": 64,
-                        "type": "array"
-                      },
-                      "executablePath": {
-                        "maxLength": 4096,
-                        "type": "string"
-                      },
-                      "failurePolicy": {
-                        "default": "builtin",
-                        "enum": [
-                          "builtin",
-                          "hold"
-                        ],
-                        "type": "string"
-                      },
-                      "timeoutMs": {
-                        "default": 2000,
-                        "maximum": 600000,
-                        "minimum": 100,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "executablePath",
-                      "argv",
-                      "timeoutMs",
-                      "failurePolicy"
-                    ],
-                    "type": "object"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "default": null
-              },
-              "instantModelID": {
-                "anyOf": [
-                  {
-                    "maxLength": 128,
-                    "minLength": 1,
+                    "maxLength": 4096,
                     "type": "string"
                   },
                   {
                     "type": "null"
                   }
+                ]
+              },
+              "slotSnapshots": {
+                "additionalProperties": false,
+                "default": {
+                  "directory": null,
+                  "enabled": false
+                },
+                "properties": {
+                  "directory": {
+                    "anyOf": [
+                      {
+                        "maxLength": 4096,
+                        "pattern": "^\\/[^\\r\\n]*$",
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "default": null
+                  },
+                  "enabled": {
+                    "default": false,
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "directory"
                 ],
-                "default": null
+                "type": "object"
               },
-              "maxConcurrent": {
-                "default": 1,
-                "maximum": 16,
-                "minimum": 1,
-                "type": "integer"
-              },
-              "maxWaitMs": {
-                "default": 900000,
-                "maximum": 86400000,
-                "minimum": 1000,
-                "type": "integer"
-              },
-              "minResidencyMs": {
-                "default": 60000,
-                "maximum": 3600000,
-                "minimum": 0,
-                "type": "integer"
-              },
-              "snapshotBudgetMB": {
-                "default": 1024,
-                "maximum": 1048576,
-                "minimum": 0,
-                "type": "integer"
-              },
-              "timersEnabled": {
-                "default": true,
-                "type": "boolean"
+              "weightsPath": {
+                "maxLength": 4096,
+                "type": "string"
               }
             },
             "required": [
-              "instantModelID",
-              "maxConcurrent",
-              "snapshotBudgetMB",
-              "minResidencyMs",
-              "maxWaitMs",
-              "timersEnabled",
-              "hook"
+              "modelID",
+              "contextTokens",
+              "compactionThresholdTokens",
+              "priority",
+              "kind",
+              "weightsPath",
+              "projectorPath",
+              "idleUnloadMs",
+              "slotSnapshots"
             ],
             "type": "object"
+          },
+          {
+            "type": "null"
           }
-        },
-        "required": [
-          "scheduler",
-          "revision",
-          "httpEnabled",
-          "host",
-          "port",
-          "interactionCooldownMs",
-          "logging",
-          "models",
-          "hooks"
-        ],
-        "type": "object"
+        ]
       },
       "restartRequired": {
         "type": "boolean"
+      },
+      "revision": {
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991,
+        "type": "integer"
       }
     },
     "required": [
       "changed",
       "restartRequired",
-      "config"
+      "revision",
+      "item"
     ],
     "type": "object"
   },
@@ -22315,6 +21303,7 @@
                   "additionalProperties": false,
                   "properties": {
                     "attachments": {
+                      "default": [],
                       "items": {
                         "additionalProperties": false,
                         "properties": {
@@ -22482,6 +21471,7 @@
                               },
                               "properties": {
                                 "attachments": {
+                                  "default": [],
                                   "items": {
                                     "additionalProperties": false,
                                     "properties": {
@@ -22912,6 +21902,7 @@
                         },
                         "properties": {
                           "attachments": {
+                            "default": [],
                             "items": {
                               "additionalProperties": false,
                               "properties": {
@@ -25867,6 +24858,7 @@
                   "additionalProperties": false,
                   "properties": {
                     "attachments": {
+                      "default": [],
                       "items": {
                         "additionalProperties": false,
                         "properties": {
@@ -26034,6 +25026,7 @@
                               },
                               "properties": {
                                 "attachments": {
+                                  "default": [],
                                   "items": {
                                     "additionalProperties": false,
                                     "properties": {
@@ -26464,6 +25457,7 @@
                         },
                         "properties": {
                           "attachments": {
+                            "default": [],
                             "items": {
                               "additionalProperties": false,
                               "properties": {
@@ -26801,6 +25795,7 @@
         "additionalProperties": false,
         "properties": {
           "attachments": {
+            "default": [],
             "items": {
               "additionalProperties": false,
               "properties": {
@@ -26847,8 +25842,7 @@
         },
         "required": [
           "messageID",
-          "content",
-          "attachments"
+          "content"
         ],
         "type": "object"
       }
@@ -29094,6 +28088,7 @@
                   "additionalProperties": false,
                   "properties": {
                     "attachments": {
+                      "default": [],
                       "items": {
                         "additionalProperties": false,
                         "properties": {
@@ -29261,6 +28256,7 @@
                               },
                               "properties": {
                                 "attachments": {
+                                  "default": [],
                                   "items": {
                                     "additionalProperties": false,
                                     "properties": {
@@ -29691,6 +28687,7 @@
                         },
                         "properties": {
                           "attachments": {
+                            "default": [],
                             "items": {
                               "additionalProperties": false,
                               "properties": {
@@ -30285,6 +29282,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -30350,9 +29348,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -30587,6 +29587,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -30652,9 +29653,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -30882,6 +29885,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -30947,9 +29951,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -31172,6 +30178,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -31237,9 +30244,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -31490,6 +30499,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -31555,9 +30565,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -31780,6 +30792,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -31845,9 +30858,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -32077,6 +31092,7 @@
                           "additionalProperties": false,
                           "properties": {
                             "attachments": {
+                              "default": [],
                               "items": {
                                 "additionalProperties": false,
                                 "properties": {
@@ -32142,9 +31158,11 @@
                                 {
                                   "type": "null"
                                 }
-                              ]
+                              ],
+                              "default": null
                             },
                             "toolCalls": {
+                              "default": [],
                               "items": {
                                 "additionalProperties": false,
                                 "properties": {
@@ -32201,6 +31219,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -32266,9 +31285,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -32498,6 +31519,7 @@
                           "additionalProperties": false,
                           "properties": {
                             "attachments": {
+                              "default": [],
                               "items": {
                                 "additionalProperties": false,
                                 "properties": {
@@ -32563,9 +31585,11 @@
                                 {
                                   "type": "null"
                                 }
-                              ]
+                              ],
+                              "default": null
                             },
                             "toolCalls": {
+                              "default": [],
                               "items": {
                                 "additionalProperties": false,
                                 "properties": {
@@ -32622,6 +31646,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -32687,9 +31712,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -32995,6 +32022,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -33060,9 +32088,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -33285,6 +32315,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -33350,9 +32381,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -33575,6 +32608,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -33640,9 +32674,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -33865,6 +32901,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -33930,9 +32967,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -34155,6 +33194,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -34220,9 +33260,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -34445,6 +33487,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -34510,9 +33553,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -34766,6 +33811,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -34831,9 +33877,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -35056,6 +34104,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -35121,9 +34170,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -35351,6 +34402,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -35416,9 +34468,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -35650,6 +34704,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -35715,9 +34770,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -35949,6 +35006,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -36014,9 +35072,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -36248,6 +35308,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -36313,9 +35374,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -36582,6 +35645,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -36647,9 +35711,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -36927,6 +35993,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -36992,9 +36059,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -37263,6 +36332,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -37328,9 +36398,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -37561,6 +36633,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -37626,9 +36699,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -37874,6 +36949,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -37939,9 +37015,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -38176,6 +37254,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -38241,9 +37320,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -38486,6 +37567,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -38551,9 +37633,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -38814,6 +37898,7 @@
                       "additionalProperties": false,
                       "properties": {
                         "attachments": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -38879,9 +37964,11 @@
                             {
                               "type": "null"
                             }
-                          ]
+                          ],
+                          "default": null
                         },
                         "toolCalls": {
+                          "default": [],
                           "items": {
                             "additionalProperties": false,
                             "properties": {
@@ -39704,10 +38791,7 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
     "properties": {
-      "expectedHash": {
-        "type": "string"
-      },
-      "skill": {
+      "changes": {
         "additionalProperties": false,
         "properties": {
           "description": {
@@ -39753,10 +38837,6 @@
             "maxLength": 200,
             "type": "string"
           },
-          "skillID": {
-            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-            "type": "string"
-          },
           "toolIDs": {
             "items": {
               "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
@@ -39766,19 +38846,15 @@
             "type": "array"
           }
         },
-        "required": [
-          "skillID",
-          "name",
-          "description",
-          "instructions",
-          "toolIDs"
-        ],
         "type": "object"
+      },
+      "expectedHash": {
+        "type": "string"
       }
     },
     "required": [
       "expectedHash",
-      "skill"
+      "changes"
     ],
     "type": "object"
   },
@@ -40893,6 +39969,7 @@
                         },
                         "properties": {
                           "attachments": {
+                            "default": [],
                             "items": {
                               "additionalProperties": false,
                               "properties": {
@@ -42221,39 +41298,6 @@
     "type": "object"
   },
   "tools.list.result": {
-    "$defs": {
-      "__schema0": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "type": "number"
-          },
-          {
-            "type": "boolean"
-          },
-          {
-            "type": "null"
-          },
-          {
-            "items": {
-              "$ref": "#/$defs/__schema0"
-            },
-            "type": "array"
-          },
-          {
-            "additionalProperties": {
-              "$ref": "#/$defs/__schema0"
-            },
-            "propertyNames": {
-              "type": "string"
-            },
-            "type": "object"
-          }
-        ]
-      }
-    },
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
     "properties": {
@@ -42261,44 +41305,14 @@
         "items": {
           "additionalProperties": false,
           "properties": {
-            "argv": {
-              "default": [],
-              "items": {
-                "maxLength": 4000,
-                "type": "string"
-              },
-              "maxItems": 64,
-              "type": "array"
-            },
             "builtin": {
               "type": "boolean"
             },
             "description": {
-              "maxLength": 2000,
-              "minLength": 1,
-              "type": "string"
-            },
-            "executablePath": {
-              "maxLength": 4096,
               "type": "string"
             },
             "hash": {
               "type": "string"
-            },
-            "parameters": {
-              "additionalProperties": {
-                "$ref": "#/$defs/__schema0"
-              },
-              "propertyNames": {
-                "type": "string"
-              },
-              "type": "object"
-            },
-            "timeoutMs": {
-              "default": 10000,
-              "maximum": 600000,
-              "minimum": 100,
-              "type": "integer"
             },
             "toolID": {
               "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
@@ -42306,12 +41320,8 @@
             }
           },
           "required": [
-            "executablePath",
-            "argv",
-            "timeoutMs",
             "toolID",
             "description",
-            "parameters",
             "hash",
             "builtin"
           ],
@@ -42362,14 +41372,10 @@
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
     "properties": {
-      "expectedHash": {
-        "type": "string"
-      },
-      "tool": {
+      "changes": {
         "additionalProperties": false,
         "properties": {
           "argv": {
-            "default": [],
             "items": {
               "maxLength": 4000,
               "type": "string"
@@ -42396,28 +41402,20 @@
             "type": "object"
           },
           "timeoutMs": {
-            "default": 10000,
             "maximum": 600000,
             "minimum": 100,
             "type": "integer"
-          },
-          "toolID": {
-            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-            "type": "string"
           }
         },
-        "required": [
-          "executablePath",
-          "toolID",
-          "description",
-          "parameters"
-        ],
         "type": "object"
+      },
+      "expectedHash": {
+        "type": "string"
       }
     },
     "required": [
       "expectedHash",
-      "tool"
+      "changes"
     ],
     "type": "object"
   },
@@ -42553,6 +41551,7 @@
             },
             "properties": {
               "attachments": {
+                "default": [],
                 "items": {
                   "additionalProperties": false,
                   "properties": {
@@ -42593,8 +41592,7 @@
               }
             },
             "required": [
-              "content",
-              "attachments"
+              "content"
             ],
             "type": "object"
           },
@@ -42730,6 +41728,7 @@
                 },
                 "properties": {
                   "attachments": {
+                    "default": [],
                     "items": {
                       "additionalProperties": false,
                       "properties": {
@@ -42945,6 +41944,7 @@
                 },
                 "properties": {
                   "attachments": {
+                    "default": [],
                     "items": {
                       "additionalProperties": false,
                       "properties": {
@@ -43115,6 +42115,7 @@
         "additionalProperties": false,
         "properties": {
           "attachments": {
+            "default": [],
             "items": {
               "additionalProperties": false,
               "properties": {
@@ -43155,8 +42156,7 @@
           }
         },
         "required": [
-          "content",
-          "attachments"
+          "content"
         ],
         "type": "object"
       },
@@ -43249,6 +42249,7 @@
             },
             "properties": {
               "attachments": {
+                "default": [],
                 "items": {
                   "additionalProperties": false,
                   "properties": {
@@ -43463,6 +42464,7 @@
               },
               "properties": {
                 "attachments": {
+                  "default": [],
                   "items": {
                     "additionalProperties": false,
                     "properties": {
@@ -43648,6 +42650,7 @@
             "additionalProperties": false,
             "properties": {
               "attachments": {
+                "default": [],
                 "items": {
                   "additionalProperties": false,
                   "properties": {
@@ -43688,8 +42691,7 @@
               }
             },
             "required": [
-              "content",
-              "attachments"
+              "content"
             ],
             "type": "object"
           },
@@ -43820,6 +42822,7 @@
                 },
                 "properties": {
                   "attachments": {
+                    "default": [],
                     "items": {
                       "additionalProperties": false,
                       "properties": {

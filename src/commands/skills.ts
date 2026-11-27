@@ -23,9 +23,8 @@ export const operationInputs = {
   "skills create": z.strictObject({ skill: skillSchema }),
   "skills update": z.strictObject({
     expectedHash: z.string(),
-    skill: z.strictObject({
-      ...skillSchema.shape,
-      files: skillSchema.shape.files.unwrap().optional(),
+    changes: z.strictObject({...skillSchema.shape}).omit({skillID: true}).partial().extend({
+      files: skillSchema.shape.files.removeDefault().optional(),
     }),
   }),
   "skills delete": z.strictObject({ expectedHash: z.string() }),

@@ -1,4 +1,4 @@
-import { toolDefinitionSchema } from "../schemas/tool.js";
+import { toolDefinitionSchema, toolSummarySchema } from "../schemas/tool.js";
 import { z } from "zod";
 import { builtinTools } from "../engine/capabilities/registry.js";
 import { Service, fail } from "../engine/service.js";
@@ -16,7 +16,11 @@ export const operationInputs = {
   "tools create": z.strictObject({ tool: toolDefinitionSchema }),
   "tools update": z.strictObject({
     expectedHash: z.string(),
-    tool: toolDefinitionSchema,
+    changes: z.strictObject({ ...toolDefinitionSchema.shape })
+      .omit({ toolID: true }).partial().extend({
+        argv: toolDefinitionSchema.shape.argv.removeDefault().optional(),
+        timeoutMs: toolDefinitionSchema.shape.timeoutMs.removeDefault().optional(),
+      }),
   }),
   "tools delete": z.strictObject({ expectedHash: z.string() }),
 };
@@ -33,12 +37,7 @@ export const operations = {
     "tools list",
     "List tools",
     z.object({
-      items: z.array(
-        toolDefinitionSchema.safeExtend({
-          hash: z.string(),
-          builtin: z.boolean(),
-        }),
-      ),
+      items: z.array(toolSummarySchema),
     }),
   ),
   "tools get": defineOperation(
@@ -94,7 +93,11 @@ const resourceActions: ResourceActions = {
       hash: fingerprint(x),
       builtin: builtinTools.some((t) => t.toolID === x.toolID),
     }));
-    if (action === "list") return { items };
+    if (action === "list") return {
+      items: items.map(({ toolID, description, hash, builtin }) => ({
+        toolID, description, hash, builtin,
+      })),
+    };
     const item = items.find((x) => x.toolID === name) ?? fail("not_found", 404);
     return { item };
   },

@@ -90,7 +90,7 @@ export type DocumentEvent = z.infer<typeof documentEventSchema>;
 export const isLifecycleEvent = (event: DocumentEvent): event is Event =>
   Object.hasOwn(eventPayloads, event.type);
 export const documentMessageSchema = z.union([
-  messageSchema.extend({ turnID: uuid }),
+  messageSchema.safeExtend({ turnID: uuid }),
   userMessageSchema.extend({ turnID: uuid }),
 ]);
 export type QueuedTurn = z.infer<typeof queuedSchema>;

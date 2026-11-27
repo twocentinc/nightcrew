@@ -9,7 +9,6 @@ export type ModelTestInput = {
   prompt: string;
   maxOutputTokens: number;
   sampling: import("../../schemas/agent.js").Agent["sampling"];
-  parallelToolCalls?: boolean;
   thinking: boolean;
   timeoutMs: number;
 };
@@ -61,7 +60,6 @@ export class ModelOperations {
             tools: [],
             maxOutputTokens: input.maxOutputTokens,
             sampling: input.sampling,
-            parallelToolCalls: input.parallelToolCalls,
             thinking: input.thinking,
           },
           AbortSignal.any([signal, AbortSignal.timeout(input.timeoutMs)]),

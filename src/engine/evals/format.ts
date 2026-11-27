@@ -26,7 +26,8 @@ export const graderSchema = z
     exec: graderExecSchema.optional(),
   })
   .refine((v) => !!v.schema || !!v.exec, "Specify schema or exec");
-export const authorMessage = messageSchema.extend({
+export const authorMessage = z.strictObject({
+  ...messageSchema.shape,
   messageID: messageSchema.shape.messageID.optional(),
   role: z.enum(["user", "assistant", "tool"]),
   attachments: messageSchema.shape.attachments.default([]),

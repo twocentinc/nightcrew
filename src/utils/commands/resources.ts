@@ -80,6 +80,16 @@ export async function resourceCommand(
         await service.runtime.close();
       await service.storage.saveConfig(next);
     }
+    if (resource === "models") {
+      const modelID = action === "create"
+        ? (value.model as { modelID: string }).modelID : name!;
+      return {
+        changed: !dryRun,
+        restartRequired: false,
+        revision: next.config.revision,
+        item: next.config.models.find(model => model.modelID === modelID) ?? null,
+      };
+    }
     return {
       changed: !dryRun,
       restartRequired:
@@ -121,42 +131,25 @@ export async function mutateRegistration({
   value,
 }: ResourceContext): Promise<unknown> {
   const isSkill = resource === "skills";
-  let item =
-    action === "delete"
-      ? null
-      : isSkill
-        ? canonicalSkill(skillSchema.parse(value.skill))
-        : toolDefinitionSchema.parse(value.tool);
-  const itemID = item
-    ? "skillID" in item
-      ? item.skillID
-      : item.toolID
-    : (name ?? fail("missing_id"));
+  const supplied = isSkill ? value.skill : value.tool;
+  const itemID = action === "create"
+    ? isSkill
+      ? skillSchema.parse(supplied).skillID
+      : toolDefinitionSchema.parse(supplied).toolID
+    : name ?? fail("missing_id");
   if (name && name !== itemID) fail("identity_immutable");
   if (!isSkill && builtinTools.some((t) => t.toolID === itemID))
     fail("builtin_tool_immutable");
-  const current = isSkill
-    ? registry.skills.get(itemID)
-    : registry.tools.get(itemID);
-  if (
-    isSkill &&
-    action === "update" &&
-    item &&
-    current &&
-    !(
-      value.skill as {
-        files?: unknown;
-      }
-    ).files
-  )
-    item = skillSchema.parse({
-      ...item,
-      files: (current as import("../../schemas/agent.js").Skill).files,
-    });
+  const current = isSkill ? registry.skills.get(itemID) : registry.tools.get(itemID);
   if (action === "create" && current) fail("already_exists", 409);
   if (action !== "create" && !current) fail("not_found", 404);
   if (action !== "create" && fingerprint(current) !== value.expectedHash)
     fail("revision_conflict", 409);
+  const definition = action === "update"
+    ? { ...current, ...(value.changes as object) } : supplied;
+  const item = action === "delete" ? null : isSkill
+    ? canonicalSkill(skillSchema.parse(definition))
+    : toolDefinitionSchema.parse(definition);
   if (isSkill) {
     if (item) registry.skills.set(itemID, skillSchema.parse(item));
     else registry.skills.delete(itemID);

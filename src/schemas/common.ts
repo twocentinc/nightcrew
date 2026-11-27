@@ -13,7 +13,7 @@ export const userMessageSchema = z.strictObject({
   messageID: uuid,
   thinking: z.boolean().optional(),
   content: z.string().max(262144),
-  attachments: z.array(attachmentSchema).max(16),
+  attachments: z.array(attachmentSchema).max(16).default([]),
 });
 export const toolCallSchema = z.strictObject({
   callID: id,
@@ -26,9 +26,16 @@ export const messageSchema = z.strictObject({
   reasoningContent: z.string().max(1048576).optional(),
   role: z.enum(["system", "user", "assistant", "tool"]),
   content: z.string().max(1048576),
-  attachments: z.array(attachmentSchema).max(16),
-  toolCalls: z.array(toolCallSchema).max(32),
-  toolCallID: id.nullable(),
+  attachments: z.array(attachmentSchema).max(16).default([]),
+  toolCalls: z.array(toolCallSchema).max(32).default([]),
+  toolCallID: id.nullable().default(null),
+}).superRefine((message, ctx) => {
+  if (message.role !== "user" && message.attachments.length)
+    ctx.addIssue({code: "custom", path: ["attachments"], message: "Only user messages may carry attachments"});
+  if (message.role !== "assistant" && message.toolCalls.length)
+    ctx.addIssue({code: "custom", path: ["toolCalls"], message: "Only assistant messages may call tools"});
+  if (message.role === "tool" ? !message.toolCallID : message.toolCallID !== null)
+    ctx.addIssue({code: "custom", path: ["toolCallID"], message: "Only tool results must reference a tool call"});
 });
 export const pageSchema = z.strictObject({
   limit: z.coerce.number().int().min(1).max(100).default(50),
