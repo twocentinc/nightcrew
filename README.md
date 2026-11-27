@@ -1,8 +1,17 @@
 # Nightcrew
 
-Run local-model agents while you are away, with interactive requests taking
-priority. Configure each agent's model, tools, skills, and schedule through a
-JSON-first CLI or the optional HTTP API, then review its transcripts and results.
+Nightcrew puts your computer's RAM and compute to work while you're away.
+Background local models do not run while it detects you as present: it waits
+for healthy desktop-away detection before loading models for queued work, and
+pauses background inference when you return.
+
+Models load on demand and unload when idle to release RAM. Unloading follows
+the configured idle-unload delay and any remaining interactive cooldown, so
+returning does not immediately free all model RAM. Explicit interactive requests
+and model tests can run while you're present. See [presence and memory](https://oss.twocents.com/docs/nightcrew/models/#when-model-ram-is-released).
+
+Configure each agent's model, tools, skills, and schedule through a JSON-first
+CLI or the optional HTTP API, then review its transcripts and results.
 
 Current release: **0.53.1**, protocol **1**, schema **53**.
 
