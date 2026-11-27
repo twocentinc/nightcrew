@@ -32,7 +32,7 @@ export interface Dependencies {
     "chats" | "expireDeadlines" | "expire" | "executeChat" | "chat"
   >;
   readonly runtime: Runtime;
-  readonly runner: Pick<Runner, "liveRun" | "executeRun">;
+  readonly runner: Pick<Runner, "executeRun">;
   readonly logger: OperationalLog | undefined;
   readonly samplePresence: () => Promise<Presence>;
   readonly records: Pick<RunRecords, "listRuns" | "run">;
@@ -56,12 +56,17 @@ export class Dispatch {
       controller: AbortController;
       slotID: string;
       modelID: string;
+      interactive: boolean;
       task: Promise<void>;
     }
   >();
   private get settling() {
     return Promise.all([...this.activities.values()].map((a) => a.task));
   }
+  private queuedRunKinds = new Map<
+    string,
+    { revision: number; interactive: boolean }
+  >();
   private residentSince = Date.now();
   private residentModelID: string | null = null;
   private lastDecision: unknown = null;
@@ -116,11 +121,7 @@ export class Dispatch {
   }
   interruptBackground(reason: string) {
     for (const a of this.activities.values())
-      if (
-        a.kind === "run" &&
-        !this.runInteractive(this.ports.runner.liveRun(a.id))
-      )
-        a.controller.abort(reason);
+      if (a.kind === "run" && !a.interactive) a.controller.abort(reason);
   }
   runInteractive(run: Run | undefined) {
     return (
@@ -134,7 +135,37 @@ export class Dispatch {
     if (this.ports.storage.unreadable.length)
       fail("run_index_unavailable", 503);
   }
+  private updateUnloadPolicy() {
+    for (const id of this.queuedRunKinds.keys()) {
+      const summary = this.ports.storage.summaries.get(id);
+      if (!summary || !["queued", "paused"].includes(summary.state))
+        this.queuedRunKinds.delete(id);
+    }
+    const interactive =
+      [...this.activities.values()].some((a) => a.interactive) ||
+      [...this.ports.instant.chats.values()].some((c) => !terminal(c.state)) ||
+      [...this.ports.storage.summaries.values()].some((s) => {
+        if (
+          s.held ||
+          this.activities.has(s.runID) ||
+          !["queued", "paused"].includes(s.state)
+        )
+          return false;
+        const known = this.queuedRunKinds.get(s.runID);
+        // Unknown requests can reload after classification; unreadable records
+        // must not retain background residency indefinitely.
+        return known?.revision === s.revision && known.interactive;
+      });
+    const retain = !this.closed && (!!this.maintenance || interactive);
+    this.ports.runtime.setImmediateUnload?.(
+      !this.closed &&
+        !retain &&
+        (this.presence.state !== "away" || !this.presence.samplingHealthy),
+      retain,
+    );
+  }
   wake() {
+    this.updateUnloadPolicy();
     if (!this.closed)
       void withoutExecution(() => this.pump()).catch(() => {
         this.ports.logger?.emit("scheduler.pumpFailed", { reason: "process" });
@@ -162,10 +193,13 @@ export class Dispatch {
         this.ports.logger?.emit("presence.unhealthy", { reason: "sampling" });
       else if (!wasHealthy) this.ports.logger?.emit("presence.recovered");
     }
+    if (this.closed) return;
+    this.updateUnloadPolicy();
     if (this.presence.state !== "away" || !this.presence.samplingHealthy)
       this.interruptBackground("presence");
     this.ports.instant.expireDeadlines();
     await this.timers.dispatchTimers();
+    if (this.closed) return;
     this.ports.runtime.keepWarm?.(
       Date.parse(this.ports.storage.store.cooldownUntil ?? "") || 0,
     );
@@ -179,13 +213,7 @@ export class Dispatch {
       blockers.push("desktop_present_or_unknown");
     if (Date.parse(this.ports.storage.store.cooldownUntil ?? "") > Date.now())
       blockers.push("interaction_cooldown");
-    if (
-      [...this.activities.values()].some(
-        (a) =>
-          a.kind === "chat" ||
-          this.runInteractive(this.ports.runner.liveRun(a.id)),
-      )
-    )
+    if ([...this.activities.values()].some((a) => a.interactive))
       blockers.push("instant_work");
     if (
       [...this.ports.instant.chats.values()].some((c) => c.state === "queued")
@@ -250,11 +278,7 @@ export class Dispatch {
         ? pending.filter((p) => dependencyIDs.has(p.runID))
         : pending,
       active: [...this.activities.values()]
-        .filter(
-          (a) =>
-            a.kind === "run" &&
-            !this.runInteractive(this.ports.runner.liveRun(a.id)),
-        )
+        .filter((a) => a.kind === "run" && !a.interactive)
         .map(({ id, modelID, slotID }) => ({ runID: id, modelID, slotID })),
       slots: executionSlots(config)
         .filter((s) => !s.instant)
@@ -277,8 +301,16 @@ export class Dispatch {
     kind: "run" | "chat",
     slotID: string,
     modelID: string,
+    interactive = false,
   ) {
-    if (this.maintenance) return;
+    if (
+      this.closed ||
+      this.maintenance ||
+      this.ports.runtime.isBusy?.() ||
+      (!interactive &&
+        (this.presence.state !== "away" || !this.presence.samplingHealthy))
+    )
+      return;
     const controller = new AbortController();
     if (this.residentModelID !== modelID) {
       this.residentModelID = modelID;
@@ -290,9 +322,11 @@ export class Dispatch {
       controller,
       slotID,
       modelID,
+      interactive,
       task: Promise.resolve(),
     };
     this.activities.set(id, activity);
+    this.updateUnloadPolicy();
     activity.task = Promise.resolve()
       .then(() =>
         kind === "run"
@@ -333,15 +367,20 @@ export class Dispatch {
           !this.activities.has(s.runID)
         ) {
           const r = await this.ports.records.run(s.runID);
-          if (
+          const interactive =
             this.runInteractive(r) &&
             r.compaction?.status !== "waiting" &&
-            r.compaction?.status !== "failed"
-          ) {
+            r.compaction?.status !== "failed";
+          this.queuedRunKinds.set(r.runID, {
+            revision: r.revision,
+            interactive,
+          });
+          if (interactive) {
             instant = r;
             break;
           }
         }
+      this.updateUnloadPolicy();
       if (chat || instant) {
         this.interruptBackground("instant");
         if (this.activities.size) return;
@@ -355,6 +394,7 @@ export class Dispatch {
             chat ? "chat" : "run",
             slot.slotID,
             modelID,
+            true,
           );
         return;
       }
@@ -384,6 +424,7 @@ export class Dispatch {
       }
     } finally {
       this.pumping = false;
+      this.updateUnloadPolicy();
     }
   }
   async recordInteraction() {
@@ -404,6 +445,7 @@ export class Dispatch {
   }
   async stop() {
     this.closed = true;
+    this.updateUnloadPolicy();
     this.maintenance?.controller.abort("shutdown");
     await this.maintenance?.task.catch(() => {});
     clearInterval(this.timer);
@@ -431,6 +473,7 @@ export class Dispatch {
       task: Promise.resolve() as Promise<unknown>,
     };
     this.maintenance = lease;
+    this.updateUnloadPolicy();
     const caller = executionSignal();
     const signal = caller
       ? AbortSignal.any([caller, lease.controller.signal])

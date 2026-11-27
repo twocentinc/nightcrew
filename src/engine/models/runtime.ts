@@ -107,6 +107,25 @@ export class LlamaRuntime implements Runtime {
   idleTimer?: ReturnType<typeof setTimeout>;
   busy = false;
   private warmUntil = 0;
+  immediateUnload = false;
+  private retain = false;
+  private optionalSnapshots = new AbortController();
+  private closing?: Promise<void>;
+  get snapshotSignal() {
+    return this.optionalSnapshots.signal;
+  }
+  setImmediateUnload(enabled: boolean, retain = false) {
+    if (enabled === this.immediateUnload && retain === this.retain) return;
+    this.immediateUnload = enabled;
+    this.retain = retain;
+    if (enabled) this.optionalSnapshots.abort("presence");
+    else if (this.optionalSnapshots.signal.aborted)
+      this.optionalSnapshots = new AbortController();
+    clearTimeout(this.idleTimer);
+    this.idleTimer = undefined;
+    if (this.loadedModel && !this.used.size && !this.busy)
+      this.scheduleIdle(this.loadedModel);
+  }
   keepWarm(until: number) {
     if (until === this.warmUntil) return;
     this.warmUntil = until;
@@ -179,15 +198,19 @@ export class LlamaRuntime implements Runtime {
   }
   scheduleIdle(modelID: string) {
     clearTimeout(this.idleTimer);
+    this.idleTimer = undefined;
+    if (this.retain) return;
     this.idleTimer = setTimeout(
       () => {
         if (!this.busy && !this.used.size) void this.close().catch(() => {});
       },
-      Math.max(
-        this.config().models.find((m) => m.modelID === modelID)?.idleUnloadMs ??
-          0,
-        this.warmUntil - Date.now(),
-      ),
+      this.immediateUnload
+        ? 0
+        : Math.max(
+            this.config().models.find((m) => m.modelID === modelID)
+              ?.idleUnloadMs ?? 0,
+            this.warmUntil - Date.now(),
+          ),
     );
     this.idleTimer.unref();
   }
@@ -235,15 +258,21 @@ export class LlamaRuntime implements Runtime {
     await this.server.stop();
   }
   async close() {
+    if (this.closing) return this.closing;
     if (this.busy || this.used.size)
       throw new NightcrewError("runtime.busy", "Runtime is busy", 9);
+    clearTimeout(this.idleTimer);
+    this.idleTimer = undefined;
     this.busy = true;
     this.unloadingModel = this.loadedModel;
+    const closing = this.server.stop({ saveSnapshots: !this.immediateUnload });
+    this.closing = closing;
     try {
-      await this.server.stop();
+      await closing;
     } finally {
       this.unloadingModel = undefined;
       this.busy = false;
+      this.closing = undefined;
     }
   }
   snapshot(slotID: string, action: "save" | "restore", dryRun = false) {

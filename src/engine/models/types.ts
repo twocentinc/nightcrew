@@ -19,6 +19,8 @@ export interface Runtime {
     signal: AbortSignal,
   ): Promise<number>;
   keepWarm?(until: number): void;
+  // Retain residency for explicit work, or release it as soon as slots settle.
+  setImmediateUnload?(enabled: boolean, retain?: boolean): void;
   contextCache?(
     contextID: string,
     reset: boolean,

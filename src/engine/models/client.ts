@@ -19,6 +19,7 @@ interface Dependencies {
     | "release"
     | "loadedModel"
     | "logger"
+    | "snapshotSignal"
   >;
   readonly server: Pick<ModelServer, "baseURL" | "headers" | "key">;
   readonly cache: Pick<
@@ -337,7 +338,9 @@ export class ModelClient {
       }
       throw e;
     } finally {
+      const snapshotSignal = this.ports.main.snapshotSignal;
       if (
+        !snapshotSignal.aborted &&
         input.contextID &&
         input.persistContext !== false &&
         this.ports.cache.owners.get(input.slotID) === input.contextID &&
@@ -350,16 +353,18 @@ export class ModelClient {
           await this.ports.cache.slotAction(
             input.slotID,
             "save",
-            AbortSignal.timeout(5000),
+            AbortSignal.any([AbortSignal.timeout(5000), snapshotSignal]),
             input.contextID,
             input.contextEpoch,
           );
-          await this.ports.cache.pruneSnapshots();
+          if (!snapshotSignal.aborted)
+            await this.ports.cache.pruneSnapshots(snapshotSignal);
         } catch {
-          this.ports.main.logger?.emit("slot.snapshotSaveFailed", {
-            slotID: input.slotID,
-            reason: "transport",
-          });
+          if (!snapshotSignal.aborted)
+            this.ports.main.logger?.emit("slot.snapshotSaveFailed", {
+              slotID: input.slotID,
+              reason: "transport",
+            });
         }
       }
       this.ports.main.used.delete(input.slotID);

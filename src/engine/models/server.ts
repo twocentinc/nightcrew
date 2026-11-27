@@ -28,7 +28,7 @@ const exec = promisify(execFile);
 interface Dependencies {
   readonly main: Pick<
     LlamaRuntime,
-    "config" | "logger" | "idleTimer" | "loadedModel"
+    "config" | "logger" | "idleTimer" | "loadedModel" | "snapshotSignal"
   >;
   readonly cache: Pick<
     ModelCache,
@@ -145,6 +145,7 @@ export class ModelServer {
       socket.close((e) => (e ? reject(e) : resolve())),
     );
     this.baseURL = `http://127.0.0.1:${port}`;
+    signal.throwIfAborted();
     const child = spawnOwned(
       binary,
       [
@@ -205,15 +206,19 @@ export class ModelServer {
       "Content-Type": "application/json",
     };
   }
-  async stop() {
-    const operation = this.stopping.then(() => this.stopOwned());
+  async stop(options: { saveSnapshots?: boolean } = {}) {
+    const operation = this.stopping.then(() => this.stopOwned(options));
     this.stopping = operation.catch(() => {});
     await operation;
   }
-  private async stopOwned() {
+  private async stopOwned(options: { saveSnapshots?: boolean }) {
     clearTimeout(this.ports.main.idleTimer);
-    await this.ports.cache.saveLoaded();
-    await this.ports.cache.pruneSnapshots().catch(() => {});
+    const snapshotSignal = this.ports.main.snapshotSignal;
+    if (options.saveSnapshots !== false && !snapshotSignal.aborted) {
+      await this.ports.cache.saveLoaded(snapshotSignal);
+      if (!snapshotSignal.aborted)
+        await this.ports.cache.pruneSnapshots(snapshotSignal).catch(() => {});
+    }
     this.ports.main.loadedModel = undefined;
     this.ports.cache.owners.clear();
     this.ports.cache.contextEpochs.clear();

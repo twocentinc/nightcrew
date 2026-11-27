@@ -1,8 +1,8 @@
 {
   "name": "nightcrew",
-  "version": "0.53.1",
+  "version": "0.54.0",
   "type": "module",
-  "description": "Standalone local-agent HTTP service",
+  "description": "Local agent orchestrator that runs background models while you are away",
   "exports": {
     ".": "./dist/server/http.js",
     "./operations": "./dist/utils/commands/operations.js"

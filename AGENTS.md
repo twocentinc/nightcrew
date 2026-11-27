@@ -1,6 +1,6 @@
 # Nightcrew
 
-Nightcrew is a standalone project. Use its
+Nightcrew is a standalone local agent orchestrator. Use its
 [specification](https://oss.twocents.com/docs/nightcrew/specification/) and the
 owner's direct instructions for planning and implementation. Keep application integrations and
 their executable tools outside this repository.
@@ -86,6 +86,12 @@ TypeScript graders beside their agents, and generic engine/CLI tests under `test
 tokenization; `stream.ts` decodes streamed responses; `cache.ts` owns slot
 identities, snapshot validation and pruning. Preserve exclusive provisioning,
 active-slot ownership and process-group shutdown order.
+Human presence or unhealthy presence sampling pauses background runs and requests
+prompt model unloading after owned inference releases its slots. This path
+bypasses idle retention and new optional cache saves; preserve existing disk
+snapshots and transcripts. Explicit interactive work and model-test reservations
+remain protected, including the admission gap before a run becomes live.
+
 `src/engine/scheduling/timers.ts` owns recurring timer tracking; dispatch owns
 live execution and policy admission. `src/storage/runIndex.ts` owns derived run
 indexes. `src/storage/store.ts` owns the home lock and the single shared transaction

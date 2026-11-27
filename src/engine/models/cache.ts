@@ -238,7 +238,7 @@ export class ModelCache {
         await unlink(path.join(directory, previous)).catch(() => {});
     }
   }
-  async saveLoaded() {
+  async saveLoaded(cancel?: AbortSignal) {
     if (
       this.ports.main.config().scheduler.snapshotBudgetMB === 0 ||
       !this.ports.main.loadedModel ||
@@ -248,10 +248,12 @@ export class ModelCache {
         ?.slotSnapshots?.enabled
     )
       return;
-    const signal = AbortSignal.timeout(60000);
+    const timeout = AbortSignal.timeout(60000);
+    const signal = cancel ? AbortSignal.any([timeout, cancel]) : timeout;
     for (const slot of this.ports.main
       .config()
       .slots.filter((s) => s.modelID === this.ports.main.loadedModel)) {
+      if (signal.aborted) return;
       if (this.transientSlots.has(slot.slotID)) continue;
       try {
         await this.slotAction(
@@ -262,6 +264,7 @@ export class ModelCache {
           this.contextEpochs.get(slot.slotID),
         );
       } catch {
+        if (signal.aborted) return;
         this.ports.main.logger?.emit("slot.snapshotSaveFailed", {
           slotID: slot.slotID,
           reason: "transport",
@@ -361,10 +364,15 @@ export class ModelCache {
         changed: reset && !dryRun && items.length > 0,
       };
     } finally {
-      if (reset) this.ports.main.busy = false;
+      if (reset) {
+        this.ports.main.busy = false;
+        if (this.ports.main.loadedModel)
+          this.ports.main.scheduleIdle(this.ports.main.loadedModel);
+      }
     }
   }
-  async pruneSnapshots() {
+  async pruneSnapshots(signal?: AbortSignal) {
+    signal?.throwIfAborted();
     const caches: {
       manifest: string;
       file: string;
@@ -374,8 +382,10 @@ export class ModelCache {
     for (const model of this.ports.main
       .config()
       .models.filter((m) => m.slotSnapshots.enabled)) {
+      signal?.throwIfAborted();
       const directory = await this.privateDirectory(model.modelID);
       for (const name of await readdir(directory)) {
+        signal?.throwIfAborted();
         if (!/^[a-zA-Z0-9_-]+\.json$/.test(name)) continue;
         try {
           const manifest = path.join(directory, name),
@@ -402,6 +412,7 @@ export class ModelCache {
     }
     let bytes = caches.reduce((n, c) => n + c.bytes, 0);
     for (const cache of caches.sort((a, b) => a.mtime - b.mtime)) {
+      signal?.throwIfAborted();
       if (
         bytes <=
         this.ports.main.config().scheduler.snapshotBudgetMB * 1024 * 1024
