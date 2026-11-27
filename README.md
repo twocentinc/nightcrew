@@ -18,6 +18,7 @@ Current release: **0.54.0**, protocol **1**, schema **53**.
 
 - [Documentation](https://oss.twocents.com/docs/nightcrew/)
 - [Installation and first run](https://oss.twocents.com/docs/nightcrew/getting-started/)
+- [Set up llama-server and Qwen](https://oss.twocents.com/docs/nightcrew/llama-cpp/)
 - [Command Map](https://oss.twocents.com/docs/nightcrew/command-map/)
 - [Files and formats](https://oss.twocents.com/docs/nightcrew/files/)
 - [Examples](https://oss.twocents.com/docs/nightcrew/examples/)
