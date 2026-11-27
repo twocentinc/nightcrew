@@ -1,5 +1,7 @@
 # SnapCompact local evaluation
 
+> Historical report. This records the dated experiment below, not current setup instructions or validation of the current release.
+
 ## Upstream renderer rerun, November 12, 2026
 
 The initial evaluation below used an approximation. The blog's stale link was

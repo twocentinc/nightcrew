@@ -1,5 +1,7 @@
 # Summarizer generalization evaluation
 
+> Historical report. This records the dated experiment below, not current setup instructions or validation of the current release.
+
 November 12, 2026. Tested the installed `summarizer` agent, revision 8, on three
 original synthetic texts. The findings support some transfer across domains,
 but not reliable preservation of task state. The research handoff invented
@@ -8,7 +10,7 @@ completed work despite explicit source statements that it remained pending.
 ## Method
 
 Inputs and ten predeclared review criteria per case are retained in
-[the fixture](../test/live/fixtures/summarizer-generalization.json). The cases
+[the fixture](../../test/live/fixtures/summarizer-generalization.json). The cases
 were authored before inference and were not used to tune the prompt. They cover
 a museum installation, warehouse receipt incident, and wetland research pilot.
 Each includes a stale previous summary and four new chronological messages,

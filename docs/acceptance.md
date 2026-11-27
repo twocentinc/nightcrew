@@ -1,22 +1,63 @@
-# Unattended acceptance checks
+# Validation and release checks
 
-From a source checkout, `test/live/acceptance.test.ts` is opt-in and excluded from the default test suite.
-It uses actual model weights and the real desktop presence detector. Stop other
-Nightcrew daemons first; never run competing model servers. The desktop must
-already be away. Restore the normal daemon after the test, including on failure.
+This is the current validation guide. Test implementations are authoritative;
+results apply only to the exact revision, models, settings, and environment tested.
+Historical reports are retained under `docs/history/` and are not current release
+acceptance evidence or setup instructions.
 
-Provide a private JSON settings file containing:
+## Checks without real inference
 
-- `instant`: a registered chat-model definition (tested with Qwen 4B).
-- `qwen`: a background chat-model definition (tested with Qwen 9B).
-- `granite`: an audio-model definition.
-- `audioFile`: an absolute path to a short WAV saying “hello world”.
+Run from the checkout:
 
-The test creates a private temporary home, prints its path, and retains
-`acceptance.json`, run state, transcripts, local Markdown deliveries and slot
-snapshots for independent review. Existing runtime state is not copied or edited.
-No external messages are sent. A five-second test cooldown exercises the same
-lifecycle as the installation's configurable cooldown without changing it.
+```sh
+npm ci
+npm run build
+npm run lint
+npm test
+npm run contracts:check
+npm run test:package
+```
+
+- Build before `lint` in a fresh checkout: test types import generated `dist/` declarations. `lint` checks source, test, and example TypeScript.
+- `npm test` uses mocked runtime behavior and temporary homes. The package-installation test is skipped here and run separately by `test:package`.
+- Contract checks compare discovery and schemas with the frozen schema-53 snapshots. Do not run `contracts:update` for a documentation edit or internal refactor.
+- Package checks pack/install the CLI and verify public exports and example entrypoints. They do not establish model quality.
+- `nightcrew status --doctor` checks installation readiness without loading models. Inspect `healthy` and each check; a successfully executed diagnostic can report an unhealthy installation.
+
+## Real-model tests: explicit opt-in
+
+- Live tests are excluded from `npm test` and require explicit authorization to run inference.
+- Use existing model weights and a private settings file. Build first. Stop the regular Nightcrew daemon and any competing model servers, then run **one fixture at a time**.
+- Restore the regular daemon after success or failure. Do not run all inference fixtures concurrently against the same machine's memory/model resources.
+- The test-owned temporary homes and evidence are separate from the regular installation. Reports and transcripts can contain private data; do not commit them.
+- Set `NIGHTCREW_ALLOW_INFERENCE=1` and `NIGHTCREW_LIVE_CONFIG` to the absolute settings path. Without the opt-in, live tests skip; skipped tests are not passes.
+- `npm run test:live` discovers the live suite. For actual inference, use the individual commands below so fixtures run sequentially.
+
+### Model behavior
+
+Source: `test/live/models.test.ts`.
+
+- Required settings: `qwen`, a chat-model definition accepted by `models create`'s inner `model` schema.
+- Optional settings: `granite`, an audio-model definition; `audioFile`, an absolute WAV path when testing audio; `expectedAudioText`, a transcription substring to check.
+- The fixture checks thinking, persistent restart, compaction, and optional audio using an isolated home. It sets its test chat/audio context capacities to 8192 tokens.
+- It supplies test presence and does not establish real desktop-away detection.
+
+```sh
+npm run build
+NIGHTCREW_ALLOW_INFERENCE=1 \
+NIGHTCREW_LIVE_CONFIG=/absolute/path/to/private-settings.json \
+node --experimental-strip-types --test test/live/models.test.ts
+```
+
+### Controlled unattended cycle
+
+Source: `test/live/acceptance.test.ts`.
+
+- Required settings: `instant` (chat model), `qwen` (background chat model), `granite` (audio model), and `audioFile` (a short WAV saying “hello world”). The models must fit the machine and support the fixture's context/output settings.
+- This fixture uses real desktop presence; the desktop must already be away.
+- It exercises an interval trigger, instant preemption, a five-second test cooldown, background resumption, a graceful service restart during generation, audio transcription, Qwen KV restoration after model switching, linked-agent compaction, synthetic fact recall, and local report export.
+- KV restoration is checked at the runtime save/restore boundary; recall alone is not proof of cache restoration.
+- The temporary home retains `acceptance.json`, run files, local reports, and snapshots. `NIGHTCREW_LIVE_OUTPUT` can name a file where the home path is written.
 
 ```sh
 NIGHTCREW_ALLOW_INFERENCE=1 \
@@ -24,88 +65,35 @@ NIGHTCREW_LIVE_CONFIG=/absolute/path/to/private-settings.json \
 node --experimental-strip-types --test test/live/acceptance.test.ts
 ```
 
-Checks include a real interval trigger, instant preemption and post-response
-cooldown, background resumption, service restart during generation, Granite
-transcription, successful Qwen KV restoration after switching back, compaction
-through a separate agent, preservation of synthetic facts and local report
-export. Successful KV restoration is observed at the runtime save/restore
-boundary; recall alone is not treated as proof of cache restoration.
+`NIGHTCREW_LIVE_RESUME` may point to a previously printed acceptance home after
+the priority/restart checkpoint. This resumes at audio/model-switching work and
+renews only that test home's temporary token. Retain the original failure and
+combined evidence; report this as a resumed cycle, not an uninterrupted pass.
 
-This is a controlled unattended cycle, not a substitute for an entire overnight
-soak. The restart check closes and reopens the service; it does not simulate
-power loss or a SIGKILL. Local report export is not proof of Discord delivery.
-Supervisor reports are leads for a stronger reviewer, not automatic factual
-validation or authorization to change agents.
+A controlled cycle is not an overnight soak, an abrupt process crash, or proof
+of external messaging integration behavior.
 
-A failed fixture can be corrected without repeating already verified inference:
-set `NIGHTCREW_LIVE_RESUME` to the printed acceptance home. Resume is permitted
-only after the priority/restart checkpoint and continues at audio/model-switching
-validation. It renews only that private test home's temporary HTTP token. Review
-the combined acceptance record and original failure logs rather than claiming
-an uninterrupted clean pass.
+### Abrupt crashes
 
-## November 16, 2026 review
+Source: `test/live/crash-recovery.test.ts`.
 
-Version 0.31.1 passed the above checks using Qwen 4B for instant requests,
-Qwen 9B for background work and compaction, and Granite for synthetic speech.
-The cycle resumed from its saved priority/restart checkpoint after replacing an
-empty audio fixture; the original rejected input and successful run are retained.
+- Required setting: `qwen`, a chat-model definition. The fixture injects away presence, so it does not test presence detection or LaunchAgent supervision.
+- It kills the service during streamed generation, linked compaction, and an ambiguous local HTTP hook delivery, then restarts from the same private home.
+- It checks message identity, final-answer/checkpoint duplication, compactor reuse, synthetic fact recall, and termination of owned model/hook descendants.
+- The local receiver accepts a delivery and withholds acknowledgement. The restarted run must retain an `unknown` receipt and must not send the delivery again. This is a generic HTTP hook test, not a multipart transport or Discord test.
+- `crash-recovery.json`, receiver evidence, and run files remain under the printed test home. Uncertain delivery requires review; the fixture does not prove exactly-once delivery, power-loss durability, or network-service idempotency.
 
-The live cycle exposed a completion-publication race: instant requests could
-appear completed before their renewed cooldown had been persisted. Completion is
-now published after persistence. A focused regression holds the save pending and
-asserts that clients cannot yet see terminal completion. The repeat live phase
-verified the post-response cooldown before background resumption.
+```sh
+NIGHTCREW_ALLOW_INFERENCE=1 \
+NIGHTCREW_LIVE_CONFIG=/absolute/path/to/private-settings.json \
+node --experimental-strip-types --test test/live/crash-recovery.test.ts
+```
 
-Independent review checked the actual saved compaction summary and resumed
-answer against the synthetic source facts, plus successful runtime KV restore
-operations and exact local report contents. The review also corrected tail
-backpressure and terminal-run classification in the supervisor example. No claim
-is made about an overnight production soak or external Discord delivery.
+## Evidence required for a release claim
 
-## Abrupt process crashes
-
-`test/live/crash-recovery.test.ts` is a separate opt-in SIGKILL test using a
-real chat model and an isolated runtime home. Provide `NIGHTCREW_LIVE_CONFIG`
-with a registered chat-model definition under `qwen`, stop the regular daemon,
-and run with `NIGHTCREW_ALLOW_INFERENCE=1`. Always restore the regular daemon
-when the test ends. The fixture injects away presence to isolate crash behavior;
-it does not validate presence detection or launchd supervision.
-
-It kills the service process during streamed generation, while a linked compactor
-is running, and after a local receiver accepts the second message of a multipart
-report but withholds its acknowledgement. It restarts from the same home and
-checks preserved message identity, one final answer, reuse of the compactor run,
-one committed checkpoint, and recall of the synthetic source facts. It also
-checks that the crashed service leaves no llama.cpp or delivery-hook process alive.
-The local receiver records accepted messages; it never contacts Discord.
-
-Generation and compaction resume automatically. An uncertain external delivery
-must instead remain unknown and require review: restart or retry must not resend
-it. This does not promise exactly-once delivery or automatic completion of an
-ambiguous batch. The receiver log, saved run files and `crash-recovery.json` remain
-under the printed private test home for inspection.
-
-The process guard uses a dedicated pipe whose EOF detects owner loss, including
-SIGKILL, and terminates the guarded process group. Its unit tests include a child
-that ignores SIGTERM and preservation of ordinary stdin/stdout/exit behavior.
-This covers process crashes, not power loss, filesystem failure, or network-service
-idempotency guarantees.
-
-### November 23, 2026 result
-
-The real-Qwen SIGKILL fixture passed generation, linked-agent compaction and
-ambiguous multipart delivery recovery. Generation retained one user message and
-one final assistant answer. The interrupted compactor reused its run and produced
-one checkpoint; the resumed parent recalled lavender, seven trees and a blue gate.
-The local receiver accepted two distinct message parts and saw no duplicate after
-restart or a suppressed retry. Delivery remained unknown for manual review.
-
-The first test exposed an orphaned llama.cpp process after owner death. The
-owner-pipe guard fixes that for the model server and lifecycle hooks. The final
-pass checked the complete descendant tree at each crash (three, five and five
-processes) and found no survivors. No external Discord messages were sent.
-
-The current core crash fixture uses a generic HTTP delivery hook. The earlier
-multipart transport check belongs to the separately maintained integration;
-Nightcrew itself owns the durable hook receipt and uncertain-outcome hold.
+- Record the Git commit/package version, model files, context/generation settings, platform, command, and retained evidence location.
+- Distinguish mocked checks, real inference, graceful restart, SIGKILL, and external integration checks. One does not imply the others passed.
+- Review actual compaction summaries and resumed answers against the source facts; schema validity and completion alone are insufficient.
+- Record failures, skipped phases, fixture changes, and resumed phases. Do not convert a partial or resumed test into a clean overnight claim.
+- Validate application-specific delivery with that integration's own tests. Nightcrew's local hook receiver does not verify a real external destination.
+- Longer-duration storage growth, memory/concurrency behavior, preemption latency, and useful agent output require workload-specific observation. Historical experiments are not current measurements.

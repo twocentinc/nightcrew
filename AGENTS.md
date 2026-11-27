@@ -53,7 +53,7 @@ completion. Preserve the order of durable attempt, tool-result and message write
 injection and transcript storage-limit checks. `src/engine/compaction/coordinator.ts` owns
 token budgets and linked compactor admission; `recovery.ts` owns checkpoint
 reconciliation and retries. `src/engine/hooks.ts` owns delivery tasks, durable
-receipts, explicit retries and draining on shutdown.
+receipts and draining on shutdown. Recorded invocations are never retried.
 `src/storage/records.ts` owns run projections, pagination snapshots, search,
 event/save helpers and interrupted-run recovery inside the startup transaction.
 `src/engine/configuration.ts` owns shared agent/configuration validation and
@@ -150,7 +150,7 @@ are rebuilt from run files and updated only with committed state. Idle schedulin
 must not reread every archived transcript. Record operational scheduler failures
 separately from actual presence sampling failures.
 
-Schema 31 consolidates public CLI lifecycle under daemon, interactive calls under
+Public CLI lifecycle lives under daemon, interactive calls under
 instant, and fleet/presence/scheduling inspection under status. Evals expose shared management operations; there is no separate instant eval API.
 
 Command names must use separate words, never hyphens. Flags may use hyphens.

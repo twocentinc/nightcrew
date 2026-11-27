@@ -1,5 +1,7 @@
 # Qwen and Granite switching verification
 
+> Historical report. This records the dated experiment below, not current setup instructions or validation of the current release.
+
 Verified November 9, 2026, with Nightcrew 0.7.0 and the installed llama.cpp
 0.6.0 build. This was an explicit, isolated test using existing model weights;
 the installed daemon was stopped for the test and restarted afterward. No

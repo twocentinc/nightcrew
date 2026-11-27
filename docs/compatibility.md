@@ -22,8 +22,8 @@ the upcoming 1.0 release, not a claim that acceptance work is complete.
   records must survive upgrades.
 
 The runtime sources named in AGENTS.md own exact definitions. The immutable
-`test/snapshots/versions/v34.json` archive records the CLI and shared schema
-baseline. It does not cover every HTTP route, behavioral guarantee, or hook:
+`test/snapshots/versions/v53.json` archive records the current CLI and shared schema
+baseline; v34 records the original freeze. It does not cover every HTTP route, behavioral guarantee, or hook:
 those also require source review and behavioral tests. Do not maintain a second
 handwritten endpoint inventory.
 
@@ -69,9 +69,8 @@ compaction, or workspace pipelines are required for this baseline.
 
 Run type checks, the full mocked suite, contract checks and package installation
 smoke tests. Review changes against this policy, including behavior not captured
-by snapshots. Real inference remains opt-in. See acceptance.md for completed
-controlled live checks and the outstanding overnight/abrupt-crash validation;
-passing mocked tests must not be described as those checks passing.
+by snapshots. Real inference remains opt-in. See [the validation guide](acceptance.md) for current procedures and evidence requirements;
+passing mocked tests must not be described as live checks passing.
 
 ## Owner-approved compaction policy revision (November 23, 2026)
 

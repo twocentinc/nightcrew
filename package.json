@@ -42,7 +42,6 @@
     "dist/",
     "README.md",
     "examples/",
-    "docs/model-switch-verification.md",
     "docs/acceptance.md",
     "docs/eval-format.md",
     "docs/compatibility.md",

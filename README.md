@@ -141,7 +141,7 @@
 - `contextMode: "fresh"` starts each run with fresh context; `"persistent"` keeps one run ID and transcript across invocations.
 - Persistent agents restore a named KV checkpoint into a shared physical slot; they do not reserve permanent slots.
 - `timeoutMs` limits active work. Paused time does not count; persistent turns also yield according to `timeSliceMs`.
-- Configure `thinking`, `temperature`, `maxOutputTokens`, optional `sampling`, and an optional `maxToolCalls` budget per agent.
+- Configure `thinking`, `sampling.temperature`, `maxOutputTokens`, other `sampling` controls, and an optional `maxToolCalls` budget per agent.
 - A message's `thinking` override applies to that turn and its tool loop. Omission uses the run's snapshotted agent default.
 - Thinking traces, partial answers and interrupted attempts remain reviewable separately from completed answers.
 - Output-limit continuations retain evidence; incomplete tool calls are never executed.
@@ -156,7 +156,7 @@
 - Nightcrew counts the assembled input and reserves room for output before generation. Configure context capacity larger than the output reservation.
 - Compaction replaces older **model-visible context**, not the stored transcript. The parent continues under the same run ID.
 - Linked summarizer runs use their own model and settings; the parent releases compute while waiting.
-- Failed summaries have bounded recovery. Exhausted retries hold the parent at `context_full`; preparation failures use `runtime_error`.
+- Failed summaries have bounded recovery. Exhausted retries hold the parent at `contextFull`; preparation failures use `runtimeError`.
 - Persistent runs pause at their configured transcript storage limit, up to 48 MB. Compaction does not reclaim transcript disk space, and there is no automatic rollover.
 - Instant requests and audio inference are not automatically compacted.
 - See [context compaction](docs/spec.md#context-compaction), [storage limits](docs/spec.md#transcript-storage-limits), and the [summarizer example](examples/summarizer).
@@ -169,12 +169,12 @@
 - `%nested.key%` and `%items.0%` select nested values; `%%` produces a literal percent.
 - Each substituted value stays within one argument. No shell evaluation or recursive expansion occurs; missing values fail before launch.
 - Wrappers remain useful for conditional flags, repeated arguments or non-JSON output.
-- Tools default to a 10-second timeout, support 100–60000 ms, and have a 1 MB output limit.
+- Tools default to a 10-second timeout, support 100–600000 ms, and have a 1 MB output limit.
 - Tools receive minimal environment/context variables, not the daemon's root token or secret environment.
 - Custom tools run with the local user's permissions. Nightcrew does **not** provide an OS sandbox or enforce read-only behavior.
 - Bundled immutable tools: `load_skills`, `runs_list`, and `runs_transcript`.
 - Ordinary tool failures become structured, nonfatal tool results. Unknown external outcomes are not automatically retried.
-- Discover the full shape with `nightcrew schema get tools.create`; see [recoverable tool errors](docs/spec.md#recoverable-tool-call-errors).
+- Discover the full shape with `nightcrew schema get tools.create`; see [recoverable tool errors](docs/spec.md#tools-and-on-demand-skills).
 
 ## Define skills
 
@@ -184,21 +184,21 @@
 - `{"skillIDs":["review"]}` reads instructions and a manifest; `{"files":[{"skillID":"review","path":"references/guide.md"}]}` reads a resource.
 - Skill folders do not execute scripts merely because they contain them.
 - Skills CRUD writes the folder. Updates omitting `files` retain current resources; an explicit array replaces the managed resource set.
-- Resources are bounded; traversal and symlinks are rejected. See [on-demand skills](docs/spec.md#on-demand-skills) for limits and encoding.
+- Resources are bounded; traversal and symlinks are rejected. See [on-demand skills](docs/spec.md#tools-and-on-demand-skills) for limits and encoding.
 - `nightcrew skills read --request selection.json` reads installed skills; include `runID` to read a run's snapshots.
 - Instant chat can execute selected skill reads. Other client-defined tool calls remain the client's responsibility.
-- Single-turn and audio agents remain tool-free.
+- Single-turn agents have no executable tools, but can use the runtime `finish` signal when configured. Audio agents remain tool-free.
 
 ## Review, recover and deliver results
 
 - Inspect `status`, `runs get` and `runs transcript` before taking recovery action.
-- A completed run can still have invalid output or failed delivery. Inspect its `outcome`; successful validation is not proof of factual correctness.
+- A completed run can still have failed delivery. Invalid required output ends execution as `invalidOutput`. Inspect `execution` and `outcome`; successful validation is not proof of factual correctness.
 - `runs pause RUN_ID` holds work; `runs resume RUN_ID` releases a hold or resumes paused work.
 - `runs cancel RUN_ID` stops work; `runs retry RUN_ID --yes` repeats the latest input as a new turn and may repeat tool side effects.
 - Recovery commands use revision-checked JSON requests. Discover fields with `schema get runs.resume`, `runs.retry`.
 - Restart never automatically replays uncertain delivery. Investigate the destination before repeating any side effect.
 - Recover compactor children through their parent run.
-- Invalid `finish` calls and rejected final outputs fail immediately, without automatic correction. Optional output validators gate completion. Hooks marked `purpose: "delivery"` contribute to the delivery outcome.
+- Invalid `finish` calls and rejected final outputs fail immediately, without automatic correction. `finishSchema` is the production structured-output check; custom checks belong in eval graders. Hooks marked `purpose: "delivery"` contribute to the delivery outcome.
 - See [review and recovery](docs/spec.md#supervisor-review-and-recovery) and [hooks](docs/spec.md#hooks).
 
 ## Export and verify
@@ -246,7 +246,7 @@
 - `npm run contracts:check` — verify immutable contract snapshots.
 - `npm run contracts:update` — explicitly update snapshots after an approved schema change; the helper lives in `test/contracts.ts`, and normal tests never rewrite snapshots.
 - `npm run test:live` — opt-in real-model checks; read the [acceptance guide](docs/acceptance.md) first.
-- See [model-switch verification](docs/model-switch-verification.md) for measured results and their limits; mocked tests do not establish model quality or crash-recovery acceptance.
+- Mocked tests do not establish model quality or real crash recovery. The [validation guide](docs/acceptance.md) separates automated checks, opt-in inference, and release evidence.
 
 ## Source map
 
@@ -266,7 +266,7 @@
 
 - Test configured chat weights without an agent or run: `nightcrew models test MODEL_ID --prompt "Say hello"`.
 - The response includes generated text, token usage and elapsed time (including model loading).
-- Defaults: 64 output tokens, temperature 0, thinking off, 60-second generation/load timeout. Use `--request FILE` for overrides (`prompt`, `maxOutputTokens`, `temperature`, `thinking`, `timeoutMs`); `--timeout` controls the CLI deadline.
+- Defaults: 64 output tokens, temperature 0, thinking off, 60-second generation/load timeout. Use `--request FILE` for overrides (`prompt`, `maxOutputTokens`, `sampling`, `thinking`, `timeoutMs`); `--timeout` controls the CLI deadline.
 - Requires an idle runtime, works regardless of desktop presence, and leaves the instant model configuration unchanged. The loaded model follows its usual idle policy afterward.
 - Release model memory: `nightcrew models unload MODEL_ID` or `nightcrew models unload --all`.
 - Busy work is rejected, never cancelled. Saved slot caches and weight files stay on disk. Unloading releases llama.cpp's memory; it does not purge the operating system's filesystem cache.

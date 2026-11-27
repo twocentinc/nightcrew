@@ -1,786 +1,188 @@
 # Nightcrew specification
 
-Status: release 0.49.0, protocol 1, schema 49.
-See [compatibility.md](compatibility.md) for stable surfaces and change policy.
-Runtime schemas and registered procedures are authoritative; this document
-explains behavior rather than maintaining another endpoint inventory.
-
-Deferred exploration: [workspace pipelines](pipelines.md) describes a possible
-future dependency-graph workflow. It is not part of the implemented contract or
-approved implementation scope.
+- Current release: **0.53.1**. Frozen public contract: **protocol 1, schema 53**.
+- Configuration disk format: **5**. Run disk format: **10**. Expanded run views and export bundles use version **4**.
+- Runtime schemas and registered procedures are authoritative. Use `nightcrew help` and `nightcrew schema get RESOURCE.ACTION` for exact commands and request/result shapes.
+- [Compatibility policy](compatibility.md) records the freeze and historical changes. This document describes current behavior.
+- [Configuration guide](configuration.md) explains authoring files; [eval format](eval-format.md) defines eval authoring; [validation guide](acceptance.md) explains testing and evidence.
 
 ## Purpose and boundaries
 
-Nightcrew is a standalone CLI and daemon that owns local llama.cpp model serving,
-interactive inference, and recurring background agents. It has no dependency on
-particular applications. Clients submit requests; Nightcrew controls
-model residency, physical slots, scheduling and durable agent transcripts.
-
-The daemon resolves llama-server from PATH and provisions it on demand. Model
-definitions reference existing weights and optional projector files. Nightcrew
-does not implicitly download weights. One model is resident for background work;
-model priorities, residency preference and wait aging avoid unnecessary swaps.
+- Nightcrew is a standalone CLI and daemon for local llama.cpp serving, instant requests, and background agents. Application integrations live outside the repository.
+- The daemon resolves `llama-server` from `PATH` and provisions it on demand. Models reference existing weights and optional projectors; Nightcrew does not download weights.
+- One model is resident at a time. Compatible work can share that model through separate slots; scheduling controls residency and switching.
+- macOS provides the supported LaunchAgent and desktop-presence integration. Other platforms do not have equivalent validated unattended support.
+- Deferred [workspace pipelines](pipelines.md) are a future design, not implemented behavior or approved implementation scope.
 
 ## Source organization
 
-`src/cli.ts` is the executable entry point. `commands/` has one module per
-public command family and no shared helper modules. `utils/commands/` owns shared
-procedure definitions, discovery, dispatch, request aggregation and resource
-transactions. Shared types and validators live in `schemas/`; import
-schemas directly from their owners rather than through re-export barrels.
-
-`engine/service.ts` composes the components and retains the service-facing API.
-Components declare narrow dependencies and keep their state with its owner.
-
-| Folder/module                | Ownership                                                                                      |
-| ---------------------------- | ---------------------------------------------------------------------------------------------- |
-| `engine/runs/submissions.ts` | Submission, replies and persistent turns                                                       |
-| `engine/runs/controls.ts`    | Pause, resume, cancellation, retries and capability refresh                                    |
-| `engine/runs/triggers.ts`    | Trigger admission, deduplication and pending-input activation                                  |
-| `engine/execution/`          | Runner, context, request, inference, response, tools, completion and bounded process execution |
-| `engine/instant/`            | Request lifecycle and a separate interactive generation runner                                 |
-| `engine/scheduling/`         | Dispatch, policy, schedule definitions and timer tracking                                      |
-| `engine/models/runtime.ts`   | Model admission, switching and residency                                                       |
-| `engine/models/server.ts`    | llama.cpp process startup, health and shutdown                                                 |
-| `engine/models/client.ts`    | Generation and tokenization requests                                                           |
-| `engine/models/stream.ts`    | Stream decoding, reasoning and tool-call assembly                                              |
-| `engine/models/cache.ts`     | Slot ownership, snapshots, compatibility checks and pruning                                    |
-| `engine/models/types.ts`     | Runtime adapter contracts                                                                      |
-| `engine/compaction/`         | Coordinator, recovery, format and source evidence                                              |
-| `engine/capabilities/`       | Tool registry, skill resources and bundled executable commands                                 |
-| `engine/evals/`              | Definition edits, mock tools, and ordinary-run grading                                         |
-| `schemas/`                   | Common primitives, agents, models, runs and configuration                                      |
-| `storage/store.ts`           | Home lock, lifecycle and the shared transaction queue                                          |
-| `storage/config.ts`          | Configuration initialization, validation and persistence                                       |
-| `storage/transcript.ts`      | Run validation, transcript persistence and post-write index commits                            |
-| `storage/files.ts`           | Atomic writes, file permissions and bounded reads                                              |
-| `utils/json.ts`              | Canonical JSON serialization and compatible content fingerprints                               |
-| `storage/runIndex.ts`        | Run discovery, reconciliation, message ownership and derived indexes                           |
-| `storage/records.ts`         | Run projections, pagination, search and startup recovery                                       |
-| `storage/artifacts.ts`       | Export bundles and integrity verification                                                      |
-| `server/http.ts`             | HTTP/oRPC hosting, authentication and router mounting                                          |
-| `server/resources.ts`        | Legacy HTTP resource adapters                                                                  |
-| `server/streams.ts`          | Event-stream lifecycle and limits                                                              |
-
-Smaller engine concerns remain in `configuration.ts`, `supervision.ts`,
-`hooks.ts` and `protocol.ts`. Server control-socket, startup, diagnostics and
-logging modules remain alongside HTTP hosting.
-
-The runner calls tool recovery, completion validation, request preparation,
-compaction, inference and response recording in order. Instant requests retain
-their different tool permissions and persistence rules. Compaction yields through
-dispatch instead of starting an independent scheduler.
-
-Preserve storage-lock boundaries and durable write ordering across components.
-Shutdown settles execution before closing the model runtime, drains hooks, then
-closes storage. Startup recovery marks uncertain deliveries unknown instead of
-replaying messages. Derived indexes change only after their durable writes commit.
-
-Public npm exports remain `nightcrew` and `nightcrew/operations`. Internal file
-paths are implementation details, not compatibility entry points.
-
-Shared JSON canonicalization and fingerprints live in `src/utils/json.ts`.
-Configuration response schemas live in `src/schemas/config.ts`; command resource
-helpers own configuration-change admission policy. Bearer-token verification is
-shared through `src/storage/config.ts`, while transports retain their error responses.
-Transcript projections build per-call message and attempt indexes.
+- `src/cli.ts` owns parsing and finite command execution.
+- `src/commands/` contains one module per top-level command family, owning its schemas, metadata, and handlers.
+- `src/utils/commands/` owns shared oRPC definitions, typed request parsing, discovery, dispatch, and resource transactions.
+- `src/schemas/` owns shared validators. Import from the owning module; do not add competing inventories.
+- `src/engine/service.ts` composes narrowly scoped components:
+  - `runs/`: submissions, replies, controls, persistent turns, and trigger admission.
+  - `execution/`: context, requests, inference, responses, tools, completion, and bounded processes.
+  - `instant/`: transient interactive requests and their skill loop.
+  - `scheduling/`: admission, timers, priorities, and scheduler policy.
+  - `models/`: runtime admission, llama.cpp lifecycle, generation/tokenization, streaming, and KV caches.
+  - `compaction/`: summary coordination, evidence, validation, and recovery.
+  - `capabilities/`: tools, skills, snapshots, and bundled helpers.
+  - `evals/`: definitions, substituted tool results, and grading.
+- `src/storage/` owns the shared transaction queue, configuration, atomic run documents, derived indexes, migrations, and export verification.
+- `src/server/` owns HTTP, the private control socket, LaunchAgent management, logging, and diagnostics.
+- `src/utils/json.ts` owns canonical JSON serialization and fingerprints.
+- Public npm exports are `nightcrew` and `nightcrew/operations`. Internal file paths are not compatibility entry points.
 
 ## Canonical contracts and transport
 
-Each top-level command module in src/commands/ owns its input/output schemas,
-metadata and handlers. src/utils/commands/definition.ts builds their shared oRPC
-procedures; operations.ts and inputs.ts aggregate the family definitions. The CLI
-takes request/result schemas directly from these procedures. Offline management
-and the private daemon control socket execute the same procedures through oRPC.
-The control socket remains local newline-delimited JSON; sharing contracts does
-not require replacing that transport.
-
-Remote management mounts each eligible procedure as POST
-/v1/operations/<resource>/<action>. Requests contain request, optional resourceID,
-and optional dryRun and yes flags. Omit resourceID for operations without an
-operand. Authentication uses one global root bearer token. The token is hashed
-at rest. Nightcrew binds loopback; exposing it remotely requires an explicitly
-configured external transport. There are no per-client properties or grants.
-
-TypeScript consumers may import the ManagementRouter type from
-nightcrew/operations. OpenAPI is generated from the same router. Legacy resource
-routes in src/server/http.ts remain compatibility adapters, with their historical
-envelopes and pagination; managed actions delegate to the shared procedures.
-Streaming run/chat events remain dedicated oRPC routes.
-
-Bootstrap, local service installation, daemon logs, local inspection and schema
-discovery remain CLI concerns. Run export and bundle verification require local
-filesystem access and are not exposed as remote operations. Read the generated
-command catalog or CLI help for the exact inventory.
-
-Finite CLI commands emit one versioned JSON envelope, with diagnostics on stderr.
-Unknown inputs are rejected. Mutations support dry runs where applicable.
-Destructive operations require yes; dry runs do not. Configuration updates use
-revision checks. Public config omits secrets, and legacy HTTP config also omits
-model and hook executable paths.
+- CLI, HTTP management, offline management, and the private control socket invoke the same oRPC procedures. Their schemas come from command-family definitions.
+- Remote operations mount as `POST /v1/operations/<resource>/<action>`. The envelope contains `request`, a `resourceID` when appropriate, and optional `dryRun`/`yes` flags.
+- Eligible existing HTTP resource routes and event streams remain supported. Resource adapters delegate management to the shared procedures; they retain their documented envelopes and pagination.
+- TypeScript clients import `ManagementRouter` from `nightcrew/operations`. `/openapi.json` is generated from the router.
+- HTTP uses one global root bearer token, hashed at rest. Health and OpenAPI are public. The listener binds loopback; remote exposure requires an external transport. There are no per-client grants.
+- `httpEnabled: false` plus a restart disables HTTP, while the private local CLI socket continues working. `config token rotate` replaces the root token.
+- Bootstrap, service installation, local logs, and discovery are CLI concerns. Run export and bundle verification require local filesystem access.
+- Finite CLI commands emit one JSON envelope; diagnostics go to stderr. Tails emit JSONL envelopes. Unknown inputs are rejected, and mutations expose dry runs and confirmation where specified by help.
 
 ## Configuration and resources
 
-The default home is ~/.nightcrew. JSON configuration stores agents, models,
-scheduler settings, hooks and triggers. Each run has its own state file;
-configuration does not embed a growing run index. Startup reconstructs indexes
-from run files and preserves healthy history if another run is malformed.
+- The default runtime home is `~/.nightcrew`, selected through `--home` or `NIGHTCREW_HOME`. Configuration stores models, agents, scheduler settings, lifecycle hooks, and triggers; it does not embed run history.
+- Models own `contextTokens`, weight/projector paths, kind, priority, idle unloading, optional slot snapshots, and an optional compaction threshold.
+- Agents select their model, prompt, `singleTurn` or `agentLoop` mode, `fresh` or `persistent` context, `background` or `instant` execution class, capabilities, and limits.
+- Generation settings use `sampling.temperature`, `topP`, `topK`, `minP`, `presencePenalty`, and `repeatPenalty`. `thinking`, `parallelToolCalls`, and `maxOutputTokens` are separate fields.
+- Agents and triggers use their own revision checks; model/configuration changes use the configuration revision; tool/skill changes use content hashes.
+- Updates use `changes`. Omitted fields remain unchanged; supplied arrays and nested objects replace their prior values. Full merged definitions are validated before writes.
+- Agent, tool, and skill listings return metadata. `get` retrieves full definitions. Model mutations return `item`, `revision`, `changed`, and `restartRequired`; deletion returns a null item.
+- Model CRUD owns model definitions; `config update` does not replace the model collection. Definitions cannot be deleted while referenced.
+- CLI tool/skill mutations reload registrations. `config reload` adopts direct filesystem edits. Existing runs keep their admitted snapshots unless explicitly refreshed.
+- Examples are opt-in. `init` creates an empty installation rather than installing bespoke agents.
 
-An agent selects a prompt, model, mode, skills, allowed tools, timeout, priority,
-time slice, context policy, output limit, temperature, thinking default,
-compaction handler and storage limit. Skills provide instructions, not additional
-tool permissions. Tools are trusted administrator executables running with the local user’s
-permissions. Nightcrew does not enforce read-only behavior or provide an OS sandbox.
-Their input/output, deadlines, environment and process lifetime are bounded.
+## Tools and on-demand skills
 
-Every tool is executable-backed. executablePath is required; argv contains
-string argument templates, while model-supplied structured JSON is validated
-against parameters and sent on stdin. There is no adapter discriminator. Bundled
-skill/history tools are ordinary executables. History wrappers call the CLI;
-the skill helper receives selected snapshots over a private pipe. They receive non-secret home,
-agent and run context through environment variables. Their checks are wrapper
-behavior, not a restricted authorization boundary for custom executables.
-Legacy adapter definitions remain readable through in-memory conversion.
-Argv templates support %parameter% and dotted paths, with %% for a literal percent.
-Validated strings are substituted unchanged; other JSON values become compact JSON
-text within one argument. Missing parameters fail before launch. Each argument
-retains its boundary, has a 4000-character expanded limit and rejects NUL.
-Substitution is nonrecursive and does not invoke a shell. Structured input is
-still supplied on stdin; arrays do not spread and optional flags are not omitted.
-
-Models define chat or audio behavior, paths, idle unloading, priority, optional KV
-snapshots, and compactionThresholdTokens. Configuration schemas in src/schemas/config.ts,
-src/engine/scheduling/policy.ts, src/engine/scheduling/schedule.ts and src/engine/compaction/format.ts define limits and defaults.
-Examples are opt-in files under examples; init does not install bespoke agents.
-
-## On-demand skills
-
-Skills are folders with SKILL.md and optional references/ and assets/ trees.
-Each file is limited to 128 KB; a skill supports 64 files and 512 KB serialized
-resource data. Text uses UTF-8, binary assets use base64. Paths cannot traverse
-outside these directories or follow symlinks. Skill CRUD writes folders;
-config reload validates direct filesystem edits before adopting them.
-skills read returns instructions or selected files without modifying state.
-Updates omitting files preserve resources; explicit files replace them.
-
-Agent-loop runs automatically receive the executable load_skills tool. Only
-configured skillIDs appear in the name/description catalog. Instructions and
-individual resources enter model context on demand. Run snapshots preserve
-admitted content through interruption and export; compaction retains the catalog.
-Skills do not implicitly grant other tools or execute scripts.
-
-Instant requests select their own skillIDs. Nightcrew automatically executes
-load_skills calls and continues generation, bounded by the request deadline,
-16 rounds and 4 MB generated messages. The 6 MB admission cap includes snapshots.
-It never executes client-defined tools; mixed batches return only outstanding
-client calls. Clients append the returned generated messages and their own tool
-results to subsequent request history. Selected instant snapshots remain ephemeral.
-Single-turn agents retain their existing tool-free contract.
+- Tools are trusted executables configured with `executablePath`, `argv`, `timeoutMs`, `toolID`, `description`, and an object JSON Schema in `parameters`.
+- Validated parameters arrive as JSON on stdin; stdout must be JSON. Tools default to 10000 ms, accept 100–600000 ms, and have a 1 MB output limit.
+- `argv` supports `%parameter%`, dotted paths, and `%%` for a literal percent. Each substitution stays inside one argument. There is no shell expansion, recursive substitution, array spreading, or automatic omission of flags. Missing values fail before launch; expanded arguments reject NUL and exceed neither the configured nor runtime size limits.
+- Tools run with the local user's permissions. Minimal environment and bounded process execution are not an OS sandbox or a read-only guarantee. Legacy adapter definitions are not accepted by normal readers.
+- Skills are folders containing `SKILL.md`, with optional `references/` and `assets/`. Resources are bounded to 128 KB per file, 64 files, and 512 KB serialized resource data per skill. Traversal and symlink escapes are rejected.
+- Skills provide guidance, not extra tool permissions. Only configured `skillIDs` appear in the model's catalog. Instructions and files are read on demand through the automatic `load_skills` tool.
+- `skills read` reads selected instructions/resources without changing state. Run snapshots preserve admitted content across edits, interruptions, and exports.
+- The bundled `runs_list` and `runs_transcript` helpers provide bounded historical evidence. They exclude the current nonterminal run; worker history is bounded and marks truncation. Administrator transcript reads retain full evidence.
+- Ordinary malformed calls, unavailable tools, schema/argv errors, executable failures, and invalid output become paired tool error messages. Errors before execution report `not_started`; errors after possible execution report `unknown`. Nightcrew does not automatically replay side effects.
+- Cancellation, preemption, active-time deadlines, storage failures, and context limits remain execution controls, not recoverable tool responses.
 
 ## Runs and messages
 
-A fresh agent starts a new run with its system prompt. A persistent agent retains
-one run ID and full transcript across invocations. Each invocation has a turn
-and active-time budget. Replies and timer submissions enter that same durable
-history; pending inputs are recorded rather than stored in a separate queue DB.
-
-Clients generate message UUIDs. Retries reuse the UUID and identical payload;
-conflicting reuse is rejected. Attachments belong to each message, including
-later turns. There are no submission receipts or persisted interactive requests.
-Hook delivery receipts remain necessary to record external delivery attempts.
-
-Single-turn agents finish after one model response. Agent-loop agents execute
-allowed tool calls until a final response or limit. Active time counts against
-the agent timeout; paused time does not. Interruption preserves the run for
-resumption. Completed and cancelled runs can receive replies. A reply to a
-cancelled run starts a new turn in the same transcript, clears its scheduling
-hold, and does not resume the cancelled turn or its pending inputs. Failed and
-timed-out fresh runs still require explicit recovery. Run state and event history
-remain authoritative over daemon logs.
-
-Thinking can be overridden on each user turn; omission uses the agent default.
-Successful assistant messages store the effective thinking flag and, when enabled,
-the separate reasoning trace. Attempts persist partial text, reasoning and tool
-fragments before a generation commits. Failure, cancellation, preemption and
-restart preserve available evidence and its outcome. A process crash can lose
-deltas after the most recent checkpoint.
-
-Attempts appear in transcript reads, exports and searches. Agents with the
-runs_transcript tool can inspect their own failed attempts. Unfinished text is
-not automatically inserted as a completed assistant message; partial tool calls
-are never executed. A successful attempt references its committed message instead
-of duplicating the payload.
-
-## Transcript storage limits
-
-Each agent has storageLimitMB (default 48, range 1–48). This measures serialized
-run state, including messages, attachments, events and attempts, rather than model
-tokens. Reaching it holds the run with storageLimit. New submissions are rejected
-while held. The same run ID and existing history remain intact.
-
-The limit is checked at execution/admission boundaries, so the final operation
-can exceed the configured threshold. Message/event/attempt admission ceilings
-also pause growth; the underlying state-file hard limit retains reserved space.
-No automatic transcript deletion, splitting, or archive rotation is performed.
-Compaction does not reduce transcript storage.
-
-For a byte limit, raise the agent's storageLimitMB where capacity permits, then explicitly
-release the held queue entry. Count limits identify the exhausted collection and
-require a new run; increasing MB cannot resolve them. Release refreshes that limit and rejects a run
-still over capacity. Exporting history does not free storage. At the maximum
-limit the run stays held; automatic pruning or starting a replacement persistent
-run is not implemented.
-
-## Scheduling, triggers and interactive work
-
-The queue is a view of run state and pending inputs. Trigger, queue and scheduler
-commands operate on those resources. Timer triggers support fixed intervals and
-cron using cron-parser syntax and timezone/DST behavior; external scripts and HTTP callers submit ordinary agent runs. No separate
-polling-script trigger is required: an agent can begin with a tool and finish
-quickly when there is no work.
-
-Missed timer occurrences are skipped, never replayed. The live daemon tolerates
-five seconds of ordinary dispatch delay. Trigger queue policies choose skip,
-enqueue or coalesce. Disabling timers does not erase history.
-
-Background work requires the desktop to be away and the interaction cooldown to
-have expired. Presence reuses the existing native idle-time approach. Unhealthy
-presence blocks background admission. Instant inference bypasses these gates,
-preempts background compute, and extends interactionCooldownMs (default five
-minutes). Only after cooldown and away status can background work resume.
-
-scheduler.instantModelID selects the interactive model. By default one background
-slot and one instant slot exist for that model. maxConcurrent defaults to one;
-additional background capacity is opt-in. Physical slots are scheduler allocations,
-not permanent public resources. Models own `contextTokens`; configuration stores
-no slot array or scheduler-wide context capacity. Agents select `executionClass`
-(`background` or `instant`), never a physical slot. Timer and eval submissions
-remain background work. Instant priority applies on the configured instant model.
-Fresh contexts clear on takeover. Persistent
-contexts can restore agent-owned checkpoints into a borrowed slot. Missing or
-incompatible checkpoints fall back to transcript reconstruction.
-
-The default scheduler favors eligible higher-priority work, resident models,
-minimum residency and aging. A bounded external scheduler hook may propose
-starts and pauses. Nightcrew revalidates every plan against presence, cooldown,
-model compatibility, slot ownership, dependency and capacity constraints.
-Failure policy chooses built-in fallback or hold. Scheduler hook configuration
-and its request/result schemas live in src/engine/scheduling/policy.ts.
-
-KV snapshots are disposable acceleration data. They are not authoritative run
-history. Model snapshot settings choose whether/where to save them; the default
-directory is under the Nightcrew home. The scheduler bounds snapshot disk usage.
-Agent cache inspection/reset replaces top-level physical slot management.
-
-## Context compaction
-
-Context pressure and transcript storage are independent. Before generation,
-Nightcrew counts templated input tokens and reserves the configured output budget.
-The model's compactionThresholdTokens may trigger compaction earlier. Context
-shifting is disabled.
-
-An agent can select a script handler or a singleTurn summarizer agent.
-Compaction preserves the parent run and original messages. A checkpoint stores
-the summary, inclusive coverage boundary, token counts and optional child run ID.
-Coverage ends at a complete turn/tool-exchange boundary. Later model input consists
-of instructions, the summary and remaining messages. Handler requests exclude stored
-thinking traces, decode text attachments, and identify omitted binary attachments
-without sending base64. Original transcript evidence remains unchanged. Summary
-targets are capped at 4096 tokens and one third of the trigger threshold, and
-reserve the retained context plus tokenizer slack. There is no fixed word cap; child output reservations
-are capped to that target plus JSON overhead when thinking is disabled. Thinking-enabled
-children retain their configured generation limit because reasoning shares that
-budget with the visible summary. Both reservations must fit the child context;
-the final summary still obeys the smaller summary target. Thinking in linked
-compactors is limited to half the generation budget, capped at 1024 tokens, to
-reserve room for the visible answer.
-
-A summarizer executes as a separate linked fresh run with its own model, prompt
-and output settings. The waiting parent consumes no active-time budget. Child work
-uses ordinary scheduling safeguards and dependency priority; a same-model
-compactor for an interactive parent inherits its instant slot and interactive
-admission so it does not wait for desktop-away eligibility. Recursive compaction
-is disallowed. A script receives the versioned request and returns a nonempty
-summary JSON object. Both paths validate the resulting parent context before
-committing and invalidate incompatible KV generations.
-
-Agent summary failures get up to compaction.maxRetries retries (default 1, range
-0–2), each preserving the summary token target and creating a new linked child run. Prior
-children and failure events remain durable across restart. Script handlers do not
-automatically retry. Missing handlers, oversized retained input, or exhausted
-summary retries hold the parent with contextFull. Context preparation/runtime
-errors instead hold at runtimeError with their actual error; resuming the parent
-releases its blocked compactor without consuming a summary retry. Explicit runs resume retries with the current
-handler. Restart retains dependencies; cancellation cancels unfinished child work.
-Instant request compaction and automatic multi-stage chunking remain deferred.
-
-## Hooks
-
-Configured notification events are run.completed, run.failed, run.timedOut,
-run.cancelled and run.storageLimit. Each executable receives one JSON line on
-stdin with version, event, runID, agentID, turnID, state, result, error and
-eventSequence, eventID, hookID and receiptID. Storage-limit notifications
-additionally include storage.previousState and storage.limit with resource, used
-and maximum captured at the boundary.
-
-A storage hook runs after the hold is persisted and does not unpause the run.
-It can notify a supervisor or use the CLI to export/review the run. Hook stdout
-is ignored; it is not a summary protocol. Explicit runs resume is still required.
-Each configured hook has a stable hookID. One automatic delivery attempt is
-recorded per eventID and hookID;
-explicit supervisor retries append linked receipts without replacing old ones. Repeated
-submissions to the same held run do not create new storage-limit events.
-A later release and subsequent limit crossing can produce a new event.
-
-Hooks have bounded time and minimal environment. Delivery receipts and results
-are durable; uncertain in-flight deliveries after restart are marked unknown
-and are not automatically retried. Automatic dispatch is at-most-once attempted delivery, not a guarantee of external
-side-effect completion. Explicit retries can repeat side effects. Scheduler and compaction hooks
-have their separate typed request/result protocols described above.
-
-## Operations and validation
-
-The daemon and per-user macOS LaunchAgent have separate lifecycle commands.
-Uninstalling the service does not delete configuration, runs or models.
-Operational JSONL logs are optional and severity-filtered, rotated and bounded.
-They record only additional Nightcrew diagnostics, not prompts, responses,
-tool output or lifecycle facts already reconstructible from run state.
-
-Run export creates a new immutable bundle with checksums, configuration snapshots,
-transcript, results and attachment evidence. Verification is read-only and checks
-schema, identity, event order, references and bundle consistency. It never invokes
-models or tools.
-
-Normal tests use mock inference and temporary homes. The opt-in real-model suite
-is documented in live-validation.md and excluded from npm test. Controlled real-model acceptance passed on November 16 with a resumed audio
-fixture, as recorded in [acceptance.md](acceptance.md). This was not a clean
-uninterrupted overnight soak or abrupt-crash test. Remaining empirical work includes long-run
-storage growth, preemption latency, residency/concurrency memory use, and summary
-quality. No UI, automatic transcript pruning, distributed scheduling or per-client
-authorization is promised by this contract.
-
-## Recoverable tool-call errors
-
-Agent-loop tool calls and Nightcrew-owned instant skill calls return failures as
-structured tool messages: `{ "ok": false, "error": { "code": "...",
-"message": "...", "outcome": "not_started" } }`. Malformed JSON, schema/argv
-validation errors and unavailable tools do not terminate the run. Executable
-failure, timeout, excessive output and invalid JSON output also return tool
-errors, with `outcome: "unknown"` because a side effect may already have happened.
-The agent can correct its request or continue with other evidence. Nightcrew does
-not automatically replay failed calls. Each result retains the original tool-call
-ID and is stored/streamed through the normal transcript path. Raw exception text,
-stderr and invalid stdout are not included in these error messages.
-
-Cancellation, preemption, active-work deadlines, storage failures and global
-context/turn limits still stop or pause execution. They are not recoverable tool
-errors. Client-owned instant tools remain the client's responsibility.
-
-## Bounded worker history and compaction recovery
-
-The bundled runs_list tool returns prior terminal runs newest first, excluding
-its current run. runs_transcript rejects reads of the current nonterminal run,
-limits long string fields to 2000 characters with explicit truncation markers,
-and bounds each page to approximately 12000 characters. A budget-limited page
-includes nextOffset for continuation. Full transcripts remain available through
-the administrator CLI. These limits prevent recursive conversation duplication.
-
-Compaction accepts additional JSON metadata alongside a nonempty string summary;
-only the validated summary is used. Missing, empty, non-string or oversized
-summaries remain invalid. Skill guidance distinguishes the skillIDs instruction
-request from files requests, which must use actual manifest resource paths.
-
-Compaction also normalizes a JSON string or an exact fenced JSON value before
-validating the summary. Arbitrary prose is not extracted as JSON. Invalid tool arguments return bounded schema-validation details so
-the model can correct fields and enum values without guessing.
-
-## Agent sampling controls
-
-Agents configure `sampling` with `temperature` (default 0.7), `topP`, `topK`,
-`minP`, `presencePenalty`, and `repeatPenalty`. `parallelToolCalls` is a separate
-agent setting and also participates in template token counting. Settings are
-snapshotted per run. Instant requests and eval overrides use the same shape;
-model tests default temperature to 0. Other omitted controls use backend defaults.
-
-Agents may also set `maxToolCalls` (1–1000, omitted means no tool-call cap).
-It counts attempted calls since the latest user message, including builtin tools
-and invalid calls, and survives pauses/restarts in the transcript. Excess calls
-in a batch receive a nonfatal `tool_budget_exhausted` result without execution.
-After the budget, the next generation has no tools, explicit `tool_choice: none`,
-and an execution-limit instruction to answer from existing evidence. The limit
-resets on a new user turn. It does not discard evidence or bypass timeouts.
-
-Tool-budget finalization disables thinking so the remaining output budget is
-available for the visible answer. An agentLoop response with no tools and an
-empty visible answer receives one tool-free, thinking-disabled finalization
-attempt. If that is also empty, the run fails explicitly instead of completing
-with an empty report. Thinking remains in the transcript as evidence; it is never
-promoted into the final answer. Single-turn/audio behavior is unchanged.
-
-## Supervision and outcome reporting
-
-`execution.state` describes agent execution, including terminal `invalidOutput`
-for rejected final output. Delivery and lifecycle hooks remain separate events
-and receipts; a failed delivery does not change completed inference. `outcome`
-reports output validation, delivery, hooks, attention reasons, and a next action.
-There is no derived `task` state. Validation does not establish factual accuracy.
-
-`finishSchema` is the only structured-output schema on an agent. Chat agents
-must call the runtime-owned `finish` tool alone with matching object arguments.
-Invalid/mixed finish calls or ordinary text without finish fail as `invalidOutput`
-without a repair generation. Without finishSchema, ordinary final text completes
-the turn; audio uses this plain-output path.
-
-Custom executable checks belong only in eval graders. Regular runs use
-finishSchema, and record its validation evidence. Historical validation evidence
-remains readable but removed checks are never rerun. Historical runs with no
-stored check are not retroactively validated. Eval grader expectations stay
-separate from the agent's schema and hidden from the evaluated model.
-
-Lifecycle hooks have `purpose: "delivery"` or `"notification"`. Hooks accept the
-shared executable shape and receive JSON on stdin. Unknown delivery after restart
-is never automatically replayed. Hook success is successful executable completion,
-not independently confirmed external receipt.
-
-`loopPolicy` defaults to consecutiveErrors:3 and repeatedCalls:3. Nightcrew
-examines committed tool results, including tools returning ok:false with exit
-zero. Repeated unchanged requests, consecutive errors and exhausted tool budgets
-trigger a recorded tool-loop correction opportunity. A further tool failure or repeated loop
-ends tool use and requests a constrained final answer. The global tool limit
-also forces finalization. No hidden retry re-executes a failed external action.
-Exhausted tool-loop handling remains visible as needsAttention even if final formatting passes.
-
-Compaction receives explicit instructions to separate facts, hypotheses, failed
-attempts and remaining work. A deterministic source check warns about unsupported
-numeric literals and evidence IDs. Warnings are retained in the `compacted` event
-and do not block accepting a checkpoint. Numeric comparisons
-ignore valid thousands separators and trailing decimal zeros, and permit rounded
-displays of source decimal quantities. Rounding uses exact integer arithmetic and
-never rounds integer identifiers or converts values to percentages. Count-pair
-notation such as scanned/total is accepted only when both components exist in
-the source; this does not validate their relationship. Timestamp
-formatting and list ordinals are checked separately. This lexical check does not
-prove relationships, units or causal interpretations are correct, nor require
-all source facts in a bounded summary. Exact source context remains recoverable;
-Only invalid/empty summaries, generation failures, or context-size failures can
-hold compaction; evidence discrepancies do not trigger retries or holds. After compaction the
-model receives authoritative Nightcrew tool counters and toolLoop state, instead
-of relying on the summarizer's arithmetic. Existing checkpoints are not rewritten.
-
-`status` uses the same oRPC operation for CLI and HTTP and requires the
-daemon for current runtime state. It shows each configured agent, its schedules,
-latest run activity/outcome, active run count, attention count and recorded active
-milliseconds, plus current presence/cooldown, model/slot status and the newest
-100 runs needing attention. Totals cover all retained run summaries; active time
-for persistent runs is the current turn's stored counter, not lifetime CPU
-usage. No new index, queue database, or inferred memory/token telemetry is stored.
-
-Context preparation failures (template rendering, tokenization or unavailable
-runtime) hold a run with `runtimeError` and `context_preparation_failed`, rather
-than claiming its context is full. HTTP failures retain the endpoint, status and
-bounded response body in run evidence, not daemon logs. Explicit runs resume
-clears the hold after the underlying cause is corrected. Output-schema guidance
-is merged into the leading system prompt, including when compaction rebuilds the
-context; model templates need not support later system messages.
-
-## Supervisor review and recovery
-
-`runs resume` shares runs resume semantics. `runs retry` takes expectedRevision,
-a new client messageID UUID and note; it requires a terminal non-compactor run
-without pending inputs and repeats the last user input, attachments and thinking
-override in a new turn of the same transcript. It uses ordinary reply snapshot
-rules. Previous messages and attempts remain visible. Retry requires explicit confirmation (`--yes` in CLI); mutations support dry-run.
-
-## Optional review agents
-
-The distributed examples include a portable agent-supervisor with an executable
-read-only run inspector, companion skill, manual trigger and Markdown completion
-hook. It reports computed run metrics and bounded operational failure evidence for
-a larger model to evaluate; it has no management or delivery tools. It snapshots
-eligible revisions, discloses coverage limits and checkpoints only metric pages
-returned before a successfully exported report. Checkpointing is not a factual
-review guarantee. Nothing is activated by init; users install and configure the
-example with the existing CLI. Its scripts use only Node APIs and the Nightcrew
-home, without application dependencies.
-
-The supervisor example is manual-only by default and emits local Markdown.
-See examples/agent-supervisor for installation and scope. Installed copies are
-not overwritten by package updates. Application-specific agents live externally.
-
-### Source-linked compaction evidence
-
-Compaction annotates user/tool content with stable, code-generated `src:` references.
-Structured JSON leaf records and plain-text paragraphs are supported without
-domain field names; system prompts, thinking and binary attachments are not sources.
-The summarizer retains references beside factual claims, questions and decisions.
-When rebuilding context, Nightcrew resolves those references against the original
-covered transcript and includes original record/text content with its message ID
-and JSON pointer or paragraph position. Source text remains untrusted data.
-
-The evidence packet is bounded to 6000 serialized characters; whole excerpts that
-do not fit and unknown references are explicitly listed as omitted. It does not
-truncate a record into an apparently complete fact, fetch new data, or treat a
-reference as proof of an interpretation. Sources are derived, not duplicated in a
-new store; references carried through successive summaries resolve to the original
-transcript. Existing summaries without source references remain supported. The
-normal token counter still checks the complete summary plus evidence context.
-This improves evidence availability, not summary accuracy or semantic verification.
-
-### Managed response continuation
-
-A managed agent's `maxOutputTokens` limits each generation, not the assembled
-answer. A complete llama.cpp stream ending with `finish_reason: length` saves
-its partial text/thinking/tool fragments in an attempt with reason `output_limit`
-and requests continuation. Text uses llama.cpp native assistant prefill (`continue_final_message: "content"`) with the exact saved prefix as the final assistant message and no generation prompt. Token counting uses the same template options. Text chunks are appended verbatim and committed as
-one assistant message only after generation stops normally. JSON validation and
-completion/delivery hooks run on the assembled answer, never on a partial chunk.
-
-Continuation is derived from unresolved attempts in the current turn and
-survives daemon restarts, preemption, and compaction. Saved response text is kept
-outside the compactor's source history and reinjected exactly, subject to actual
-context counting and output reservation. Incomplete tool calls are never executed;
-the next generation must emit complete calls from scratch. Thinking-only limits
-retain the reasoning draft and request an answer with thinking disabled.
-
-Active-time, context, transcript-storage and 1 MB assembled-response limits still
-apply; an empty length response fails rather than spinning. Transport truncation
-without a valid completed stream remains an error. Instant API requests and raw
-instant requests keep their existing behavior; continuation belongs to managed runs, including eval runs.
-A fresh run snapshots its generation limit and scheduling slice, so configuration
-changes require a new fresh run; retry preserves that original agent snapshot.
-
-### Evidence and worker review refinements
-
-Compaction source packets retain bounded ancestor scalar metadata with each
-original excerpt, preserving schema names, units, citation identity and scope
-without domain-specific compactor rules.
-
-Supervisor metrics distinguish normal compaction waiting from held runs and flag
-empty structured result collections for review. Such flags are advisory, not
-execution failures; bounded final-report excerpts allow review of useful output
-separately from successful execution. Factual support still requires source review.
-
-Compactor input admission counts the fully annotated, serialized request using the
-compactor's model and reserved output budget. Oversized requests are partitioned
-at complete exchange boundaries. Each accepted prefix checkpoint advances only
-through messages actually summarized; the parent repeats compaction if its
-remaining context is still over threshold. Original transcript messages remain
-intact. A single exchange that cannot fit is held with an explicit diagnostic;
-it is never silently truncated or recursively compacted by the child.
-
-## CLI simplification, schema 31
-
-The schema 31 simplification removed superseded names without aliases.
-The compatibility freeze, including approved schema 41 parser semantics, governs further changes. Public
-commands use `instant` for interactive requests and `daemon` for LaunchAgent
-management plus foreground execution. `status` includes fleet/runtime/presence;
-`--details` includes scheduling. `daemon status` reports local service installation.
-Queue inspection uses filtered runs. `runs pause` holds queued work or interrupts
-active work with a durable hold; `runs resume` releases it. Agent/trigger updates
-own `enabled`; config updates own partial scheduler settings. Skill/tool CRUD
-refreshes registrations; explicit reload remains advanced. Eval sampling and
-release are internal-only, excluded from public CLI and HTTP discovery. Advanced
-help exposes recovery, cache, schema, verification and diagnostic operations.
-
-## CLI and HTTP surface (schema 32)
-
-Cache inspection is part of `agents get`; saved cache removal is
-`agents cache delete`. Root token rotation is `config token rotate`. Command words use spaces rather than hyphens.
-The boolean config field `httpEnabled` defaults to true. Setting it false and
-restarting disables the HTTP listener, while local CLI control remains available.
-The replaced names remain absent; the freeze protects the current names.
-
-## CLI observation and discovery (schema 33)
-
-Root help exposes a compact command tree; exact command help adds metadata.
-Model capabilities belong to `models get` and the aggregate `status --doctor` report.
-`config reload` adopts skill/tool filesystem edits. Removed commands and flags
-have no aliases: use `--verbosity` and `--no-input`.
-
-`agents run --wait` and `instant create --wait` submit once, then poll the shared
-get procedures until terminal. They compose the existing acceptance and detail
-result contracts. They never cancel daemon work on timeout or signal, and errors
-after acceptance include the accepted resource ID. Scheduling remains unchanged.
-
-`runs transcript --tail` follows committed event sequences. Its shared request
-supports `recent` or `afterSequence` without snapshot pagination cursors.
-`daemon logs --tail` follows active files by byte offset and handles rotation,
-truncation and incomplete UTF-8 lines. Tail output is JSONL using normal envelopes.
-Waits default to 120 minutes; tails have no default deadline. Both accept explicit
-observation timeouts up to 1440 minutes. Neither changes agent execution timeouts.
-
-### Model testing and memory release
-
-`nightcrew models test MODEL_ID --prompt TEXT` sends a transient, tool-free prompt
-through the selected configured chat model. It uses a fresh unsaved context,
-returns output/usage/elapsedMs, and creates no agent, run, hook or instant request.
-Defaults are thinking false, temperature 0, maxOutputTokens 64 and timeoutMs 60000.
-The request accepts these overrides through JSON. Audio models require audio
-input and are rejected by this text-only command.
-
-`nightcrew models unload MODEL_ID` unloads that resident model;
-`nightcrew models unload --all` unloads every resident model. Exactly one selector
-is required. Both commands refuse active computation instead of cancelling it.
-Unloading stops the owned llama.cpp process, preserving weight and cache files.
-Model operations reserve the idle scheduler, honor cancellation/timeouts and settle
-before daemon shutdown. Testing does not change instantModelID, presence or
-cooldown settings. Models remain subject to idle unloading after a successful test.
-
-### Measured run context usage
-
-Run details include a nullable `contextUsage` snapshot: inputTokens, outputTokens,
-capacityTokens, measuredAt and turnID. Prompt preparation records the actual
-templated token count including tool definitions, system/skill instructions and
-retained context; accepted compaction replaces it with the reduced prompt count.
-Generation completion records that inference's reported input/output usage, not
-a cumulative daily total. During generation the last measured prompt count stays
-visible; streamed text is not heuristically tokenized. Snapshots survive restart
-and unloading. Older runs remain null until their next measured inference; reads
-do not load a model merely to fill the counter. This is the latest evaluated
-context, not a claim that model memory remains resident after unloading.
-
-### Explicit capability refresh
-
-`runs refresh RUN_ID` accepts `expectedRevision` and applies the
-agent's current tool/skill definitions to a terminal run with no pending input.
-It never submits a message or changes the run's model, prompt, history, state,
-or scheduling. Prior tool/skill snapshots remain in `configurationChanged` events; refresh
-events retain only time, turn and source agent revision; the previous token measurement is invalidated. Dry-run does not write,
-revision conflicts reject, and active runs cannot be refreshed. This is an
-explicit supervisor operation; ordinary fresh-run replies still retain their
-configured capability list.
+- Fresh agents create independent runs. Persistent agents retain one run ID and transcript across invocations; each turn has its own active-time budget.
+- Clients generate message UUIDs. Identical resubmission of an accepted UUID deduplicates; conflicting reuse is rejected. Attachments and optional thinking overrides belong to each user message.
+- Input messages may omit empty `attachments`/`toolCalls` and null `toolCallID`. Normalized records retain those defaults. Only users attach files, only assistants call tools, and tool results must reference their call ID.
+- `singleTurn` produces a final response without executable tools; `agentLoop` can continue through tool calls. Output-limit continuation can require more than one generation in either mode.
+- Active time counts toward `timeoutMs`; paused time does not. Thinking traces and partial attempt evidence are retained separately from completed answers. A crash can lose deltas after the latest saved checkpoint.
+- Completed and cancelled runs can receive replies. A reply to a cancelled run starts a new turn without reviving cancelled pending inputs. Failed/timed-out fresh runs use explicit retry controls.
+- `execution.state` describes execution. `outcome` separately reports output validation, delivery, hooks, `needsAttention`, and `reasons`. Delivery failure does not rewrite successful inference as failed; validation does not establish factual correctness.
 
 ### Schema-validated completion
 
-Agents may opt in with `finishSchema`, an object JSON Schema (default `null`).
-Nightcrew exposes a special `finish` tool whose arguments are the final result.
-It is not an executable tool and must not appear in `toolIDs`. A singleTurn
-agent can use this signal while remaining free of executable tools. Existing
-agents without a finish schema keep their current completion behavior.
+- `finishSchema` is optional and describes an object. It enables the runtime-owned `finish` tool for chat agents, including `singleTurn` agents. It is never an executable tool registration.
+- The agent must call `finish` alone with valid arguments. Ordinary text, mixed batches, malformed arguments, duplicate JSON keys, or schema mismatch fail immediately as `invalidOutput`. There is no finish repair loop or production executable validator.
+- Accepted output is recorded with completion evidence; lifecycle delivery remains separate. Without `finishSchema`, an ordinary final answer completes the turn.
+- `maxToolCalls` counts attempted executable/builtin calls per user turn. Excess calls receive errors without executing; finalization disables ordinary tools and thinking. `finish` remains available when configured.
+- A tool-free empty visible response in an `agentLoop` gets one finalization attempt before failing. This is not a retry of rejected `finish` output.
 
-A finish call must be alone in its response: mixed batches receive errors and
-none of their calls execute. Valid arguments become the serialized JSON run
-result. Receipt, result and completion commit together. Ordinary text or invalid
-finish calls cannot complete the run; three unsuccessful completion attempts
-fail it. Ordinary executable-tool budgets exclude finish, which remains available
-when the budget is exhausted. Existing output validation still applies to the
-candidate result; normal lifecycle delivery remains separate from finish.
-Configuration and resumed runs retain the snapshotted schema.
+### Managed response continuation
 
-Structured compaction uses four arrays: `objective`, `decisions`, `findings`,
-`nextActions`. Each bullet has `text` and `sources` (original `src:` references).
-The compactor calls finish with this object. Checkpoints retain the original
-structured result; resumed context receives section headings and Markdown text
-bullets, without source references or restored evidence excerpts. Subsequent
-compactors receive previous structured metadata. Unknown source references reject
-the summary before checkpoint adoption; existing bounded compaction retries
-apply. Legacy summary objects and checkpoints remain readable.
+- `maxOutputTokens` limits each generation. A complete stream ending at the output limit records partial text, reasoning, and tool fragments and requests continuation.
+- Text continuation uses exact assistant prefill. Incomplete tool calls never execute; complete calls must be regenerated. Thinking-only limits retain the draft and request a visible answer with thinking disabled.
+- Completion validation and delivery use the assembled answer, never a partial chunk. Active-time, context, storage, and assembled-response limits still apply.
+- Continuation is reconstructed from saved attempts across interruption, restart, and compaction. Instant requests do not use this managed-run continuation mechanism.
 
-Schema validity and resolvable references do not prove factual accuracy or that
-a particular source supports a claim. The compactor prompt preserves goals,
-explicit decisions, observed findings and committed unfinished work, and forbids
-inventing recommendations or promoting hypotheses into facts.
+## Scheduling, triggers and interactive work
 
-### Duplicate keys and supervisor coverage
+- Pending work lives in run state and queued message events. There is no separate queue database or queue command family: use run controls and `status`.
+- Triggers support manual firing, fixed intervals, and cron with explicit timezone. Cron syntax and DST behavior follow `cron-parser`. Missed occurrences are skipped rather than caught up; ordinary dispatch has a small lateness allowance.
+- `skip`, `enqueue`, and `coalesce` govern overlapping trigger work. `triggers fire` submits a saved trigger without shifting its schedule. A stable `occurrenceID` deduplicates retries.
+- Disabling an agent/trigger or timers changes future admission, not accepted history. Scripts and HTTP clients can also submit ordinary turns; polling can be implemented by an agent's first tool call.
+- Background admission requires healthy desktop-away detection and an expired interaction cooldown. Instant work preempts background computation and renews `interactionCooldownMs`, default five minutes.
+- `scheduler.instantModelID` selects the interactive model. Manual instant-agent turns use that model's interactive admission; timer and eval work remain background.
+- The scheduler derives physical slots from model configuration and `maxConcurrent`. Agents do not own permanent physical slots or configure `slotID`.
+- The built-in policy combines agent/model priority, resident-model preference, minimum residency, and wait aging. An optional scheduler executable proposes starts/pauses; Nightcrew validates eligibility, dependencies, ownership, and capacity. Hook failure policy selects built-in fallback or hold.
+- `status --scheduler` evaluates policy, including its hook, without dispatching work. Plain status does not invoke the scheduler hook.
+- Instant requests select their own skills and client tool definitions. Nightcrew executes only its skill reads; client tool calls return to the client. Skill execution is bounded by the request deadline, round count, and memory limits.
+- Instant request state is transient, expires after termination, and is not saved as a run. Clients supply their conversation history on subsequent requests.
 
-Structured finish arguments and JSON-schema-validated output reject duplicate
-object keys, including escaped spellings of the same key. They fail the run and retain diagnostic
-evidence instead of silently accepting the last value. Separate objects may
-reuse field names. The original model response stays in the transcript.
+### Models and caches
 
-The portable supervisor repeats a frozen priority-incident list in each tool
-response. Its validator and exporter require explicit sections for each recent
-failed, held or undelivered run before publishing or advancing its checkpoint.
-Historical capability refreshes alone do not create incidents. Coverage checks
-do not establish factual accuracy, and recovered child failures must be described
-using their parent relationship evidence.
+- `models test MODEL_ID --prompt TEXT` sends a tool-free prompt to configured chat weights without creating a run or changing the instant model. Defaults: thinking off, 64 output tokens, `sampling.temperature: 0`, and a 60000 ms request timeout. It does not accept `parallelToolCalls`.
+- Model testing and `models unload MODEL_ID` / `models unload --all` require an idle runtime. They do not cancel busy work. Unloading releases the owned server, not weights, disk caches, or the OS filesystem cache.
+- Model `slotSnapshots` controls disk KV snapshots. The default location is `<home>/slots/<modelID>`; an absolute base directory can be configured. The scheduler enforces the snapshot budget.
+- Persistent contexts can restore an agent-owned snapshot into a borrowed slot. Missing/incompatible snapshots rebuild from the authoritative transcript. Fresh contexts clear on takeover.
+- `agents get` inspects caches; `agents cache delete` removes saved KV without deleting transcripts. Caches are disposable acceleration, not durable conversation history.
 
-## Evals (0.43.0, schema 44)
+## Context compaction
 
-- Saved eval definitions create ordinary runs with a seeded transcript and exact/default tool responses.
-- The real agent finish contract, validation, model choice, scheduler, interruption recovery and compaction remain active. Eval caches and run IDs are isolated; lifecycle delivery hooks are suppressed.
-- Hidden grading first checks an optional expected JSON Schema, then an optional executable. Schema failure skips the executable. No grader means ungraded; grading never sends repair feedback to the agent.
-- `evals` provides CRUD/run operations, `tools list/set/delete`, and `transcript get/set/append/update/delete`. Shared oRPC contracts power HTTP, control socket and CLI.
-- See [the eval format](eval-format.md) for definition fields, executable protocol, CLI examples, and recovery semantics.
+- Context capacity and transcript storage are separate. Nightcrew counts templated input, including tools and instructions, reserves output space, and disables context shifting. A model's `compactionThresholdTokens` can trigger compaction earlier.
+- An agent chooses an executable summary handler or a separate `singleTurn` summarizer agent. The parent retains its run ID and original messages; a checkpoint records coverage, summary, token counts, and optional child identity.
+- Coverage ends at a complete message/tool-exchange boundary. Requests exclude stored thinking and binary payloads, decode text attachments, and mark omitted binary content.
+- Linked summarizers use their own model/settings and ordinary scheduling. The parent yields compute without consuming active time. Same-model compaction for an interactive parent can inherit interactive admission. Recursive child compaction is disallowed.
+- Compactor admission counts the fully annotated input against the child's context and output reservation. Oversized history is partitioned at complete exchange boundaries; each checkpoint covers only what was actually summarized. An exchange that cannot fit produces a diagnostic rather than silent truncation.
+- Summary targets are bounded by available context and a 4096-token ceiling. Thinking shares the child's generation budget, so reasoning and visible-summary reservations are handled separately.
+- Current structured summaries contain `objective`, `decisions`, `findings`, and `nextActions`, each an array of `{text, sources}` bullets. Source references are generated from original evidence and checked before adoption.
+- Structured checkpoints keep source metadata, while resumed context receives Markdown summary bullets without restored source excerpts. Older plain-summary checkpoints use their retained evidence restoration path. Neither path proves summary accuracy.
+- Executable handlers use their versioned JSON summary protocol from `src/engine/compaction/format.ts`. Existing plain-summary formats remain supported; arbitrary prose is not extracted as JSON.
+- Agent summary failures have bounded `compaction.maxRetries` (default 1, range 0–2). Executable compaction is not automatically retried. Failed children and diagnostics remain recorded.
+- Missing handlers, impossible retained input, or exhausted summary retries hold the parent at `contextFull`. Preparation/runtime failures use `runtimeError`. Resume the parent after correcting the cause; it coordinates its child. Cancellation cancels unfinished child work.
+- Compaction preserves transcripts and invalidates incompatible KV generations. It does not reclaim transcript disk space or compact transient instant requests/audio inference.
+- `contextUsage` reports the latest measured input/output counts, capacity, time, and turn. It is not a cumulative token total or proof that model memory is still resident.
 
-## CLI simplification (schema 42)
+## Transcript storage limits
 
-Use `status --doctor` for configuration, executable, presence and live daemon checks. Online CLI calls the shared daemon operation; unavailable control sockets fall back to read-only local diagnostics. Plain `status` stays a fast runtime overview. Both expose the shared status request/result contract.
+- `storageLimitMB` defaults to 48 and accepts 1–48. It measures serialized run data, including attachments and events, rather than tokens.
+- Admission/execution boundaries enforce byte and collection limits. A storage pause records the exhausted resource, usage, and maximum. New submissions are rejected while held.
+- For byte limits, raise the configured limit where possible and explicitly resume. Increasing MB cannot resolve a collection-count ceiling. Resume rechecks capacity.
+- No automatic transcript deletion, partitioning, rollover, or pruning occurs. Exporting or compacting a run does not free its stored history.
 
-Instant inference uses `instant create`, `instant get`, and `instant delete`. Delete first settles cancellation, then forgets the request and result. `models unload MODEL_ID` and `models unload --all` require an idle runtime and preserve disk caches. `agents cache delete` removes saved KV only; `runs refresh` adopts current capabilities in a terminal run.
+## Hooks
 
-There is no manual annotation/review workflow or public hook retry command. Run outcomes retain execution, validation and delivery evidence; `needsAttention`, status `issues` and `issuesTruncated` are derived rather than manually acknowledged.
+- Lifecycle events are `run.completed`, `run.failed`, `run.invalidOutput`, `run.timedOut`, `run.cancelled`, and `run.storageLimit`.
+- Each configured hook has a stable `hookID` and purpose (`notification` or `delivery`). It receives one JSON line with event/run/agent/turn identity, state, result/error, event sequence, and receipt identity. Storage-limit hooks also receive the limit evidence.
+- The hook start is recorded before execution. Repeated scheduling of the same hook/event does not dispatch it again. Receipt outcomes remain reviewable; hook retry commands and internal retry execution are removed.
+- A storage hook runs after the hold is saved and does not unpause the run. Hook stdout is ignored, not interpreted as a summary.
+- Hooks use bounded execution and a minimal environment. Uncertain started invocations become `unknown` after restart and are not replayed. Recorded dispatch is not a guarantee of exactly-once external delivery, especially if a crash loses an unsaved write.
+- Scheduler hooks, compaction executables, and eval graders have their own request/result protocols. Custom eval checks do not gate ordinary production completion.
 
-## Run records (document format 10; public schema 53)
+## Supervisor review and recovery
 
-- Each run owns only `<home>/runs/<runID>/state.json` (stored format 10).
-  Metadata, messages and events are replaced in one atomic file write using the
-  existing shared storage queue. There is no journal, transcript partition or
-  cross-file transaction. Unsaved progress may be lost when the daemon crashes.
-- Metadata contains version, runID, revision, createdAt, updatedAt, turnID,
-  execution and activeMs. Active generation and compaction
-  identities are derived from their checkpoint events.
-  `turnID` is the originating user message UUID, replacing the numeric segment.
-  `revision` still provides optimistic concurrency for administrative mutations.
-- Configuration snapshots, generation checkpoints, queued turns, compaction,
-  output validation, eval grading and hook invocations live in events. Messages
-  hold conversation content and per-message attachments. Queued messages do not
-  enter model context until activated. The latest configuration event supplies the snapshotted agent, tools and skills;
-  its fingerprint validates the snapshot without a duplicate top-level pointer.
-- Result text is derived from the accepted completion's assistant message; it is
-  not stored a second time. CLI/API detail and exports expose convenient derived
-  fields, including result, attempts, pending inputs and delivery receipts.
-- Generation events update their partial checkpoint instead of adding an event
-  for every token. Lifecycle history retains stable event UUIDs and transcript
-  sequence cursors. Hook invocations preserve stable receipt IDs and uncertain
-  outcomes, not just success/failure messages.
-- Tool start and hook start are saved before external execution. Restart skips
-  calls with recorded results and holds unresolved started calls for review;
-  it does not guess whether their side effects happened. Generation resumes from
-  the last saved state, and compaction retains its linked child/checkpoint.
-- Stop the daemon before upgrading existing runs. Preview or apply the explicit
-  offline migration with `node dist/storage/migrate.js --home ABSOLUTE_HOME`
-  and optional `--apply`. Original run directories remain in the reported backup.
-  Normal reads accept only format 10; the migration accepts formats 3 through 9 and
-  does not replay tools/hooks. Public run projections and export bundles retain
-  their version-4 shape.
-- Storage events have typed payloads. Lifecycle events are stored directly, with
-  their original UUIDs; there is no nested lifecycle event envelope. Document
-  sequence counts all events, while public transcript sequence is derived by
-  counting lifecycle events only, preserving existing cursors.
+- `runs pause` holds queued work or interrupts active work. `runs resume` releases a paused run after its blocking condition is corrected.
+- `runs retry` repeats the last user input in the same transcript using a new client message UUID and a note. It requires a terminal non-compactor run with no pending input and explicit confirmation. It can repeat side effects, so inspect uncertain outcomes first.
+- `runs refresh` adopts current tool/skill definitions in a terminal run without pending input. It preserves model, prompt, history, and execution state; it invalidates the old context measurement. Earlier configuration events own snapshot history, while refresh metadata records time, turn, and source revision.
+- The portable supervisor example produces an advisory Markdown report. Its `finishSchema` governs output shape; custom coverage checks belong in its eval grader. The production exporter renders/saves reports without a separate coverage gate.
+- Supervisor findings are leads for review, not automatic factual verification or permission to change agents. Installed examples are not overwritten by package upgrades.
 
-## Consolidated management (schema 49)
+## Evals
 
-- Use `models create/update/delete` for model definitions; `config update` accepts
-  daemon and scheduler settings, not a replacement models array.
-- `runs list --query TEXT` returns the existing matching excerpts, offsets and
-  event references. Without a query it returns run summaries. Both modes support
-  agent/state filters and pagination. The old `runs search` command and separate
-  HTTP search route are removed; HTTP uses `/v1/runs?query=TEXT`.
-- `status --scheduler` evaluates policy without dispatching work, including an
-  installed scheduler hook. Ordinary status never invokes the hook. It cannot be
-  combined with `--doctor`. The scheduler command family is removed.
-- Offline migration upgrades configuration format 2 to 3 alongside run format 7,
-  preserving per-model context capacities and instant-agent classification.
-  Original configuration and runs remain in the backup. Physical slot IDs change;
-  incompatible disposable KV caches rebuild from authoritative transcripts.
+- Eval definitions seed an ordinary run with a starting transcript and exact/default tool responses, optionally overriding agent generation settings. They use the selected agent/model, ordinary execution limits, continuation, and compaction.
+- Mock tools never fall through to production execution. `finish` cannot be mocked. Lifecycle delivery hooks are suppressed; compaction handlers still execute.
+- Hidden grading first checks an optional expected schema, then an optional executable. Schema failure skips the executable. Neither overrides `finishSchema` or provides repair feedback. Without a grader, the result is ungraded.
+- Evals provide CRUD/run operations, tool-response editing, and transcript editing. Use transcript `set` with `messages: []` to clear a seed.
+- See [eval format](eval-format.md) for executable grading, snapshots, and precise authoring behavior.
 
-## Execution inspection (schema 49)
+## Run records
 
-- `instant create` selects the configured instant slot; callers do not supply
-  slotID. Optional modelID checks the expected instant model, not model selection.
-- Run summaries and details expose execution state only as `execution.state`;
-  outcome describes output validation, delivery, hooks and attention.
-- `status.runtime.active` (and `/v1/status`'s `active`) lists all executions as
-  `{ id, kind, modelID, slotID }`. The array is empty when idle. Scheduler details
-  do not duplicate it. Slot conversation IDs are scoped to their actual owner.
+- Each run owns `runs/<runID>/state.json`, format 10, replaced atomically through the shared storage queue. There is no journal or multi-file transaction; unsaved progress may be lost on crash.
+- Metadata holds identity, revision, timestamps, current turn, execution, and active time. Messages hold conversation content and per-message attachments.
+- Configuration snapshots, queued turns, attempts, compaction, validation, grading, and hook invocations live in typed events. The latest configuration event supplies admitted capabilities; its fingerprint validates that snapshot.
+- Results, attempts, queued inputs, and receipts in detail/export views are derived. Result text comes from the accepted assistant message rather than a second persisted copy.
+- Generation checkpoints update partial progress without writing an event for every token. Event UUIDs and public transcript cursors remain stable; public sequence counts lifecycle events separately from storage events.
+- Recorded tool results suppress re-execution. Unresolved started external calls are held for review; restart does not guess whether a side effect happened. Compaction retains child/checkpoint identity.
+- Normal readers accept current disk formats only. Stop the daemon, preview `node dist/storage/migrate.js --home ABSOLUTE_HOME`, and add `--apply` for an authorized migration. The offline migrator accepts run formats 3–9, preserves originals, and does not replay tools/hooks. Configuration migration produces format 5.
+- Older migrations flattened some history. Snapshots found only in retired fields remain in original-run backups; current configuration events are preserved.
 
-Collection checkpoint events store only their value; identity is derived from the record’s own ID field. Duplicate `data.key` properties are rejected.
+## Operations and validation
 
-## Schema 50 authoring conventions
-
-See [understanding Nightcrew files](configuration.md). Executable handlers use argv; agent modes and pause reasons use camelCase; eval tool overrides use toolID. Compaction JSON Schema is generated from its Zod definition. Configuration format 4 and run format 8 require offline migration; normal reads provide no legacy aliases.
-
-Schema 51 removed finishValidator. Configuration format 5 and run format 9 remove it from definitions and snapshots through offline migration. Executable custom checks run only in eval grading.
-
-Schema 53 accepts concise role-validated message input, changes-based skill/tool updates, metadata-only agent/tool lists, and focused model mutation results. See [configuration](configuration.md#concise-requests-and-responses). Disk formats remain unchanged.
+- `daemon` owns service installation, foreground execution, lifecycle control, and operational logs. Uninstalling it does not delete runtime data or models.
+- `status` reports fleet/runtime state; `daemon status` reports process/service state. `status --doctor` checks readiness without inference and works with the daemon stopped. Inspect `healthy` and individual checks, not just command success.
+- Operational JSONL logging is optional, severity-filtered, rotated, and bounded. Logs contain additional daemon diagnostics, not content or facts already available in run records.
+- `runs export` creates a new private bundle with checksums. `runs verify` checks schemas, identities, ordering, references, and bundle consistency without executing tools. Checksums detect corruption, not authenticity or factual correctness.
+- `--wait` submits once and observes completion; timeout/disconnection does not cancel accepted work. Errors after acceptance retain the accepted ID. `--tail` follows committed transcript events or log offsets and rotation.
+- Waits default to 120 minutes; tails have no default deadline. Explicit observation timeouts are bounded independently of agent execution limits.
+- See the [validation guide](acceptance.md) for mocked checks, opt-in real-model tests, and evidence requirements. Current instructions make no claim that an older live result validates this release.
