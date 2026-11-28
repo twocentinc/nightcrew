@@ -160,7 +160,7 @@ test("HTTP authentication, schema rejection, OpenAPI, revisions and stable pagin
   assert.equal(doc.paths["/rpc"], undefined);
   assert.equal((await q("POST", "/rpc", {})).status, 404);
   const a = await q("PATCH", "/v1/agents/researcher", {
-    expectedRevision: 1,
+    agentVersion: 1,
     changes: { name: "new" },
   });
   assert.equal(a.body.agent.revision, 2);

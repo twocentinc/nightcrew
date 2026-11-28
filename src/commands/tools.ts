@@ -15,14 +15,14 @@ import {
 export const operationInputs = {
   "tools create": z.strictObject({ tool: toolDefinitionSchema }),
   "tools update": z.strictObject({
-    expectedHash: z.string(),
+    expectedHash: z.string().optional(),
     changes: z.strictObject({ ...toolDefinitionSchema.shape })
       .omit({ toolID: true }).partial().extend({
         argv: toolDefinitionSchema.shape.argv.removeDefault().optional(),
         timeoutMs: toolDefinitionSchema.shape.timeoutMs.removeDefault().optional(),
       }),
   }),
-  "tools delete": z.strictObject({ expectedHash: z.string() }),
+  "tools delete": z.strictObject({ expectedHash: z.string().optional() }),
 };
 const requestSchemas: Record<string, z.ZodType> = operationInputs;
 export async function handle(

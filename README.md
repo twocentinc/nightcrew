@@ -40,6 +40,8 @@ the runnable agents included with Nightcrew.
 
 ## Development
 
+Current contract: Nightcrew **0.55.0**, protocol **1**, schema **54**.
+
 Run `npm run lint`, `npm test`, and `npm run test:package`. Real-model tests
 require explicit opt-in. See the
 [validation guide](https://oss.twocents.com/docs/nightcrew/contributing/).

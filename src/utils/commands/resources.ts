@@ -143,7 +143,11 @@ export async function mutateRegistration({
   const current = isSkill ? registry.skills.get(itemID) : registry.tools.get(itemID);
   if (action === "create" && current) fail("already_exists", 409);
   if (action !== "create" && !current) fail("not_found", 404);
-  if (action !== "create" && fingerprint(current) !== value.expectedHash)
+  if (
+    action !== "create" &&
+    value.expectedHash !== undefined &&
+    fingerprint(current) !== value.expectedHash
+  )
     fail("revision_conflict", 409);
   const definition = action === "update"
     ? { ...current, ...(value.changes as object) } : supplied;

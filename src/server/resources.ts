@@ -151,23 +151,14 @@ export function resourceRoutes(
     agentPatch: protectedRoute
       .route({ method: "PATCH", path: "/v1/agents/{agentID}" })
       .input(
-        z.strictObject({
-          agentID: id,
-          expectedRevision: revision,
-          changes: operationInputs["agents update"].shape.changes,
-          dryRun,
-        }),
+        z.union([
+          operationInputs["agents update"].options[0].extend({ agentID: id, dryRun }),
+          operationInputs["agents update"].options[1].extend({ agentID: id, dryRun }),
+        ]),
       )
       .output(z.object({ agent: agentSchema, changed: z.boolean() }))
-      .handler(({ input }) =>
-        api["agents update"]({
-          resourceID: input.agentID,
-          request: {
-            expectedRevision: input.expectedRevision,
-            changes: input.changes,
-          },
-          dryRun: input.dryRun,
-        }),
+      .handler(({ input: { agentID, dryRun, ...request } }) =>
+        api["agents update"]({ resourceID: agentID, request, dryRun }),
       ),
     runCreate: protectedRoute
       .route({

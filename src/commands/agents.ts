@@ -17,29 +17,33 @@ import {
   type ResourceContext,
 } from "../utils/commands/resources.js";
 
+const agentChangesSchema = agentSchema
+  .omit({ agentID: true, revision: true, createdAt: true, updatedAt: true })
+  .partial()
+  .extend({
+    finishSchema: agentSchema.shape.finishSchema.unwrap().optional(),
+    loopPolicy: agentSchema.shape.loopPolicy.unwrap().optional(),
+    compaction: agentSchema.shape.compaction.unwrap().optional(),
+    storageLimitMB: agentSchema.shape.storageLimitMB.unwrap().optional(),
+    contextMode: z.enum(["fresh", "persistent"]).optional(),
+    priority: z.number().int().min(-100).max(100).optional(),
+    timeSliceMs: z.number().int().min(100).max(3600000).optional(),
+    executionClass: agentSchema.shape.executionClass.unwrap().optional(),
+    thinking: z.boolean().optional(),
+    sampling: agentSchema.shape.sampling.removeDefault().optional(),
+    maxOutputTokens: z.number().int().min(1).max(32768).optional(),
+  });
+const agentVersionRequest = z.strictObject({ agentVersion: revision });
+const legacyAgentVersionRequest = z.strictObject({ expectedRevision: revision });
+
 export const operationInputs = {
   "agents run": z.strictObject({ message: userMessageSchema }),
   "agents create": z.strictObject({ agent: agentDraftSchema }),
-  "agents update": z.strictObject({
-    expectedRevision: revision,
-    changes: agentSchema
-      .omit({ agentID: true, revision: true, createdAt: true, updatedAt: true })
-      .partial()
-      .extend({
-        finishSchema: agentSchema.shape.finishSchema.unwrap().optional(),
-        loopPolicy: agentSchema.shape.loopPolicy.unwrap().optional(),
-        compaction: agentSchema.shape.compaction.unwrap().optional(),
-        storageLimitMB: agentSchema.shape.storageLimitMB.unwrap().optional(),
-        contextMode: z.enum(["fresh", "persistent"]).optional(),
-        priority: z.number().int().min(-100).max(100).optional(),
-        timeSliceMs: z.number().int().min(100).max(3600000).optional(),
-        executionClass: agentSchema.shape.executionClass.unwrap().optional(),
-        thinking: z.boolean().optional(),
-        sampling: agentSchema.shape.sampling.removeDefault().optional(),
-        maxOutputTokens: z.number().int().min(1).max(32768).optional(),
-      }),
-  }),
-  "agents delete": z.strictObject({ expectedRevision: revision }),
+  "agents update": z.union([
+    agentVersionRequest.extend({ changes: agentChangesSchema }),
+    legacyAgentVersionRequest.extend({ changes: agentChangesSchema }),
+  ]),
+  "agents delete": z.union([agentVersionRequest, legacyAgentVersionRequest]),
 };
 const requestSchemas: Record<string, z.ZodType> = operationInputs;
 export async function handle(
@@ -68,7 +72,7 @@ export async function handle(
     const value = operationInputs["agents update"].parse(raw);
     return service.patchAgent(
       name ?? fail("missing_id"),
-      value.expectedRevision,
+      "agentVersion" in value ? value.agentVersion : value.expectedRevision,
       value.changes ?? {},
       dryRun,
     );
@@ -182,7 +186,7 @@ const resourceActions: ResourceActions = {
   async mutate({ service, next, action, name, value }: ResourceContext) {
     if (action !== "delete") fail("unknown_command");
     const agent = service.agent(name ?? fail("missing_id"));
-    if (agent.revision !== value.expectedRevision)
+    if (agent.revision !== (value.agentVersion ?? value.expectedRevision))
       fail("revision_conflict", 409);
     next.agents = next.agents.filter((a) => a.agentID !== name);
   },

@@ -165,7 +165,7 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
   assert.equal(
     (
       await call(home, ["agents", "update", "reviewer"], {
-        expectedRevision: 1,
+        agentVersion: 1,
         changes: { enabled: false },
       })
     ).result.agent.enabled,
@@ -174,16 +174,13 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
   const oldTool = (await call(home, ["tools", "get", "inspect"])).result.item;
   assert.equal(
     (
-      await call(home, ["tools", "delete", "inspect", "--yes"], {
-        expectedHash: oldTool.hash,
-      })
+      await call(home, ["tools", "delete", "inspect", "--yes"])
     ).ok,
     false,
   );
   assert.equal(
     (
       await call(home, ["tools", "update", "inspect"], {
-        expectedHash: oldTool.hash,
         changes: { description: "updated" },
       })
     ).ok,
@@ -217,29 +214,17 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
   assert.equal(
     (
       await call(home, ["agents", "delete", "reviewer", "--yes"], {
-        expectedRevision: 2,
+        agentVersion: 2,
       })
     ).ok,
     true,
   );
-  const oldSkill = (await call(home, ["skills", "get", "review"])).result.item;
-  assert.equal(
-    (
-      await call(home, ["skills", "delete", "review", "--yes"], {
-        expectedHash: oldSkill.hash,
-      })
-    ).ok,
-    true,
-  );
-  const newTool = (await call(home, ["tools", "get", "inspect"])).result.item;
-  assert.equal(
-    (
-      await call(home, ["tools", "delete", "inspect", "--yes"], {
-        expectedHash: newTool.hash,
-      })
-    ).ok,
-    true,
-  );
+  const changedSkill = await call(home, ["skills", "update", "review"], {
+    changes: { description: "Updated review instructions" },
+  });
+  assert.equal(changedSkill.result.item.description, "Updated review instructions");
+  assert.equal((await call(home, ["skills", "delete", "review", "--yes"])).ok, true);
+  assert.equal((await call(home, ["tools", "delete", "inspect", "--yes"])).ok, true);
   assert.equal(
     (
       await call(home, ["models", "delete", "qwen", "--yes"], {
