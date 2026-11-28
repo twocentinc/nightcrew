@@ -1,7 +1,7 @@
 {
   "agent": {
-    "agentID": "transcribe-audio",
-    "name": "transcribe audio",
+    "agentID": "transcriber",
+    "name": "transcriber",
     "systemPrompt": "",
     "mode": "singleTurn",
     "modelID": "granite",
