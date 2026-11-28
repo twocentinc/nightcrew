@@ -171,6 +171,9 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
     ).result.agent.enabled,
     false,
   );
+  const fetchedAgent = (await call(home, ["agents", "get", "reviewer"])).result.item;
+  assert.equal(fetchedAgent.agentVersion, 2);
+  assert.equal("revision" in fetchedAgent, false);
   const oldTool = (await call(home, ["tools", "get", "inspect"])).result.item;
   assert.equal(
     (

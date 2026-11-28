@@ -221,7 +221,7 @@ test("trigger CRUD keeps revisions and anchors, rejects dangling agents, and lea
     f.invoke(
       "agents delete",
       "reviewer",
-      { expectedRevision: 1 },
+      { agentVersion: 1 },
       { yes: true },
     ),
     /trigger agent reference/,

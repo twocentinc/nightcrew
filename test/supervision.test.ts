@@ -218,7 +218,7 @@ test("unconfigured output is unverified and ordinary hooks are not deliveries", 
 test("removed finishValidator is rejected by agent updates", async (t) => {
   const f = await fixture(t, async () => ({text: "answer"}));
   await assert.rejects(() => manage(f.service, {command: "agents update", resourceID: "worker", request: {
-    expectedRevision: f.service.agent("worker").revision,
+    agentVersion: f.service.agent("worker").revision,
     changes: {finishValidator: {executablePath: "/usr/bin/false", argv: [], timeoutMs: 100}},
   }}));
   const r = await f.submit();

@@ -10,8 +10,8 @@ import { packageVersion } from "../engine/protocol.js";
 import { Service } from "../engine/service.js";
 import {
   agentDraftSchema,
-  agentSchema,
-  agentSummarySchema,
+  agentResourceSchema,
+  agentResourceSummarySchema,
   skillSchema,
   skillMetadataSchema,
 } from "../schemas/agent.js";
@@ -120,7 +120,7 @@ export function resourceRoutes(
     agentsList: protectedRoute
       .route({ method: "GET", path: "/v1/agents" })
       .input(pageSchema.extend({ enabled: optionalBoolean }))
-      .output(pageOutput(agentSummarySchema))
+      .output(pageOutput(agentResourceSummarySchema))
       .handler(({ input }) =>
         page("agents:" + input.enabled, input, async () =>
           (await api["agents list"](noResource)).items.filter(
@@ -131,7 +131,7 @@ export function resourceRoutes(
     agentsCreate: protectedRoute
       .route({ method: "POST", path: "/v1/agents" })
       .input(z.strictObject({ agent: agentDraftSchema, dryRun }))
-      .output(z.object({ agent: agentSchema, changed: z.boolean() }))
+      .output(z.object({ agent: agentResourceSchema, changed: z.boolean() }))
       .handler(({ input }) =>
         api["agents create"]({
           resourceID: undefined,
@@ -142,7 +142,7 @@ export function resourceRoutes(
     agentGet: protectedRoute
       .route({ method: "GET", path: "/v1/agents/{agentID}" })
       .input(z.strictObject({ agentID: id }))
-      .output(z.object({ agent: agentSchema }))
+      .output(z.object({ agent: agentResourceSchema }))
       .handler(async ({ input }) => ({
         agent: (
           await api["agents get"]({ resourceID: input.agentID, request: {} })
@@ -151,12 +151,9 @@ export function resourceRoutes(
     agentPatch: protectedRoute
       .route({ method: "PATCH", path: "/v1/agents/{agentID}" })
       .input(
-        z.union([
-          operationInputs["agents update"].options[0].extend({ agentID: id, dryRun }),
-          operationInputs["agents update"].options[1].extend({ agentID: id, dryRun }),
-        ]),
+        operationInputs["agents update"].extend({ agentID: id, dryRun }),
       )
-      .output(z.object({ agent: agentSchema, changed: z.boolean() }))
+      .output(z.object({ agent: agentResourceSchema, changed: z.boolean() }))
       .handler(({ input: { agentID, dryRun, ...request } }) =>
         api["agents update"]({ resourceID: agentID, request, dryRun }),
       ),

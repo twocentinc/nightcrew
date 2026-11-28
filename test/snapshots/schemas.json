@@ -409,6 +409,11 @@
             "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
             "type": "string"
           },
+          "agentVersion": {
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647,
+            "type": "integer"
+          },
           "compaction": {
             "anyOf": [
               {
@@ -593,11 +598,6 @@
             "minimum": -100,
             "type": "integer"
           },
-          "revision": {
-            "exclusiveMinimum": 0,
-            "maximum": 2147483647,
-            "type": "integer"
-          },
           "sampling": {
             "additionalProperties": false,
             "default": {
@@ -697,7 +697,6 @@
           "priority",
           "timeSliceMs",
           "agentID",
-          "revision",
           "name",
           "systemPrompt",
           "mode",
@@ -711,7 +710,8 @@
           "timeoutMs",
           "enabled",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "agentVersion"
         ],
         "type": "object"
       },
@@ -727,36 +727,18 @@
   },
   "agents.delete.request": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "anyOf": [
-      {
-        "additionalProperties": false,
-        "properties": {
-          "agentVersion": {
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "agentVersion"
-        ],
-        "type": "object"
-      },
-      {
-        "additionalProperties": false,
-        "properties": {
-          "expectedRevision": {
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "expectedRevision"
-        ],
-        "type": "object"
+    "additionalProperties": false,
+    "properties": {
+      "agentVersion": {
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991,
+        "type": "integer"
       }
-    ]
+    },
+    "required": [
+      "agentVersion"
+    ],
+    "type": "object"
   },
   "agents.delete.result": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1236,6 +1218,11 @@
             "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
             "type": "string"
           },
+          "agentVersion": {
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647,
+            "type": "integer"
+          },
           "compaction": {
             "anyOf": [
               {
@@ -1420,11 +1407,6 @@
             "minimum": -100,
             "type": "integer"
           },
-          "revision": {
-            "exclusiveMinimum": 0,
-            "maximum": 2147483647,
-            "type": "integer"
-          },
           "sampling": {
             "additionalProperties": false,
             "default": {
@@ -1524,7 +1506,6 @@
           "priority",
           "timeSliceMs",
           "agentID",
-          "revision",
           "name",
           "systemPrompt",
           "mode",
@@ -1538,7 +1519,8 @@
           "timeoutMs",
           "enabled",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "agentVersion"
         ],
         "type": "object"
       }
@@ -1566,6 +1548,11 @@
             "agentID": {
               "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
               "type": "string"
+            },
+            "agentVersion": {
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647,
+              "type": "integer"
             },
             "contextMode": {
               "default": "fresh",
@@ -1602,11 +1589,6 @@
               "minLength": 1,
               "type": "string"
             },
-            "revision": {
-              "exclusiveMinimum": 0,
-              "maximum": 2147483647,
-              "type": "integer"
-            },
             "updatedAt": {
               "format": "date-time",
               "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$",
@@ -1616,13 +1598,13 @@
           "required": [
             "agentID",
             "name",
-            "revision",
             "modelID",
             "mode",
             "executionClass",
             "contextMode",
             "enabled",
-            "updatedAt"
+            "updatedAt",
+            "agentVersion"
           ],
           "type": "object"
         },
@@ -4831,524 +4813,262 @@
       }
     },
     "$schema": "https://json-schema.org/draft/2020-12/schema",
-    "anyOf": [
-      {
-        "additionalProperties": false,
-        "properties": {
-          "agentVersion": {
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991,
-            "type": "integer"
-          },
-          "changes": {
-            "additionalProperties": false,
-            "properties": {
-              "compaction": {
-                "anyOf": [
-                  {
-                    "additionalProperties": false,
-                    "properties": {
-                      "handler": {
-                        "oneOf": [
-                          {
-                            "additionalProperties": false,
-                            "properties": {
-                              "agentID": {
-                                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                                "type": "string"
-                              },
-                              "type": {
-                                "const": "agent",
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "agentID"
-                            ],
-                            "type": "object"
-                          },
-                          {
-                            "additionalProperties": false,
-                            "properties": {
-                              "argv": {
-                                "default": [],
-                                "items": {
-                                  "maxLength": 4000,
-                                  "type": "string"
-                                },
-                                "maxItems": 64,
-                                "type": "array"
-                              },
-                              "executablePath": {
-                                "maxLength": 4096,
-                                "type": "string"
-                              },
-                              "timeoutMs": {
-                                "default": 60000,
-                                "maximum": 600000,
-                                "minimum": 100,
-                                "type": "integer"
-                              },
-                              "type": {
-                                "const": "exec",
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "executablePath",
-                              "type"
-                            ],
-                            "type": "object"
-                          }
-                        ]
-                      },
-                      "maxRetries": {
-                        "default": 1,
-                        "maximum": 2,
-                        "minimum": 0,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "handler"
-                    ],
-                    "type": "object"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "contextMode": {
-                "enum": [
-                  "fresh",
-                  "persistent"
-                ],
-                "type": "string"
-              },
-              "enabled": {
-                "type": "boolean"
-              },
-              "executionClass": {
-                "enum": [
-                  "background",
-                  "instant"
-                ],
-                "type": "string"
-              },
-              "finishSchema": {
-                "anyOf": [
-                  {
-                    "additionalProperties": {
-                      "$ref": "#/$defs/__schema0"
-                    },
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "type": "object"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "loopPolicy": {
-                "additionalProperties": false,
-                "properties": {
-                  "consecutiveErrors": {
-                    "default": 3,
-                    "maximum": 20,
-                    "minimum": 2,
-                    "type": "integer"
-                  },
-                  "repeatedCalls": {
-                    "default": 3,
-                    "maximum": 20,
-                    "minimum": 2,
-                    "type": "integer"
-                  }
-                },
-                "type": "object"
-              },
-              "maxOutputTokens": {
-                "maximum": 32768,
-                "minimum": 1,
-                "type": "integer"
-              },
-              "maxToolCalls": {
-                "maximum": 1000,
-                "minimum": 1,
-                "type": "integer"
-              },
-              "mode": {
-                "enum": [
-                  "singleTurn",
-                  "agentLoop"
-                ],
-                "type": "string"
-              },
-              "modelID": {
-                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                "type": "string"
-              },
-              "name": {
-                "maxLength": 200,
-                "minLength": 1,
-                "type": "string"
-              },
-              "parallelToolCalls": {
-                "type": "boolean"
-              },
-              "priority": {
-                "maximum": 100,
-                "minimum": -100,
-                "type": "integer"
-              },
-              "sampling": {
-                "additionalProperties": false,
-                "properties": {
-                  "minP": {
-                    "maximum": 1,
-                    "minimum": 0,
-                    "type": "number"
-                  },
-                  "presencePenalty": {
-                    "maximum": 2,
-                    "minimum": -2,
-                    "type": "number"
-                  },
-                  "repeatPenalty": {
-                    "maximum": 2,
-                    "minimum": 0,
-                    "type": "number"
-                  },
-                  "temperature": {
-                    "default": 0.7,
-                    "maximum": 2,
-                    "minimum": 0,
-                    "type": "number"
-                  },
-                  "topK": {
-                    "maximum": 1000,
-                    "minimum": 0,
-                    "type": "integer"
-                  },
-                  "topP": {
-                    "maximum": 1,
-                    "minimum": 0,
-                    "type": "number"
-                  }
-                },
-                "type": "object"
-              },
-              "skillIDs": {
-                "items": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                },
-                "maxItems": 40,
-                "type": "array"
-              },
-              "storageLimitMB": {
-                "maximum": 48,
-                "minimum": 1,
-                "type": "integer"
-              },
-              "systemPrompt": {
-                "maxLength": 64000,
-                "type": "string"
-              },
-              "thinking": {
-                "type": "boolean"
-              },
-              "timeSliceMs": {
-                "maximum": 3600000,
-                "minimum": 100,
-                "type": "integer"
-              },
-              "timeoutMs": {
-                "maximum": 86400000,
-                "minimum": 1000,
-                "type": "integer"
-              },
-              "toolIDs": {
-                "items": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                },
-                "maxItems": 64,
-                "type": "array"
-              }
-            },
-            "type": "object"
-          }
-        },
-        "required": [
-          "agentVersion",
-          "changes"
-        ],
-        "type": "object"
+    "additionalProperties": false,
+    "properties": {
+      "agentVersion": {
+        "exclusiveMinimum": 0,
+        "maximum": 9007199254740991,
+        "type": "integer"
       },
-      {
+      "changes": {
         "additionalProperties": false,
         "properties": {
-          "changes": {
+          "compaction": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "handler": {
+                    "oneOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "agentID": {
+                            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+                            "type": "string"
+                          },
+                          "type": {
+                            "const": "agent",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "type",
+                          "agentID"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "argv": {
+                            "default": [],
+                            "items": {
+                              "maxLength": 4000,
+                              "type": "string"
+                            },
+                            "maxItems": 64,
+                            "type": "array"
+                          },
+                          "executablePath": {
+                            "maxLength": 4096,
+                            "type": "string"
+                          },
+                          "timeoutMs": {
+                            "default": 60000,
+                            "maximum": 600000,
+                            "minimum": 100,
+                            "type": "integer"
+                          },
+                          "type": {
+                            "const": "exec",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "executablePath",
+                          "type"
+                        ],
+                        "type": "object"
+                      }
+                    ]
+                  },
+                  "maxRetries": {
+                    "default": 1,
+                    "maximum": 2,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "handler"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contextMode": {
+            "enum": [
+              "fresh",
+              "persistent"
+            ],
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "executionClass": {
+            "enum": [
+              "background",
+              "instant"
+            ],
+            "type": "string"
+          },
+          "finishSchema": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "$ref": "#/$defs/__schema0"
+                },
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "loopPolicy": {
             "additionalProperties": false,
             "properties": {
-              "compaction": {
-                "anyOf": [
-                  {
-                    "additionalProperties": false,
-                    "properties": {
-                      "handler": {
-                        "oneOf": [
-                          {
-                            "additionalProperties": false,
-                            "properties": {
-                              "agentID": {
-                                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                                "type": "string"
-                              },
-                              "type": {
-                                "const": "agent",
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "type",
-                              "agentID"
-                            ],
-                            "type": "object"
-                          },
-                          {
-                            "additionalProperties": false,
-                            "properties": {
-                              "argv": {
-                                "default": [],
-                                "items": {
-                                  "maxLength": 4000,
-                                  "type": "string"
-                                },
-                                "maxItems": 64,
-                                "type": "array"
-                              },
-                              "executablePath": {
-                                "maxLength": 4096,
-                                "type": "string"
-                              },
-                              "timeoutMs": {
-                                "default": 60000,
-                                "maximum": 600000,
-                                "minimum": 100,
-                                "type": "integer"
-                              },
-                              "type": {
-                                "const": "exec",
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "executablePath",
-                              "type"
-                            ],
-                            "type": "object"
-                          }
-                        ]
-                      },
-                      "maxRetries": {
-                        "default": 1,
-                        "maximum": 2,
-                        "minimum": 0,
-                        "type": "integer"
-                      }
-                    },
-                    "required": [
-                      "handler"
-                    ],
-                    "type": "object"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "contextMode": {
-                "enum": [
-                  "fresh",
-                  "persistent"
-                ],
-                "type": "string"
-              },
-              "enabled": {
-                "type": "boolean"
-              },
-              "executionClass": {
-                "enum": [
-                  "background",
-                  "instant"
-                ],
-                "type": "string"
-              },
-              "finishSchema": {
-                "anyOf": [
-                  {
-                    "additionalProperties": {
-                      "$ref": "#/$defs/__schema0"
-                    },
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "type": "object"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "loopPolicy": {
-                "additionalProperties": false,
-                "properties": {
-                  "consecutiveErrors": {
-                    "default": 3,
-                    "maximum": 20,
-                    "minimum": 2,
-                    "type": "integer"
-                  },
-                  "repeatedCalls": {
-                    "default": 3,
-                    "maximum": 20,
-                    "minimum": 2,
-                    "type": "integer"
-                  }
-                },
-                "type": "object"
-              },
-              "maxOutputTokens": {
-                "maximum": 32768,
-                "minimum": 1,
+              "consecutiveErrors": {
+                "default": 3,
+                "maximum": 20,
+                "minimum": 2,
                 "type": "integer"
               },
-              "maxToolCalls": {
-                "maximum": 1000,
-                "minimum": 1,
+              "repeatedCalls": {
+                "default": 3,
+                "maximum": 20,
+                "minimum": 2,
                 "type": "integer"
-              },
-              "mode": {
-                "enum": [
-                  "singleTurn",
-                  "agentLoop"
-                ],
-                "type": "string"
-              },
-              "modelID": {
-                "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                "type": "string"
-              },
-              "name": {
-                "maxLength": 200,
-                "minLength": 1,
-                "type": "string"
-              },
-              "parallelToolCalls": {
-                "type": "boolean"
-              },
-              "priority": {
-                "maximum": 100,
-                "minimum": -100,
-                "type": "integer"
-              },
-              "sampling": {
-                "additionalProperties": false,
-                "properties": {
-                  "minP": {
-                    "maximum": 1,
-                    "minimum": 0,
-                    "type": "number"
-                  },
-                  "presencePenalty": {
-                    "maximum": 2,
-                    "minimum": -2,
-                    "type": "number"
-                  },
-                  "repeatPenalty": {
-                    "maximum": 2,
-                    "minimum": 0,
-                    "type": "number"
-                  },
-                  "temperature": {
-                    "default": 0.7,
-                    "maximum": 2,
-                    "minimum": 0,
-                    "type": "number"
-                  },
-                  "topK": {
-                    "maximum": 1000,
-                    "minimum": 0,
-                    "type": "integer"
-                  },
-                  "topP": {
-                    "maximum": 1,
-                    "minimum": 0,
-                    "type": "number"
-                  }
-                },
-                "type": "object"
-              },
-              "skillIDs": {
-                "items": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                },
-                "maxItems": 40,
-                "type": "array"
-              },
-              "storageLimitMB": {
-                "maximum": 48,
-                "minimum": 1,
-                "type": "integer"
-              },
-              "systemPrompt": {
-                "maxLength": 64000,
-                "type": "string"
-              },
-              "thinking": {
-                "type": "boolean"
-              },
-              "timeSliceMs": {
-                "maximum": 3600000,
-                "minimum": 100,
-                "type": "integer"
-              },
-              "timeoutMs": {
-                "maximum": 86400000,
-                "minimum": 1000,
-                "type": "integer"
-              },
-              "toolIDs": {
-                "items": {
-                  "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
-                  "type": "string"
-                },
-                "maxItems": 64,
-                "type": "array"
               }
             },
             "type": "object"
           },
-          "expectedRevision": {
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991,
+          "maxOutputTokens": {
+            "maximum": 32768,
+            "minimum": 1,
             "type": "integer"
+          },
+          "maxToolCalls": {
+            "maximum": 1000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "mode": {
+            "enum": [
+              "singleTurn",
+              "agentLoop"
+            ],
+            "type": "string"
+          },
+          "modelID": {
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "parallelToolCalls": {
+            "type": "boolean"
+          },
+          "priority": {
+            "maximum": 100,
+            "minimum": -100,
+            "type": "integer"
+          },
+          "sampling": {
+            "additionalProperties": false,
+            "properties": {
+              "minP": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              },
+              "presencePenalty": {
+                "maximum": 2,
+                "minimum": -2,
+                "type": "number"
+              },
+              "repeatPenalty": {
+                "maximum": 2,
+                "minimum": 0,
+                "type": "number"
+              },
+              "temperature": {
+                "default": 0.7,
+                "maximum": 2,
+                "minimum": 0,
+                "type": "number"
+              },
+              "topK": {
+                "maximum": 1000,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "topP": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "type": "object"
+          },
+          "skillIDs": {
+            "items": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+              "type": "string"
+            },
+            "maxItems": 40,
+            "type": "array"
+          },
+          "storageLimitMB": {
+            "maximum": 48,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "systemPrompt": {
+            "maxLength": 64000,
+            "type": "string"
+          },
+          "thinking": {
+            "type": "boolean"
+          },
+          "timeSliceMs": {
+            "maximum": 3600000,
+            "minimum": 100,
+            "type": "integer"
+          },
+          "timeoutMs": {
+            "maximum": 86400000,
+            "minimum": 1000,
+            "type": "integer"
+          },
+          "toolIDs": {
+            "items": {
+              "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
+              "type": "string"
+            },
+            "maxItems": 64,
+            "type": "array"
           }
         },
-        "required": [
-          "expectedRevision",
-          "changes"
-        ],
         "type": "object"
       }
-    ]
+    },
+    "required": [
+      "agentVersion",
+      "changes"
+    ],
+    "type": "object"
   },
   "agents.update.result": {
     "$defs": {
@@ -5393,6 +5113,11 @@
           "agentID": {
             "pattern": "^[a-zA-Z0-9][a-zA-Z0-9_-]{0,127}$",
             "type": "string"
+          },
+          "agentVersion": {
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647,
+            "type": "integer"
           },
           "compaction": {
             "anyOf": [
@@ -5578,11 +5303,6 @@
             "minimum": -100,
             "type": "integer"
           },
-          "revision": {
-            "exclusiveMinimum": 0,
-            "maximum": 2147483647,
-            "type": "integer"
-          },
           "sampling": {
             "additionalProperties": false,
             "default": {
@@ -5682,7 +5402,6 @@
           "priority",
           "timeSliceMs",
           "agentID",
-          "revision",
           "name",
           "systemPrompt",
           "mode",
@@ -5696,7 +5415,8 @@
           "timeoutMs",
           "enabled",
           "createdAt",
-          "updatedAt"
+          "updatedAt",
+          "agentVersion"
         ],
         "type": "object"
       },

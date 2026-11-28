@@ -488,7 +488,7 @@ test("eval compaction uses a linked agent and resumes the parent before grading"
     command: "agents update",
     resourceID: "worker",
     request: {
-      expectedRevision: 1,
+      agentVersion: 1,
       changes: {
         compaction: { handler: { type: "agent", agentID: "summarizer" } },
       },

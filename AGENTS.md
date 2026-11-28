@@ -144,7 +144,7 @@ behavior without an actual model-specific check.
 Real-model tests live under `test/live/`, outside the default suite. Do not run
 them without explicit authorization for inference.
 
-The public contract is frozen at schema 54; follow
+The public contract is frozen at schema 55; follow
 [the compatibility policy](https://oss.twocents.com/docs/nightcrew/compatibility/).
 Do not remove or rename public commands, tighten accepted inputs, or change
 execution semantics without explicitly reopening the freeze. Schema increments

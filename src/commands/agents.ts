@@ -4,7 +4,9 @@ import { Service, fail } from "../engine/service.js";
 import {
   agentDraftSchema,
   agentSchema,
-  agentSummarySchema,
+  agentResourceSchema,
+  agentResourceSummarySchema,
+  type Agent,
 } from "../schemas/agent.js";
 import { id, revision, userMessageSchema } from "../schemas/common.js";
 import { configMutation } from "../schemas/config.js";
@@ -34,16 +36,15 @@ const agentChangesSchema = agentSchema
     maxOutputTokens: z.number().int().min(1).max(32768).optional(),
   });
 const agentVersionRequest = z.strictObject({ agentVersion: revision });
-const legacyAgentVersionRequest = z.strictObject({ expectedRevision: revision });
+function exposeAgent({ revision: agentVersion, ...agent }: Agent) {
+  return { ...agent, agentVersion };
+}
 
 export const operationInputs = {
   "agents run": z.strictObject({ message: userMessageSchema }),
   "agents create": z.strictObject({ agent: agentDraftSchema }),
-  "agents update": z.union([
-    agentVersionRequest.extend({ changes: agentChangesSchema }),
-    legacyAgentVersionRequest.extend({ changes: agentChangesSchema }),
-  ]),
-  "agents delete": z.union([agentVersionRequest, legacyAgentVersionRequest]),
+  "agents update": agentVersionRequest.extend({ changes: agentChangesSchema }),
+  "agents delete": agentVersionRequest,
 };
 const requestSchemas: Record<string, z.ZodType> = operationInputs;
 export async function handle(
@@ -66,16 +67,18 @@ export async function handle(
   }
   if (command === "agents create") {
     const value = operationInputs["agents create"].parse(raw);
-    return service.createAgent(value.agent, dryRun);
+    const result = await service.createAgent(value.agent, dryRun);
+    return { ...result, agent: exposeAgent(result.agent) };
   }
   if (command === "agents update") {
     const value = operationInputs["agents update"].parse(raw);
-    return service.patchAgent(
+    const result = await service.patchAgent(
       name ?? fail("missing_id"),
-      "agentVersion" in value ? value.agentVersion : value.expectedRevision,
-      value.changes ?? {},
+      value.agentVersion,
+      value.changes,
       dryRun,
     );
+    return { ...result, agent: exposeAgent(result.agent) };
   }
   if (command === "agents run") {
     const { message } = operationInputs["agents run"].parse(raw);
@@ -88,13 +91,13 @@ export const operations = {
   "agents list": defineOperation(
     "agents list",
     "List agents",
-    z.object({ items: z.array(agentSummarySchema) }),
+    z.object({ items: z.array(agentResourceSummarySchema) }),
   ),
   "agents get": defineOperation(
     "agents get",
     "Inspect one agent",
     z.object({
-      item: agentSchema,
+      item: agentResourceSchema,
       cache: z
         .object({
           contextID: z.string(),
@@ -114,7 +117,7 @@ export const operations = {
   "agents create": defineOperation(
     "agents create",
     "create agents",
-    z.object({ agent: agentSchema, changed: z.boolean() }),
+    z.object({ agent: agentResourceSchema, changed: z.boolean() }),
     true,
     "none",
     false,
@@ -122,7 +125,7 @@ export const operations = {
   "agents update": defineOperation(
     "agents update",
     "update agents",
-    z.object({ agent: agentSchema, changed: z.boolean() }),
+    z.object({ agent: agentResourceSchema, changed: z.boolean() }),
     true,
     "required",
     false,
@@ -169,7 +172,7 @@ const resourceActions: ResourceActions = {
     const items = next.agents;
     if (action === "list")
       return {
-        items: items.map((item) => agentSummarySchema.strip().parse(item)),
+        items: items.map((item) => agentResourceSummarySchema.strip().parse(exposeAgent(item))),
       };
     const item =
       items.find((x) => x.agentID === name) ?? fail("not_found", 404);
@@ -179,14 +182,14 @@ const resourceActions: ResourceActions = {
       false,
     );
     return {
-      item,
+      item: exposeAgent(item),
       cache: cache ? { contextID: cache.contextID, items: cache.items } : null,
     };
   },
   async mutate({ service, next, action, name, value }: ResourceContext) {
     if (action !== "delete") fail("unknown_command");
     const agent = service.agent(name ?? fail("missing_id"));
-    if (agent.revision !== (value.agentVersion ?? value.expectedRevision))
+    if (agent.revision !== value.agentVersion)
       fail("revision_conflict", 409);
     next.agents = next.agents.filter((a) => a.agentID !== name);
   },

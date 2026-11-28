@@ -163,11 +163,22 @@ test("HTTP authentication, schema rejection, OpenAPI, revisions and stable pagin
     agentVersion: 1,
     changes: { name: "new" },
   });
-  assert.equal(a.body.agent.revision, 2);
+  assert.equal(a.body.agent.agentVersion, 2);
+  assert.equal(
+    (await q("GET", "/v1/agents/researcher")).body.agent.agentVersion,
+    2,
+  );
+  assert.equal(
+    (await q("PATCH", "/v1/agents/researcher", {
+      expectedRevision: 2,
+      changes: { name: "legacy" },
+    })).status,
+    400,
+  );
   assert.equal(
     (
       await q("PATCH", "/v1/agents/researcher", {
-        expectedRevision: 1,
+        agentVersion: 1,
         changes: { name: "bad" },
       })
     ).status,
@@ -316,7 +327,7 @@ test("completed replies preserve snapshots, attachments and stable transcript cu
       "completed",
   );
   await q("PATCH", "/v1/agents/researcher", {
-    expectedRevision: 1,
+    agentVersion: 1,
     changes: { systemPrompt: "future only" },
   });
   const followup = {
@@ -505,7 +516,7 @@ test("active timeout settles a run and hook delivery survives restart without re
   ];
   await storage.exclusive(() => storage.saveConfig(config));
   await f.request("PATCH", "/v1/agents/researcher", {
-    expectedRevision: 1,
+    agentVersion: 1,
     changes: { timeoutMs: 1000 },
   });
   const first = (
@@ -584,7 +595,7 @@ test("custom executable tools run with snapshotted definitions and appear in dis
   };
   await manage(f.app.service, { command: "tools create", request: { tool } });
   await f.request("PATCH", "/v1/agents/researcher", {
-    expectedRevision: 1,
+    agentVersion: 1,
     changes: { mode: "agentLoop", toolIDs: ["inspect"] },
   });
   assert.equal(
@@ -633,12 +644,12 @@ test("agent generation settings are snapshotted and passed to inference", async 
     };
   });
   const updated = await f.request("PATCH", "/v1/agents/researcher", {
-    expectedRevision: 1,
+    agentVersion: 1,
     changes: { thinking: false, maxOutputTokens: 32, sampling: { temperature: 0 } },
   });
   assert.equal(updated.status, 200);
   const renamed = await f.request("PATCH", "/v1/agents/researcher", {
-    expectedRevision: 2,
+    agentVersion: 2,
     changes: { name: "renamed" },
   });
   assert.equal(renamed.body.agent.thinking, false);
@@ -647,7 +658,7 @@ test("agent generation settings are snapshotted and passed to inference", async 
     message: message("hello world"),
   });
   await f.request("PATCH", "/v1/agents/researcher", {
-    expectedRevision: 3,
+    agentVersion: 3,
     changes: { thinking: true, maxOutputTokens: 64 },
   });
   f.state.away = true;
@@ -727,7 +738,7 @@ test("turn thinking overrides persist, deduplicate and reset to agent defaults o
   saved = await f.app.service.storage.read(runID);
   assert.equal(saved.messages.at(-1).reasoningContent, "Recorded reasoning");
   const edited = await f.request("PATCH", "/v1/agents/researcher", {
-    expectedRevision: 1,
+    agentVersion: 1,
     changes: { thinking: false },
   });
   assert.equal(edited.status, 200);
@@ -1076,7 +1087,7 @@ test("failed generation retains partial answer, thinking and tool fragments as v
     },
   );
   await f.request("PATCH", "/v1/agents/researcher", {
-    expectedRevision: 1,
+    agentVersion: 1,
     changes: {
       mode: "agentLoop",
       thinking: true,
@@ -1154,7 +1165,7 @@ test("storage limit holds a persistent run and delivers one bounded hook with us
     f.app.service.storage.saveConfig(store),
   );
   const patched = await f.request("PATCH", "/v1/agents/researcher", {
-    expectedRevision: 1,
+    agentVersion: 1,
     changes: { contextMode: "persistent", storageLimitMB: 1 },
   });
   assert.equal(patched.status, 200);
@@ -1196,7 +1207,7 @@ test("storage limit holds a persistent run and delivers one bounded hook with us
     "storageLimit",
   );
   const raised = await f.request("PATCH", "/v1/agents/researcher", {
-    expectedRevision: 2,
+    agentVersion: 2,
     changes: { storageLimitMB: 2 },
   });
   assert.equal(raised.status, 200);
@@ -1234,7 +1245,7 @@ test("cancelled attempts keep partial answers but omit disabled thinking", async
     },
   );
   const changed = await f.request("PATCH", "/v1/agents/researcher", {
-    expectedRevision: 1,
+    agentVersion: 1,
     changes: { thinking: false },
   });
   assert.equal(changed.status, 200);
@@ -1359,7 +1370,7 @@ test("agent loops automatically discover and load snapshotted skill files on dem
   assert.deepEqual(updated.item!.toolIDs, skill.toolIDs);
 
   const changed = await f.request("PATCH", "/v1/agents/researcher", {
-    expectedRevision: 1,
+    agentVersion: 1,
     changes: { mode: "agentLoop", skillIDs: ["review"] },
   });
   assert.equal(changed.status, 200);
@@ -1601,7 +1612,7 @@ for (const instant of [false, true]) {
       });
     } else {
       await f.request("PATCH", "/v1/agents/researcher", {
-        expectedRevision: 1,
+        agentVersion: 1,
         changes: { mode: "agentLoop", skillIDs: ["review"] },
       });
       f.state.away = true;
@@ -1631,7 +1642,7 @@ for (const instant of [false, true]) {
 test("history tools exclude the current nonterminal run", async (t) => {
   const f = await fixture(t);
   await f.request("PATCH", "/v1/agents/researcher", {
-    expectedRevision: 1,
+    agentVersion: 1,
     changes: { mode: "agentLoop", toolIDs: ["runs_list", "runs_transcript"] },
   });
   const submitted = await f.request("POST", "/v1/agents/researcher/runs", {
@@ -1664,7 +1675,7 @@ test("worker history bounds long evidence while administrator transcripts remain
     usage: { inputTokens: 1, outputTokens: 1 },
   }));
   await f.request("PATCH", "/v1/agents/researcher", {
-    expectedRevision: 1,
+    agentVersion: 1,
     changes: { mode: "agentLoop", toolIDs: ["runs_transcript"] },
   });
   f.state.away = true;
@@ -1734,7 +1745,7 @@ test("agent sampling settings are validated, snapshotted and forwarded to infere
     repeatPenalty: 1,
   };
   const changed = await f.request("PATCH", "/v1/agents/researcher", {
-    expectedRevision: 1,
+    agentVersion: 1,
     changes: { sampling, parallelToolCalls: false },
   });
   assert.equal(changed.status, 200);
@@ -1780,7 +1791,7 @@ test("tool budget rejects excess batch calls and requests a tool-free final answ
     };
   });
   await f.request("PATCH", "/v1/agents/researcher", {
-    expectedRevision: 1,
+    agentVersion: 1,
     changes: { mode: "agentLoop", toolIDs: ["runs_list"], maxToolCalls: 1 },
   });
   let invoked = 0;
@@ -1833,7 +1844,7 @@ for (const emptyAgain of [false, true])
       };
     });
     await f.request("PATCH", "/v1/agents/researcher", {
-      expectedRevision: 1,
+      agentVersion: 1,
       changes: { mode: "agentLoop" },
     });
     f.state.away = true;

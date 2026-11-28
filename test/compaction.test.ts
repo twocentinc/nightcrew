@@ -578,7 +578,7 @@ test("compaction retains per-turn output constraints when replacing context", as
     command: "agents update",
     resourceID: "worker",
     request: {
-      expectedRevision: a.revision,
+      agentVersion: a.revision,
       changes: {
         finishSchema: {
           type: "object", properties: { answer: { type: "string" } }, required: ["answer"],

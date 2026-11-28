@@ -64,6 +64,13 @@ export const agentSummarySchema = agentSchema.pick({
   enabled: true,
   updatedAt: true,
 });
+export const agentResourceSchema = agentSchema
+  .omit({ revision: true })
+  .extend({ agentVersion: agentSchema.shape.revision });
+export const agentResourceSummarySchema = agentSummarySchema
+  .omit({ revision: true })
+  .extend({ agentVersion: agentSchema.shape.revision });
+
 export const agentDraftSchema = agentSchema
   .omit({ revision: true, createdAt: true, updatedAt: true })
   .extend({
