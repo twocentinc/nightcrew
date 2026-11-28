@@ -15,7 +15,7 @@ read their transcripts and results.
 - [Documentation](https://oss.twocents.com/docs/nightcrew/)
 - [Installation and first run](https://oss.twocents.com/docs/nightcrew/getting-started/)
 - [Set up llama-server and Qwen3.5](https://oss.twocents.com/docs/nightcrew/llama-cpp/)
-- [Resource reference](https://oss.twocents.com/docs/nightcrew/resources/)
+- [Concepts](https://oss.twocents.com/docs/nightcrew/concepts/)
 - [Command Map](https://oss.twocents.com/docs/nightcrew/command-map/)
 - [Files and formats](https://oss.twocents.com/docs/nightcrew/files/)
 - [Examples](https://oss.twocents.com/docs/nightcrew/examples/)
