@@ -236,7 +236,7 @@ test("invalid summary pauses and runs resume retries using the current handler",
       ),
     },
   });
-  await f.service.queueControl(f.runID, "release", paused.revision, false);
+  await f.service.queueControl(f.runID, "release", false);
   await until(async () => (await f.service.run(f.runID)).state === "completed");
   assert.equal(
     (await f.service.run(f.runID)).compactions[0].summary,
@@ -634,7 +634,7 @@ test("template failures are held as runtime errors and retain the actual cause",
   const restored = await f.service.run(f.runID);
   assert.equal(restored.pauseReason, "runtimeError");
   f.runtime.countTokens = async () => 10;
-  await f.service.queueControl(f.runID, "release", restored.revision, false);
+  await f.service.queueControl(f.runID, "release", false);
   await until(async () => (await f.service.run(f.runID)).state === "completed");
 });
 
@@ -731,7 +731,7 @@ test("compactor runtime errors hold the parent without summary retry and resume 
   await manage(f.service, {
     command: "runs resume",
     resourceID: f.runID,
-    request: { expectedRevision: held.revision },
+    request: {},
   });
   const done = await until(async () => {
     const r = await f.service.run(f.runID);

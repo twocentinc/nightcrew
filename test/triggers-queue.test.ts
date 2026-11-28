@@ -191,7 +191,6 @@ test("trigger CRUD keeps revisions and anchors, rejects dangling agents, and lea
   const created = await f.create("timer");
   const original = created.item;
   const renamed = await f.invoke("triggers update", "timer", {
-    expectedRevision: 1,
     changes: { name: "renamed" },
   });
   assert.equal(renamed.item.enabled, true);
@@ -203,7 +202,7 @@ test("trigger CRUD keeps revisions and anchors, rejects dangling agents, and lea
       expectedRevision: 1,
       changes: { name: "stale" },
     }),
-    /revision_conflict/,
+    /expectedRevision/,
   );
   const fired = await f.invoke("triggers fire", "timer", {
     occurrenceID: randomUUID(),
@@ -227,7 +226,6 @@ test("trigger CRUD keeps revisions and anchors, rejects dangling agents, and lea
     /trigger agent reference/,
   );
   await f.invoke("triggers update", "timer", {
-    expectedRevision: 2,
     changes: { enabled: false },
   });
   assert.equal((await f.invoke("triggers get", "timer")).item.nextFireAt, null);
@@ -235,7 +233,7 @@ test("trigger CRUD keeps revisions and anchors, rejects dangling agents, and lea
   await f.invoke(
     "triggers delete",
     "timer",
-    { expectedRevision: 3 },
+    {},
     { yes: true },
   );
   const run = await f.service.run(fired.runID);
@@ -266,7 +264,7 @@ test("trigger admission deduplicates, skips, coalesces only pending input and pe
     "skipped",
   );
   let run = await f.service.run(first.runID);
-  await f.invoke("runs pause", run.runID, { expectedRevision: run.revision });
+  await f.invoke("runs pause", run.runID, {});
   await f.restart();
   run = await f.service.run(first.runID);
   assert.equal(run.held, true);
@@ -316,13 +314,13 @@ test("trigger admission deduplicates, skips, coalesces only pending input and pe
     ["queued", "paused"].includes(r.execution.state),
   )) {
     await f.invoke("runs pause", item.runID, {
-      expectedRevision: item.revision,
+
     });
   }
   f.state.away = true;
   f.service.presence = { ...f.service.presence, state: "away" };
   run = await f.service.run(a.runID);
-  await f.invoke("runs resume", a.runID, { expectedRevision: run.revision });
+  await f.invoke("runs resume", a.runID, {});
   await until(async () => (await f.service.run(a.runID)).state === "completed");
   assert.equal(f.calls.length, 1);
   assert.deepEqual(
@@ -333,7 +331,7 @@ test("trigger admission deduplicates, skips, coalesces only pending input and pe
   );
   run = await f.service.run(a.runID);
   await assert.rejects(
-    f.invoke("runs pause", a.runID, { expectedRevision: run.revision }),
+    f.invoke("runs pause", a.runID, {}),
     /run_not_pending/,
   );
 });
@@ -358,7 +356,7 @@ test("concurrent skip firing admits one run and enqueue preserves distinct submi
   const run = await f.service.run(runs[0].runID);
   await assert.rejects(
     f.invoke("runs pause", run.runID, { expectedRevision: run.revision + 1 }),
-    /revision_conflict/,
+    /expectedRevision/,
   );
 });
 

@@ -456,32 +456,29 @@ export class Runs {
   }
   refreshRunCapabilities(
     runID: string,
-    expectedRevision: number,
     dryRun = false,
   ) {
     return this.controls.refreshRunCapabilities(
       runID,
-      expectedRevision,
       dryRun,
     );
   }
   retryRun(
     runID: string,
-    input: { expectedRevision: number; messageID: string; note: string },
+    input: { messageID: string; note: string },
     dryRun: boolean,
   ) {
     return this.controls.retryRun(runID, input, dryRun);
   }
-  pauseRun(runID: string, expectedRevision: number, dryRun: boolean) {
-    return this.controls.pauseRun(runID, expectedRevision, dryRun);
+  pauseRun(runID: string, dryRun: boolean) {
+    return this.controls.pauseRun(runID, dryRun);
   }
   queueControl(
     runID: string,
     action: "hold" | "release" | "cancel",
-    expectedRevision: number,
     dryRun: boolean,
   ) {
-    return this.controls.queueControl(runID, action, expectedRevision, dryRun);
+    return this.controls.queueControl(runID, action, dryRun);
   }
   cancelRun(runID: string, dryRun = false) {
     return this.controls.cancelRun(runID, dryRun);

@@ -21,7 +21,6 @@ import {
   id,
   pageOutput,
   pageSchema,
-  revision,
   streamEventSchema,
   userMessageSchema,
 } from "../schemas/common.js";
@@ -110,7 +109,6 @@ export function resourceRoutes(
         const result = await api["config update"]({
           resourceID: undefined,
           request: {
-            expectedRevision: input.expectedRevision,
             changes: input.changes,
           },
           dryRun: input.dryRun,

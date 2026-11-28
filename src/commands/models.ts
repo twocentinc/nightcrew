@@ -26,7 +26,6 @@ export const operationInputs = {
     model: modelSchema,
   }),
   "models update": z.strictObject({
-    expectedRevision: revision,
     changes: modelSchema.omit({ modelID: true }).partial().extend({
       compactionThresholdTokens: modelSchema.shape.compactionThresholdTokens
         .unwrap()
@@ -36,7 +35,7 @@ export const operationInputs = {
       slotSnapshots: modelSchema.shape.slotSnapshots.unwrap().optional(),
     }),
   }),
-  "models delete": z.strictObject({ expectedRevision: revision }),
+  "models delete": z.strictObject({}),
 };
 const modelMutation = z.object({
   changed: z.boolean(), restartRequired: z.boolean(), revision, item: modelSchema.nullable(),
@@ -154,11 +153,6 @@ const resourceActions: ResourceActions = {
     name,
     value,
   }: ResourceContext) {
-    if (
-      value.expectedRevision !== undefined &&
-      next.config.revision !== value.expectedRevision
-    )
-      fail("revision_conflict", 409);
     const policy = configurationChangePolicy(resource, value.changes);
     if (policy.requiresIdleQueue && service.status().queue.length)
       fail("runtime_busy", 409);

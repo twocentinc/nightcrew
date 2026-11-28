@@ -140,7 +140,6 @@ test("HTTP authentication, schema rejection, OpenAPI, revisions and stable pagin
   assert.equal(
     (
       await q("PATCH", "/v1/config", {
-        expectedRevision: 1,
         changes: { executablePath: "/bin/x" },
       })
     ).status,
@@ -153,7 +152,7 @@ test("HTTP authentication, schema rejection, OpenAPI, revisions and stable pagin
         changes: { interactionCooldownMs: 1 },
       })
     ).status,
-    409,
+    400,
   );
   const doc = (await q("GET", "/openapi.json", undefined, false)).body;
   assert.ok(doc.paths["/v1/agents/{agentID}/runs"].post);
@@ -291,7 +290,6 @@ test("instant work waits for compute release before starting; managed work pause
   });
   await until(() => calls.length === 1);
   await f.request("PATCH", "/v1/config", {
-    expectedRevision: 1,
     changes: { interactionCooldownMs: 300000 },
   });
   const c = await f.request("POST", "/v1/chat/requests", chat());
@@ -860,7 +858,6 @@ test("daemon logging changes live without changing unrelated configuration", asy
   const config = (await f.request("GET", "/v1/config")).body.config;
   assert.equal(config.logging.level, "warn");
   const result = await f.request("PATCH", "/v1/config", {
-    expectedRevision: config.revision,
     changes: { logging: { level: "debug", maxBytes: 2048, files: 2 } },
   });
   assert.equal(result.status, 200);
@@ -871,7 +868,6 @@ test("daemon logging changes live without changing unrelated configuration", asy
     /runtime.ready/,
   );
   const next = await f.request("PATCH", "/v1/config", {
-    expectedRevision: config.revision + 1,
     changes: { interactionCooldownMs: 10 },
   });
   assert.equal(next.body.config.logging.level, "debug");
@@ -1211,11 +1207,9 @@ test("storage limit holds a persistent run and delivers one bounded hook with us
     changes: { storageLimitMB: 2 },
   });
   assert.equal(raised.status, 200);
-  const beforeRelease = await f.app.service.storage.read(runID);
   await f.app.service.queueControl(
     runID,
     "release",
-    beforeRelease.revision,
     false,
   );
   const released = await f.app.service.storage.read(runID);

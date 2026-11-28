@@ -143,7 +143,7 @@
     },
     {
       "confirmation": false,
-      "description": "Apply revision-checked configuration changes",
+      "description": "Apply configuration changes",
       "mutates": true,
       "name": "config update",
       "operand": "none",
@@ -704,7 +704,7 @@
     },
     {
       "confirmation": false,
-      "description": "Pause active work or hold queued work with a revision check",
+      "description": "Pause active work or hold queued work",
       "mutates": true,
       "name": "runs pause",
       "operand": "required",
@@ -1099,5 +1099,5 @@
     "version": false
   },
   "protocolVersion": 1,
-  "schemaVersion": 56
+  "schemaVersion": 57
 }

@@ -74,13 +74,13 @@ export class Configuration {
   }
   async patchAgent(
     agentID: string,
-    expectedRevision: number,
+    agentVersion: number,
     changes: Partial<Agent>,
     dryRun = false,
   ) {
     return this.ports.storage.exclusive(async () => {
       const prev = this.agent(agentID);
-      if (prev.revision !== expectedRevision) fail("revision_conflict", 409);
+      if (prev.revision !== agentVersion) fail("revision_conflict", 409);
       const agent = agentSchema.parse({
         ...prev,
         ...changes,

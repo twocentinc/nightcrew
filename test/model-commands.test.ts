@@ -291,7 +291,7 @@ test("consolidated commands reject retired surfaces and evaluate policy only on 
   ])
     assert.equal(
       requestSchemas["config update"].safeParse({
-        expectedRevision: 1,
+
         changes,
       }).success,
       false,
@@ -397,15 +397,15 @@ test("model mutations return the affected item and configuration revision only",
   assert.deepEqual(Object.keys(created).sort(),["changed","item","restartRequired","revision"]);
   assert.equal(created.item.modelID,"new");
   const before = await readFile(path.join(f.home,"config.json"),"utf8");
-  const preview = await f.invoke("models update","new",{expectedRevision:created.revision,changes:{priority:10}},true);
+  const preview = await f.invoke("models update","new",{changes:{priority:10}},true);
   assert.equal(preview.changed,false);
   assert.equal(preview.item.priority,10);
   assert.equal(await readFile(path.join(f.home,"config.json"),"utf8"),before);
-  const updated = await f.invoke("models update","new",{expectedRevision:created.revision,changes:{priority:10}});
+  const updated = await f.invoke("models update","new",{changes:{priority:10}});
   assert.equal(updated.revision,created.revision+1);
   assert.equal(updated.item.priority,10);
   await assert.rejects(f.invoke("models update","new",{expectedRevision:created.revision,changes:{priority:20}}));
-  const removed:any = await callOperation(f.service,{command:"models delete",resourceID:"new",request:{expectedRevision:updated.revision},yes:true});
+  const removed:any = await callOperation(f.service,{command:"models delete",resourceID:"new",request:{},yes:true});
   assert.equal(removed.item,null);
   assert.equal(removed.revision,updated.revision+1);
   assert.equal("config" in removed,false);

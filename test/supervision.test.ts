@@ -332,7 +332,7 @@ test("failed runs retry in place with a new turnID and preserved failure evidenc
   const failed = await f.submit();
   assert.equal(failed.state, "failed");
   const request = {
-    expectedRevision: failed.revision,
+
     messageID: randomUUID(),
     note: "Runtime repaired.",
   };

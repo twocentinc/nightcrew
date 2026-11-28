@@ -344,7 +344,7 @@ test("definition CRUD and transcript edits use one shared operation contract", a
   assert.equal((await op("evals tools list")).items.length, 1);
   await assert.rejects(
     op("evals update", { expectedRevision: 1, changes: { agentID: "worker" } }),
-    /revision_conflict/,
+    /Input validation failed/,
   );
   await assert.rejects(
     op("evals update", { changes: { overrides: { finishSchema: {} } } }),

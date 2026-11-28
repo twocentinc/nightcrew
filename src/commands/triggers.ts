@@ -12,7 +12,6 @@ import {
 import {
   id,
   now,
-  revision,
   terminal,
   userMessageSchema,
   uuid,
@@ -29,7 +28,6 @@ import { type ManagementInput } from "../utils/commands/resources.js";
 export const operationInputs = {
   "triggers create": z.strictObject({ trigger: triggerDraftSchema }),
   "triggers update": z.strictObject({
-    expectedRevision: revision,
     changes: triggerDraftSchema
       .omit({ triggerID: true })
       .partial()
@@ -39,7 +37,7 @@ export const operationInputs = {
         message: userMessageSchema.omit({ messageID: true }).optional(),
       }),
   }),
-  "triggers delete": z.strictObject({ expectedRevision: revision }),
+  "triggers delete": z.strictObject({}),
   "triggers fire": z.strictObject({
     occurrenceID: uuid.optional(),
     message: userMessageSchema.omit({ messageID: true }).optional(),
@@ -142,8 +140,6 @@ export async function handle(
         const index = next.triggers.findIndex((t) => t.triggerID === name);
         if (index < 0) fail("trigger_not_found", 404);
         const current = next.triggers[index]!;
-        if (current.revision !== value.expectedRevision)
-          fail("revision_conflict", 409);
         if (mutation === "triggers delete") {
           if (!yes && !dryRun) fail("confirmation_required");
           next.triggers.splice(index, 1);

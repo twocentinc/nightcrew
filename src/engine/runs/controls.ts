@@ -25,12 +25,10 @@ export class RunControls {
   constructor(private readonly ports: Dependencies) {}
   async refreshRunCapabilities(
     runID: string,
-    expectedRevision: number,
     dryRun = false,
   ) {
     return this.ports.dependencies.storage.exclusive(async () => {
       const run = await this.ports.dependencies.records.run(runID);
-      if (run.revision !== expectedRevision) fail("revision_conflict", 409);
       if (
         !terminal(run.state) ||
         this.ports.dependencies.dispatch.hasActivity(runID) ||
@@ -96,7 +94,7 @@ export class RunControls {
   }
   async retryRun(
     runID: string,
-    input: { expectedRevision: number; messageID: string; note: string },
+    input: { messageID: string; note: string },
     dryRun: boolean,
   ) {
     const result = await this.ports.dependencies.storage.exclusive(async () => {
@@ -111,8 +109,6 @@ export class RunControls {
           fail("message_conflict", 409);
         return this.ports.main.acceptance(run, true);
       }
-      if (run.revision !== input.expectedRevision)
-        fail("revision_conflict", 409);
       if (
         !terminal(run.state) ||
         this.ports.dependencies.dispatch.hasActivity(runID)
@@ -142,9 +138,8 @@ export class RunControls {
     if (!dryRun) this.ports.dependencies.dispatch.wake();
     return result;
   }
-  async pauseRun(runID: string, expectedRevision: number, dryRun: boolean) {
+  async pauseRun(runID: string, dryRun: boolean) {
     const run = await this.ports.dependencies.records.run(runID);
-    if (run.revision !== expectedRevision) fail("revision_conflict", 409);
     if (terminal(run.state)) fail("run_not_pending", 409);
     const activity = this.ports.dependencies.dispatch.activity(runID);
     if (activity) {
@@ -165,17 +160,15 @@ export class RunControls {
         changed: true,
       };
     }
-    return this.queueControl(runID, "hold", expectedRevision, dryRun);
+    return this.queueControl(runID, "hold", dryRun);
   }
   async queueControl(
     runID: string,
     action: "hold" | "release" | "cancel",
-    expectedRevision: number,
     dryRun: boolean,
   ) {
     const result = await this.ports.dependencies.storage.exclusive(async () => {
       const run = await this.ports.dependencies.records.run(runID);
-      if (run.revision !== expectedRevision) fail("revision_conflict", 409);
       if (
         this.ports.dependencies.dispatch.hasActivity(runID) ||
         (run.state !== "queued" && run.state !== "paused")

@@ -147,7 +147,6 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
   );
   assert.equal((await call(home, ["triggers", "list"])).result.items.length, 1);
   const changedTrigger = await call(home, ["triggers", "update", "timer"], {
-    expectedRevision: 1,
     changes: { name: "renamed" },
   });
   assert.equal(changedTrigger.result.item.enabled, true);
@@ -155,9 +154,7 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
   assert.equal((await call(home, ["triggers", "fire", "timer"])).ok, false); // daemon required
   assert.equal(
     (
-      await call(home, ["triggers", "delete", "timer", "--yes"], {
-        expectedRevision: 2,
-      })
+      await call(home, ["triggers", "delete", "timer", "--yes"])
     ).ok,
     true,
   );
@@ -200,16 +197,14 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
   );
   assert.equal(
     (
-      await call(home, ["models", "delete", "qwen", "--yes"], {
-        expectedRevision: 2,
-      })
+      await call(home, ["models", "delete", "qwen", "--yes"])
     ).ok,
     false,
   );
   assert.equal(
     (
       await call(home, ["agents", "delete", "reviewer"], {
-        expectedRevision: 2,
+        agentVersion: 2,
       })
     ).ok,
     false,
@@ -230,9 +225,7 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
   assert.equal((await call(home, ["tools", "delete", "inspect", "--yes"])).ok, true);
   assert.equal(
     (
-      await call(home, ["models", "delete", "qwen", "--yes"], {
-        expectedRevision: 2,
-      })
+      await call(home, ["models", "delete", "qwen", "--yes"])
     ).ok,
     true,
   );
@@ -240,7 +233,6 @@ test("CLI discovery, validation and complete offline resource CRUD", async (t) =
   const config = (await call(home, ["config", "get"])).result.config;
   assert.equal(config.rootTokenHash, undefined);
   const preview = await call(home, ["config", "update", "--dry-run"], {
-    expectedRevision: config.revision,
     changes: { interactionCooldownMs: 100 },
   });
   assert.equal(preview.result.changed, false);
@@ -341,7 +333,6 @@ test("CLI-only daemon serves local CRUD without an HTTP listener and shuts down 
     home,
     ["config", "update"],
     {
-      expectedRevision: config.result.config.revision,
       changes: { httpEnabled: true },
     },
     env,
@@ -406,7 +397,6 @@ test("CLI-only daemon serves local CRUD without an HTTP listener and shuts down 
         home,
         ["config", "update"],
         {
-          expectedRevision: updated.result.config.revision,
           changes: { interactionCooldownMs: 1000 },
         },
         env,

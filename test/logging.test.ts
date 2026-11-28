@@ -127,7 +127,6 @@ test("logger refuses symlink targets and emits only a sanitized failure", async 
 });
 test("unrelated config patches do not reset logging defaults", () => {
   const request: any = requestSchemas["config update"].parse({
-    expectedRevision: 1,
     changes: { interactionCooldownMs: 10 },
   });
   assert.equal(Object.hasOwn(request.changes, "logging"), false);

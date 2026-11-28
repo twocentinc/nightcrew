@@ -1,7 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { Service, fail } from "../engine/service.js";
-import { revision } from "../schemas/common.js";
 import {
   adminConfig,
   configMutation,
@@ -21,7 +20,6 @@ import {
 
 export const operationInputs = {
   "config update": z.strictObject({
-    expectedRevision: revision,
     changes: configSchema
       .omit({ rootTokenHash: true, revision: true, models: true })
       .partial()
@@ -83,7 +81,7 @@ export const operations = {
   ),
   "config update": defineOperation(
     "config update",
-    "Apply revision-checked configuration changes",
+    "Apply configuration changes",
     configMutation,
     true,
   ),
@@ -100,11 +98,6 @@ export const operations = {
 };
 const resourceActions: ResourceActions = {
   async mutate({ service, next, resource, value }: ResourceContext) {
-    if (
-      value.expectedRevision !== undefined &&
-      next.config.revision !== value.expectedRevision
-    )
-      fail("revision_conflict", 409);
     const policy = configurationChangePolicy(resource, value.changes);
     if (policy.requiresIdleQueue && service.status().queue.length)
       fail("runtime_busy", 409);

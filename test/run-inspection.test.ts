@@ -586,13 +586,13 @@ test("canonical fingerprints retain persisted hash encoding and ignore object ke
 test("holding a queued run has consistent stored and indexed state and releases safely", async (t) => {
   const { service, makeRun } = await fixture(t);
   const run = await makeRun("queued-hold", "queued");
-  await service.pauseRun(run.runID, run.revision, false);
+  await service.pauseRun(run.runID, false);
   const held = await service.run(run.runID);
   assert.equal(held.state, "paused");
   assert.equal(held.held, true);
   assert.equal((await service.listRuns(undefined, "paused")).length, 1);
   assert.equal((await service.listRuns(undefined, "queued")).length, 0);
-  await service.queueControl(run.runID, "release", held.revision, false);
+  await service.queueControl(run.runID, "release", false);
   const released = await service.run(run.runID);
   assert.equal(released.held, false);
   assert.equal(released.pauseReason, "scheduler");

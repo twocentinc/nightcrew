@@ -466,7 +466,6 @@ test("scheduler partial updates preserve existing limits and hook configuration"
   });
   const { requestSchemas } = await import("../dist/utils/commands/inputs.js");
   const request: any = requestSchemas["config update"].parse({
-    expectedRevision: f.service.storage.store.config.revision,
     changes: { scheduler: { timersEnabled: false } },
   });
   assert.deepEqual(request.changes, { scheduler: { timersEnabled: false } });
@@ -474,12 +473,10 @@ test("scheduler partial updates preserve existing limits and hook configuration"
   assert.equal(out.config.scheduler.maxConcurrent, 3);
   assert.equal(out.config.scheduler.maxWaitMs, 123456);
   const config: any = requestSchemas["config update"].parse({
-    expectedRevision: 1,
     changes: { interactionCooldownMs: 0 },
   });
   assert.deepEqual(config.changes, { interactionCooldownMs: 0 });
   const model: any = requestSchemas["models update"].parse({
-    expectedRevision: 1,
     changes: { idleUnloadMs: 123 },
   });
   assert.deepEqual(model.changes, { idleUnloadMs: 123 });
@@ -516,7 +513,6 @@ test("instant inference rejects other models and invalid configuration", async (
     manage(f.service, {
       command: "config update",
       request: {
-        expectedRevision: f.service.storage.store.config.revision,
         changes: { scheduler: { instantModelID: "missing" } },
       },
     }),
@@ -566,7 +562,7 @@ test("runs pause interrupts active generation and holds across restart until res
   const paused = await manage(f.service, {
     command: "runs pause",
     resourceID: run.runID,
-    request: { expectedRevision: run.revision },
+    request: {},
   });
   assert.equal(paused.run.execution.state, "paused");
   assert.equal(paused.run.execution.resume, "manual");
@@ -578,7 +574,7 @@ test("runs pause interrupts active generation and holds across restart until res
   await manage(f.service, {
     command: "runs resume",
     resourceID: run.runID,
-    request: { expectedRevision: run.revision },
+    request: {},
   });
   await until(
     async () => (await f.service.run(run.runID)).state === "completed",
@@ -817,7 +813,7 @@ test("explicit capability refresh preserves daily history, snapshots and stopped
   const command = {
     command: "runs refresh",
     resourceID: accepted.runID,
-    request: { expectedRevision: before.revision },
+    request: {},
   };
   await manage(f.service, { ...command, dryRun: true });
   assert.deepEqual((await f.service.run(accepted.runID)).agent.toolIDs, []);
@@ -829,22 +825,19 @@ test("explicit capability refresh preserves daily history, snapshots and stopped
   assert.deepEqual(after.agent.toolIDs, ["current_time"]);
   assert.equal("previousTools" in after.capabilityRefreshes[0], false);
   assert.equal(after.capabilityRefreshes.length, 1);
-  await assert.rejects(
-    manage(f.service, command),
-    (e: any) => e.code === "revision_conflict",
-  );
+  assert.equal((await manage(f.service, command)).changed, false);
+  assert.equal((await f.service.run(accepted.runID)).capabilityRefreshes.length, 1);
   await f.restart();
   assert.deepEqual((await f.service.run(accepted.runID)).agent.toolIDs, [
     "current_time",
   ]);
   f.state.away = false;
   const next = await f.service.submit("interactive", message("queued"));
-  const queued = await f.service.run(next.runID);
   await assert.rejects(
     manage(f.service, {
       command: "runs refresh",
       resourceID: next.runID,
-      request: { expectedRevision: queued.revision },
+      request: {},
     }),
     (e: any) => e.code === "run_not_idle",
   );

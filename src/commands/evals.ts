@@ -19,11 +19,9 @@ import {
 import type { Service } from "../engine/service.js";
 import { fail } from "../engine/protocol.js";
 import type { ManagementInput } from "../utils/commands/resources.js";
-const revision = { expectedRevision: z.number().int().positive().optional() };
 export const operationInputs = {
   "evals create": z.strictObject({ eval: evalSchema }),
   "evals update": z.strictObject({
-    ...revision,
     changes: z.strictObject({
       agentID: id.optional(),
       overrides: overrideSchema.optional(),
@@ -32,27 +30,23 @@ export const operationInputs = {
       grader: graderSchema.nullish(),
     }),
   }),
-  "evals delete": z.strictObject(revision),
-  "evals tools set": toolOverrideSchema.extend(revision),
+  "evals delete": z.strictObject({}),
+  "evals tools set": toolOverrideSchema,
   "evals tools delete": z.strictObject({
-    ...revision,
     toolID: id,
     input: z.record(z.string(), z.json()).optional(),
   }),
   "evals transcript set": z.strictObject({
-    ...revision,
     messages: z.array(authorMessage).max(1000),
   }),
   "evals transcript append": z.strictObject({
-    ...revision,
     messages: z.array(authorMessage).min(1).max(1000),
   }),
   "evals transcript update": z.strictObject({
-    ...revision,
     messageID: uuid,
     message: authorMessage,
   }),
-  "evals transcript delete": z.strictObject({ ...revision, messageID: uuid }),
+  "evals transcript delete": z.strictObject({ messageID: uuid }),
 };
 export async function handle(
   service: Service,
@@ -97,12 +91,6 @@ export async function handle(
       command,
       raw,
     );
-    if (
-      "expectedRevision" in request &&
-      request.expectedRevision !== undefined &&
-      request.expectedRevision !== record.revision
-    )
-      fail("revision_conflict", 409);
     if (action === "evals delete") {
       if (!dryRun) await store.delete(evalID);
       return { changed: !dryRun };

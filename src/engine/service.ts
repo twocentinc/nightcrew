@@ -216,13 +216,13 @@ export class Service {
   }
   patchAgent(
     agentID: string,
-    expectedRevision: number,
+    agentVersion: number,
     changes: Partial<Agent>,
     dryRun = false,
   ) {
     return this.configuration.patchAgent(
       agentID,
-      expectedRevision,
+      agentVersion,
       changes,
       dryRun,
     );
@@ -263,28 +263,26 @@ export class Service {
   }
   refreshRunCapabilities(
     runID: string,
-    expectedRevision: number,
     dryRun = false,
   ) {
-    return this.runs.refreshRunCapabilities(runID, expectedRevision, dryRun);
+    return this.runs.refreshRunCapabilities(runID, dryRun);
   }
   retryRun(
     runID: string,
-    input: { expectedRevision: number; messageID: string; note: string },
+    input: { messageID: string; note: string },
     dryRun: boolean,
   ) {
     return this.runs.retryRun(runID, input, dryRun);
   }
-  pauseRun(runID: string, expectedRevision: number, dryRun: boolean) {
-    return this.runs.pauseRun(runID, expectedRevision, dryRun);
+  pauseRun(runID: string, dryRun: boolean) {
+    return this.runs.pauseRun(runID, dryRun);
   }
   queueControl(
     runID: string,
     action: "hold" | "release" | "cancel",
-    expectedRevision: number,
     dryRun: boolean,
   ) {
-    return this.runs.queueControl(runID, action, expectedRevision, dryRun);
+    return this.runs.queueControl(runID, action, dryRun);
   }
   cancelRun(runID: string, dryRun = false) {
     return this.runs.cancelRun(runID, dryRun);

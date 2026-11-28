@@ -5,7 +5,6 @@ import { fail } from "../engine/service.js";
 import {
   id,
   pageSchema,
-  revision,
   userMessageSchema,
   uuid,
 } from "../schemas/common.js";
@@ -23,15 +22,14 @@ import { createOperations } from "../utils/commands/definition.js";
 import { type ManagementInput } from "../utils/commands/resources.js";
 
 export const operationInputs = {
-  "runs refresh": z.strictObject({ expectedRevision: revision }),
-  "runs resume": z.strictObject({ expectedRevision: revision }),
+  "runs refresh": z.strictObject({}),
+  "runs resume": z.strictObject({}),
   "runs retry": z.strictObject({
-    expectedRevision: revision,
     messageID: uuid,
     note: z.string().trim().min(1).max(2000),
   }),
   "runs reply": z.strictObject({ message: userMessageSchema }),
-  "runs pause": z.strictObject({ expectedRevision: revision }),
+  "runs pause": z.strictObject({}),
   "runs list": pageSchema.extend({
     query: z.string().min(1).max(1000).optional(),
     agentID: id.optional(),
@@ -61,29 +59,18 @@ export async function handle(
   const [resource, action] = command.split(" ");
   const name = resourceID === undefined ? undefined : id.parse(resourceID);
   const raw = input.request ?? {};
-  if (command === "runs refresh")
-    return service.refreshRunCapabilities(
-      name ?? fail("missing_id"),
-      operationInputs[command].parse(raw).expectedRevision,
-      dryRun,
-    );
+  if (command === "runs refresh" || command === "runs pause" || command === "runs resume") {
+    operationInputs[command].parse(raw);
+    const runID = name ?? fail("missing_id");
+    if (command === "runs refresh")
+      return service.refreshRunCapabilities(runID, dryRun);
+    if (command === "runs pause") return service.pauseRun(runID, dryRun);
+    return service.queueControl(runID, "release", dryRun);
+  }
   if (command === "runs retry")
     return service.retryRun(
       name ?? fail("missing_id"),
       operationInputs[command].parse(raw),
-      dryRun,
-    );
-  if (command === "runs pause")
-    return service.pauseRun(
-      name ?? fail("missing_id"),
-      operationInputs[command].parse(raw).expectedRevision,
-      dryRun,
-    );
-  if (command === "runs resume")
-    return service.queueControl(
-      name ?? fail("missing_id"),
-      "release",
-      operationInputs[command].parse(raw).expectedRevision,
       dryRun,
     );
   if (resource === "runs") {
@@ -200,7 +187,7 @@ export const operations = {
   ),
   "runs pause": defineOperation(
     "runs pause",
-    "Pause active work or hold queued work with a revision check",
+    "Pause active work or hold queued work",
     z.object({ run: runDetailSchema, changed: z.boolean() }),
     true,
     "required",

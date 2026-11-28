@@ -165,7 +165,6 @@ test(
 
     const config = (await rpc("config get")).config;
     await rpc("config update", {
-      expectedRevision: config.revision,
       changes: {
         models: config.models.map((m?: any) =>
           m.modelID === qwen.modelID

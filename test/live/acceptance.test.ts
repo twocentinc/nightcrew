@@ -280,7 +280,7 @@ test(
       const trigger = (await rpc("triggers get", {}, "acceptance-timer")).item;
       await rpc(
         "triggers update",
-        { expectedRevision: trigger.revision, changes: { enabled: false } },
+        {changes: { enabled: false } },
         "acceptance-timer",
       );
       const active = await until(async () => {
