@@ -22,7 +22,6 @@ export const operationInputs = {
   "skills read": skillLoadInputSchema.extend({ runID: id.optional() }),
   "skills create": z.strictObject({ skill: skillSchema }),
   "skills update": z.strictObject({
-    expectedHash: z.string().optional(),
     changes: z
       .strictObject({ ...skillSchema.shape })
       .omit({ skillID: true })
@@ -31,7 +30,7 @@ export const operationInputs = {
         files: skillSchema.shape.files.removeDefault().optional(),
       }),
   }),
-  "skills delete": z.strictObject({ expectedHash: z.string().optional() }),
+  "skills delete": z.strictObject({}),
 };
 const requestSchemas: Record<string, z.ZodType> = operationInputs;
 export async function handle(

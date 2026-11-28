@@ -38356,11 +38356,7 @@
   "skills.delete.request": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
-    "properties": {
-      "expectedHash": {
-        "type": "string"
-      }
-    },
+    "properties": {},
     "type": "object"
   },
   "skills.delete.result": {
@@ -38844,9 +38840,6 @@
           }
         },
         "type": "object"
-      },
-      "expectedHash": {
-        "type": "string"
       }
     },
     "required": [
@@ -41060,11 +41053,7 @@
   "tools.delete.request": {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
-    "properties": {
-      "expectedHash": {
-        "type": "string"
-      }
-    },
+    "properties": {},
     "type": "object"
   },
   "tools.delete.result": {
@@ -41401,9 +41390,6 @@
           }
         },
         "type": "object"
-      },
-      "expectedHash": {
-        "type": "string"
       }
     },
     "required": [

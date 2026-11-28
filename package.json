@@ -1,6 +1,6 @@
 {
   "name": "nightcrew",
-  "version": "0.56.0",
+  "version": "0.57.0",
   "type": "module",
   "description": "Local agent orchestrator that runs background models while you are away",
   "exports": {

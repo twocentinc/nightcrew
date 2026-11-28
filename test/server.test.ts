@@ -1361,7 +1361,6 @@ test("agent loops automatically discover and load snapshotted skill files on dem
   const updated = await api["skills update"]({
     resourceID: "review",
     request: {
-      expectedHash: fetched.item.hash,
       changes: { description: "Updated review workflow" },
     },
   });
@@ -2125,10 +2124,15 @@ test("capability patches preserve omitted fields and lists expose only summaries
   const api = managementClient(f.app.service);
   const tool = {toolID:"patchable",description:"before",executablePath:process.execPath,argv:["--version"],timeoutMs:3210,parameters:{type:"object"}};
   const created = await api["tools create"]({resourceID:undefined,request:{tool}});
-  const patch = {resourceID:tool.toolID,request:{expectedHash:created.item!.hash,changes:{description:"after"}}};
+  const patch = {resourceID:tool.toolID,request:{changes:{description:"after"}}};
   const updated = await api["tools update"](patch);
   assert.deepEqual(updated.item, {...tool,description:"after",hash:updated.item!.hash});
-  await assert.rejects(api["tools update"](patch));
+  assert.deepEqual((await api["tools update"](patch)).item, updated.item);
+  const legacyPatch = {
+    ...patch,
+    request: { ...patch.request, expectedHash: created.item!.hash },
+  };
+  await assert.rejects(api["tools update"](legacyPatch));
   const listed = await api["tools list"]({resourceID:undefined,request:{}});
   const expected = {toolID:tool.toolID,description:"after",hash:updated.item!.hash,builtin:false};
   assert.deepEqual(listed.items.find(x=>x.toolID===tool.toolID),expected);

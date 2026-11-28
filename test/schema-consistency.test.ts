@@ -98,10 +98,15 @@ test("concise message input defaults empty fields and enforces message roles", a
 test("partial capability updates have no implicit defaults and reject retired requests", async () => {
   const {operationInputs} = await import("../dist/utils/commands/inputs.js");
   for(const command of ["tools update", "skills update"] as const) {
-    const request = {expectedHash:"hash",changes:{description:"new"}};
+    const request = {changes:{description:"new"}};
     assert.deepEqual(operationInputs[command].parse(request),request);
-    assert.equal(operationInputs[command].safeParse({expectedHash:"hash",tool:{}}).success,false);
+    assert.equal(operationInputs[command].safeParse({ ...request, expectedHash: "hash" }).success,false);
+    assert.equal(operationInputs[command].safeParse({tool:{}}).success,false);
     assert.equal(operationInputs[command].safeParse({...request, changes:{toolID:"different"}}).success,false);
+  }
+  for (const command of ["tools delete", "skills delete"] as const) {
+    assert.deepEqual(operationInputs[command].parse({}), {});
+    assert.equal(operationInputs[command].safeParse({ expectedHash: "hash" }).success, false);
   }
   assert.equal(operationInputs["models test"].safeParse({prompt:"hello",parallelToolCalls:false}).success,false);
 });
